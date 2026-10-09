@@ -12,6 +12,7 @@ extensions/**/dist/
 src/vs/base/browser/ui/codicons/codicon/codicon.ttf
 /out*/
 /extensions/**/out/
+/extensions/studio-workstation
 build/node_modules
 build/darwin/.dmgbuild
 coverage/

@@ -93,6 +93,9 @@ function getExtensionDownloadStream(extension: IExtensionDefinition) {
 			return es.readArray([]);
 		}
 		input = ext.fromGithub(extension, { asset, latest: isInsiders() });
+	} else if (extension.repo) {
+		// Preserve upstream checksums when the distribution uses another gallery.
+		input = ext.fromGithub(extension, { latest: isInsiders() });
 	} else if (productjson.extensionsGallery?.serviceUrl) {
 		input = ext.fromMarketplace(productjson.extensionsGallery.serviceUrl, extension);
 	} else {

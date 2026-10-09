@@ -74,6 +74,7 @@ export class GlobalCompositeBar extends Disposable {
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@IStorageService private readonly storageService: IStorageService,
 		@IExtensionService private readonly extensionService: IExtensionService,
+		@IProductService private readonly productService: IProductService,
 	) {
 		super();
 
@@ -143,6 +144,9 @@ export class GlobalCompositeBar extends Disposable {
 	}
 
 	getContextMenuActions(): IAction[] {
+		if (this.productService.showAccounts === false) {
+			return [];
+		}
 		return [toAction({ id: 'toggleAccountsVisibility', label: localize('accounts', "Accounts"), checked: this.accountsVisibilityPreference, run: () => this.accountsVisibilityPreference = !this.accountsVisibilityPreference })];
 	}
 
@@ -160,7 +164,7 @@ export class GlobalCompositeBar extends Disposable {
 	}
 
 	private get accountsVisibilityPreference(): boolean {
-		return isAccountsActionVisible(this.storageService);
+		return isAccountsActionVisible(this.storageService, this.productService);
 	}
 
 	private set accountsVisibilityPreference(value: boolean) {
@@ -800,7 +804,7 @@ export class SimpleAccountActivityActionViewItem extends AccountsActivityActionV
 		@ICodexAccountService codexAccountService: ICodexAccountService,
 		@IDefaultAccountService defaultAccountService: IDefaultAccountService,
 	) {
-		super(() => simpleActivityContextMenuActions(storageService, true),
+		super(() => simpleActivityContextMenuActions(storageService, productService, true),
 			{
 				...options,
 				colors: theme => ({
@@ -829,9 +833,10 @@ export class SimpleGlobalActivityActionViewItem extends GlobalActivityActionView
 		@IKeybindingService keybindingService: IKeybindingService,
 		@IInstantiationService instantiationService: IInstantiationService,
 		@IActivityService activityService: IActivityService,
-		@IStorageService storageService: IStorageService
+		@IStorageService storageService: IStorageService,
+		@IProductService productService: IProductService
 	) {
-		super(() => simpleActivityContextMenuActions(storageService, false),
+		super(() => simpleActivityContextMenuActions(storageService, productService, false),
 			{
 				...options,
 				colors: theme => ({
@@ -844,7 +849,7 @@ export class SimpleGlobalActivityActionViewItem extends GlobalActivityActionView
 	}
 }
 
-function simpleActivityContextMenuActions(storageService: IStorageService, isAccount: boolean): IAction[] {
+function simpleActivityContextMenuActions(storageService: IStorageService, productService: IProductService, isAccount: boolean): IAction[] {
 	const currentElementContextMenuActions: IAction[] = [];
 	if (isAccount) {
 		currentElementContextMenuActions.push(
@@ -854,13 +859,13 @@ function simpleActivityContextMenuActions(storageService: IStorageService, isAcc
 	}
 	return [
 		...currentElementContextMenuActions,
-		toAction({ id: 'toggle.hideAccounts', label: localize('accounts', "Accounts"), checked: isAccountsActionVisible(storageService), run: () => setAccountsActionVisible(storageService, !isAccountsActionVisible(storageService)) }),
+		...(productService.showAccounts === false ? [] : [toAction({ id: 'toggle.hideAccounts', label: localize('accounts', "Accounts"), checked: isAccountsActionVisible(storageService, productService), run: () => setAccountsActionVisible(storageService, !isAccountsActionVisible(storageService, productService)) })]),
 		toAction({ id: 'toggle.hideManage', label: localize('manage', "Manage"), checked: true, enabled: false, run: () => { throw new Error('"Manage" can not be hidden'); } })
 	];
 }
 
-export function isAccountsActionVisible(storageService: IStorageService): boolean {
-	return storageService.getBoolean(AccountsActivityActionViewItem.ACCOUNTS_VISIBILITY_PREFERENCE_KEY, StorageScope.PROFILE, true);
+export function isAccountsActionVisible(storageService: IStorageService, productService: IProductService): boolean {
+	return productService.showAccounts !== false && storageService.getBoolean(AccountsActivityActionViewItem.ACCOUNTS_VISIBILITY_PREFERENCE_KEY, StorageScope.PROFILE, true);
 }
 
 function setAccountsActionVisible(storageService: IStorageService, visible: boolean) {

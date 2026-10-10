@@ -24,8 +24,8 @@ import { IInstantiationService, ServicesAccessor } from '../../../../platform/in
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { IStorageService, StorageScope } from '../../../../platform/storage/common/storage.js';
 import { Parts, IWorkbenchLayoutService, ActivityBarPosition, LayoutSettings, EditorActionsLocation, EditorTabsMode } from '../../../services/layout/browser/layoutService.js';
-import { createActionViewItem, fillInActionBarActions } from '../../../../platform/actions/browser/menuEntryActionViewItem.js';
-import { Action2, IMenu, IMenuService, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
+import { createActionViewItem, fillInActionBarActions, MenuEntryActionViewItem } from '../../../../platform/actions/browser/menuEntryActionViewItem.js';
+import { Action2, IMenu, IMenuService, MenuId, MenuItemAction, registerAction2 } from '../../../../platform/actions/common/actions.js';
 import { IContextKey, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
 import { IHostService } from '../../../services/host/browser/host.js';
 import { WindowTitle } from './windowTitle.js';
@@ -63,6 +63,22 @@ import { WORKBENCH_MENU_MOTION_CLASS, workbenchMenuCloseAnimation } from '../../
 export interface ITitleVariable {
 	readonly name: string;
 	readonly contextKey: string;
+}
+
+class StudioWorkflowRunActionViewItem extends MenuEntryActionViewItem {
+	override render(container: HTMLElement): void {
+		this.options.icon = false;
+		this.options.label = true;
+		super.render(container);
+		container.classList.add('studio-workflow-run');
+	}
+
+	protected override updateLabel(): void {
+		super.updateLabel();
+		if (this.label) {
+			prepend(this.label, $('span.codicon.codicon-play'));
+		}
+	}
 }
 
 export interface ITitleProperties {
@@ -506,7 +522,9 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 				toolbarOptions: {
 					primaryGroup: () => true,
 				},
-				actionViewItemProvider: (action, options) => createActionViewItem(this.instantiationService, action, options),
+				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && action.id === 'studio.openWorkflow'
+					? this.instantiationService.createInstance(StudioWorkflowRunActionViewItem, action, options)
+					: createActionViewItem(this.instantiationService, action, options),
 				hoverDelegate: this.hoverDelegate
 			}));
 

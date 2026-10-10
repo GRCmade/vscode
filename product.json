@@ -246,7 +246,7 @@
   "sessionsWindowAllowedExtensions": [],
   "voiceWsUrl": "wss://falcon-caas.mai.microsoft.com/voice-code/api/v1/realtime/voice",
   "enableTelemetry": false,
-  "showAccounts": false,
+  "showAccounts": true,
   "extensionsGallery": {
     "serviceUrl": "https://open-vsx.org/vscode/gallery",
     "itemUrl": "https://open-vsx.org/vscode/item"

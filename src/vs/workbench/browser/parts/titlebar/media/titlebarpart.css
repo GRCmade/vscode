@@ -4,6 +4,26 @@
  *--------------------------------------------------------------------------------------------*/
 
 /* Part Element */
+.monaco-workbench .part.titlebar .studio-workflow-run .action-label {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	height: 24px;
+	min-width: 92px;
+	padding: 0 10px;
+	border-radius: 4px;
+	background: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	font-size: 12px;
+	white-space: nowrap;
+	-webkit-app-region: no-drag;
+}
+
+.monaco-workbench .part.titlebar .studio-workflow-run .action-label:hover {
+	background: var(--vscode-button-hoverBackground);
+}
+
 .monaco-workbench .part.titlebar {
 	display: flex;
 	flex-direction: row;

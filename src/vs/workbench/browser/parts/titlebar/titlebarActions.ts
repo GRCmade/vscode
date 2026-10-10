@@ -8,7 +8,8 @@ import { IConfigurationService } from '../../../../platform/configuration/common
 import { ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { LayoutSettings } from '../../../services/layout/browser/layoutService.js';
-import { Action2, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
+import { Action2, MenuId, MenuRegistry, registerAction2 } from '../../../../platform/actions/common/actions.js';
+import { Codicon } from '../../../../base/common/codicons.js';
 import { ContextKeyExpr, ContextKeyExpression, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
 import { ACCOUNTS_ACTIVITY_ID, GLOBAL_ACTIVITY_ID } from '../../../common/activity.js';
 import { IAction } from '../../../../base/common/actions.js';
@@ -23,6 +24,17 @@ import { NotificationsPosition, NotificationsSettings } from '../../../common/no
  * when layout controls are toggled off.
  */
 export const TitleBarLeadingActionsGroup = '0_leading';
+
+MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
+	command: {
+		id: 'studio.openWorkflow',
+		title: localize('studio.runWorkflowProject', "\u8fd0\u884c\u9879\u76ee"),
+		icon: Codicon.play
+	},
+	when: ContextKeyExpr.equals('studio.workflowAvailable', true),
+	group: '0_studio',
+	order: 0
+});
 
 // --- Context Menu Actions --- //
 

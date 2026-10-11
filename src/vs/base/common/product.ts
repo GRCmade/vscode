@@ -294,6 +294,7 @@ export interface IProductConfiguration {
 
 	readonly onboardingKeymaps?: readonly IProductOnboardingKeymap[];
 	readonly onboardingThemes?: readonly IProductOnboardingTheme[];
+	readonly disabledWorkbenchViews?: readonly string[];
 
 	/**
 	 * When running as an embedded app, the parent VS Code's policy

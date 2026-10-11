@@ -26,6 +26,7 @@ import { registerIcon } from '../../platform/theme/common/iconRegistry.js';
 import { CancellationToken } from '../../base/common/cancellation.js';
 import { VSDataTransfer } from '../../base/common/dataTransfer.js';
 import { ILocalizedString } from '../../platform/action/common/action.js';
+import product from '../../platform/product/common/product.js';
 
 export const VIEWS_LOG_ID = 'views';
 export const VIEWS_LOG_NAME = localize('views log', "Views");
@@ -465,6 +466,10 @@ class ViewsRegistry extends Disposable implements IViewsRegistry {
 	}
 
 	registerViews2(views: { views: IViewDescriptor[]; viewContainer: ViewContainer }[]): void {
+		views = views.map(({ views, viewContainer }) => ({
+			views: views.filter(view => !product.disabledWorkbenchViews?.includes(view.id)),
+			viewContainer
+		})).filter(({ views }) => views.length > 0);
 		views.forEach(({ views, viewContainer }) => this.addViews(views, viewContainer));
 		this._onViewsRegistered.fire(views);
 	}

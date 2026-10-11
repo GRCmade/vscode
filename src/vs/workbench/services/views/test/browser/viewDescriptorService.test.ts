@@ -18,6 +18,7 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../../pla
 import { generateUuid } from '../../../../../base/common/uuid.js';
 import { compare } from '../../../../../base/common/strings.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
+import product from '../../../../../platform/product/common/product.js';
 
 const ViewsRegistry = Registry.as<IViewsRegistry>(ViewContainerExtensions.ViewsRegistry);
 const ViewContainersRegistry = Registry.as<IViewContainersRegistry>(ViewContainerExtensions.ViewContainersRegistry);
@@ -97,6 +98,24 @@ suite('ViewDescriptorService', () => {
 
 		assert.strictEqual(sidebarViews.activeViewDescriptors.length, 0, 'Sidebar should have no views');
 		assert.strictEqual(panelViews.activeViewDescriptors.length, 0, 'Panel should have no views');
+	});
+
+	test('Product-disabled views are excluded from registration and registration events', () => {
+		const previous = product.disabledWorkbenchViews;
+		const registered: string[] = [];
+		const listener = ViewsRegistry.onViewsRegistered(groups => registered.push(...groups.flatMap(group => group.views.map(view => view.id))));
+		const viewDescriptors: IViewDescriptor[] = ['disabled', 'enabled'].map(id => ({
+			id, ctorDescriptor: null!, name: nls.localize2('Test View', 'Test View'), canMoveView: true
+		}));
+		try {
+			Object.assign(product, { disabledWorkbenchViews: ['disabled'] });
+			ViewsRegistry.registerViews(viewDescriptors, panelContainer);
+			assert.deepStrictEqual([ViewsRegistry.getViews(panelContainer).map(view => view.id), registered], [['enabled'], ['enabled']]);
+		} finally {
+			listener.dispose();
+			ViewsRegistry.deregisterViews(viewDescriptors, panelContainer);
+			Object.assign(product, { disabledWorkbenchViews: previous });
+		}
 	});
 
 	test('move views to existing containers', async function () {

@@ -38,6 +38,7 @@ import { IRemoteAgentEnvironment } from '../../../../platform/remote/common/remo
 import { toAction } from '../../../../base/common/actions.js';
 import { IPreferencesService } from '../../../services/preferences/common/preferences.js';
 import { IStorageService, StorageScope } from '../../../../platform/storage/common/storage.js';
+import product from '../../../../platform/product/common/product.js';
 
 export const VIEWLET_ID = 'workbench.view.remote';
 export const TOGGLE_VIEW_ACTION_ID = 'remoteExplorer.toggleForwardedPortsView';
@@ -86,6 +87,9 @@ export class ForwardedPortsView extends Disposable implements IWorkbenchContribu
 	}
 
 	private async getViewContainer(): Promise<ViewContainer | null> {
+		if (product.disabledWorkbenchViews?.includes(TUNNEL_VIEW_ID)) {
+			return null;
+		}
 		return Registry.as<IViewContainersRegistry>(Extensions.ViewContainersRegistry).registerViewContainer({
 			id: TUNNEL_VIEW_CONTAINER_ID,
 			title: nls.localize2('ports', "Ports"),
@@ -104,15 +108,15 @@ export class ForwardedPortsView extends Disposable implements IWorkbenchContribu
 		const viewEnabled: boolean = !!forwardedPortsViewEnabled.getValue(this.contextKeyService);
 
 		if (featuresEnabled || viewEnabled) {
+			this.remoteExplorerService.enablePortsFeatures(!featuresEnabled);
 			// Also enable the view if it isn't already.
 			if (!viewEnabled) {
 				this.contextKeyService.createKey(forwardedPortsViewEnabled.key, true);
 			}
 			const viewContainer = await this.getViewContainer();
-			const tunnelPanelDescriptor = new TunnelPanelDescriptor(new TunnelViewModel(this.remoteExplorerService, this.tunnelService), this.environmentService);
-			const viewsRegistry = Registry.as<IViewsRegistry>(Extensions.ViewsRegistry);
 			if (viewContainer) {
-				this.remoteExplorerService.enablePortsFeatures(!featuresEnabled);
+				const tunnelPanelDescriptor = new TunnelPanelDescriptor(new TunnelViewModel(this.remoteExplorerService, this.tunnelService), this.environmentService);
+				const viewsRegistry = Registry.as<IViewsRegistry>(Extensions.ViewsRegistry);
 				viewsRegistry.registerViews([tunnelPanelDescriptor], viewContainer);
 			}
 		} else {
@@ -125,7 +129,7 @@ export class ForwardedPortsView extends Disposable implements IWorkbenchContribu
 	}
 
 	private enableBadgeAndStatusBar() {
-		const disposable = Registry.as<IViewsRegistry>(Extensions.ViewsRegistry).onViewsRegistered(e => {
+		const disposable = this._register(Registry.as<IViewsRegistry>(Extensions.ViewsRegistry).onViewsRegistered(e => {
 			if (e.find(view => view.views.find(viewDescriptor => viewDescriptor.id === TUNNEL_VIEW_ID))) {
 				this._register(Event.debounce(this.remoteExplorerService.tunnelModel.onForwardPort, (_last, e) => e, 50)(() => {
 					this.updateActivityBadge();
@@ -140,7 +144,7 @@ export class ForwardedPortsView extends Disposable implements IWorkbenchContribu
 				this.updateStatusBar();
 				disposable.dispose();
 			}
-		});
+		}));
 	}
 
 	private async updateActivityBadge() {

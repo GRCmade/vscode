@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import assert from 'assert';
+import { Event } from '../../../../../base/common/event.js';
 import { toDisposable } from '../../../../../base/common/lifecycle.js';
 import { mock } from '../../../../../base/test/common/mock.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
@@ -11,15 +12,53 @@ import { MockContextKeyService } from '../../../../../platform/keybinding/test/c
 import { NullLogService } from '../../../../../platform/log/common/log.js';
 import { INotificationService } from '../../../../../platform/notification/common/notification.js';
 import { IOpenerService } from '../../../../../platform/opener/common/opener.js';
+import product from '../../../../../platform/product/common/product.js';
+import { Registry } from '../../../../../platform/registry/common/platform.js';
 import { InMemoryStorageService } from '../../../../../platform/storage/common/storage.js';
 import { ITunnelService, RemoteTunnel, TunnelPrivacyId } from '../../../../../platform/tunnel/common/tunnel.js';
 import { IExternalUriOpenerService } from '../../../externalUriOpener/common/externalUriOpenerService.js';
+import { Extensions, IViewContainersRegistry } from '../../../../common/views.js';
+import { IActivityService } from '../../../../services/activity/common/activity.js';
+import { IWorkbenchEnvironmentService } from '../../../../services/environment/common/environmentService.js';
 import { IHostService } from '../../../../services/host/browser/host.js';
 import { NotificationService } from '../../../../services/notification/common/notificationService.js';
-import { IRemoteExplorerService } from '../../../../services/remote/common/remoteExplorerService.js';
-import { TunnelModel } from '../../../../services/remote/common/tunnelModel.js';
-import { isCandidateRemappedTunnelLocalEndpoint, OnAutoForwardedAction } from '../../browser/remoteExplorer.js';
+import { IRemoteExplorerService, TUNNEL_VIEW_CONTAINER_ID, TUNNEL_VIEW_ID } from '../../../../services/remote/common/remoteExplorerService.js';
+import { forwardedPortsFeaturesEnabled, TunnelModel } from '../../../../services/remote/common/tunnelModel.js';
+import { IStatusbarService } from '../../../../services/statusbar/browser/statusbar.js';
+import { ForwardedPortsView, isCandidateRemappedTunnelLocalEndpoint, OnAutoForwardedAction } from '../../browser/remoteExplorer.js';
 import { TunnelPanel } from '../../browser/tunnelView.js';
+
+suite('ForwardedPortsView', () => {
+	const store = ensureNoDisposablesAreLeakedInTestSuite();
+
+	test('product-disabled Ports keeps forwarding enabled without creating an empty panel', async () => {
+		const previous = product.disabledWorkbenchViews;
+		const containers = Registry.as<IViewContainersRegistry>(Extensions.ViewContainersRegistry);
+		const container = containers.get(TUNNEL_VIEW_CONTAINER_ID);
+		const enablement: boolean[] = [];
+		const contextKeys = store.add(new MockContextKeyService());
+		contextKeys.createKey(forwardedPortsFeaturesEnabled.key, true);
+		try {
+			Object.assign(product, { disabledWorkbenchViews: [TUNNEL_VIEW_ID] });
+			store.add(new ForwardedPortsView(
+				contextKeys,
+				new class extends mock<IWorkbenchEnvironmentService>() { },
+				new class extends mock<IRemoteExplorerService>() {
+					override enablePortsFeatures(viewOnly: boolean): void { enablement.push(viewOnly); }
+				},
+				new class extends mock<ITunnelService>() {
+					override readonly onTunnelOpened = Event.None;
+				},
+				new class extends mock<IActivityService>() { },
+				new class extends mock<IStatusbarService>() { },
+			));
+			await Promise.resolve();
+			assert.deepStrictEqual({ enablement, container: containers.get(TUNNEL_VIEW_CONTAINER_ID) }, { enablement: [false], container });
+		} finally {
+			Object.assign(product, { disabledWorkbenchViews: previous });
+		}
+	});
+});
 
 suite('AutomaticPortForwarding', () => {
 	const store = ensureNoDisposablesAreLeakedInTestSuite();

@@ -67,17 +67,10 @@ export interface ITitleVariable {
 
 class StudioWorkflowRunActionViewItem extends MenuEntryActionViewItem {
 	override render(container: HTMLElement): void {
-		this.options.icon = false;
-		this.options.label = true;
+		this.options.icon = true;
+		this.options.label = false;
 		super.render(container);
 		container.classList.add('studio-workflow-run');
-	}
-
-	protected override updateLabel(): void {
-		super.updateLabel();
-		if (this.label) {
-			prepend(this.label, $('span.codicon.codicon-play'));
-		}
 	}
 }
 

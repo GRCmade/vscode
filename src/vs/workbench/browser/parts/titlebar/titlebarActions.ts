@@ -28,7 +28,7 @@ export const TitleBarLeadingActionsGroup = '0_leading';
 MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
 	command: {
 		id: 'studio.openWorkflow',
-		title: localize('studio.runWorkflowProject', "\u8fd0\u884c\u9879\u76ee"),
+		get title() { return MenuRegistry.getCommand('studio.openWorkflow')?.title ?? localize('studio.runWorkflowProject', "Run Project"); },
 		icon: Codicon.play
 	},
 	when: ContextKeyExpr.equals('studio.workflowAvailable', true),

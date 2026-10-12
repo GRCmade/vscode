@@ -23,6 +23,7 @@ import * as typeConvert from '../common/extHostTypeConverters.js';
 import { IMarkdownString } from '../../../base/common/htmlContent.js';
 import { IViewsService } from '../../services/views/common/viewsService.js';
 import { ITelemetryService } from '../../../platform/telemetry/common/telemetry.js';
+import product from '../../../platform/product/common/product.js';
 
 @extHostNamedCustomer(MainContext.MainThreadTreeViews)
 export class MainThreadTreeViews extends Disposable implements MainThreadTreeViewsShape {
@@ -45,6 +46,9 @@ export class MainThreadTreeViews extends Disposable implements MainThreadTreeVie
 
 	async $registerTreeViewDataProvider(treeViewId: string, options: { showCollapseAll: boolean; canSelectMany: boolean; dropMimeTypes: string[]; dragMimeTypes: string[]; hasHandleDrag: boolean; hasHandleDrop: boolean; manuallyManageCheckboxes: boolean }): Promise<void> {
 		this.logService.trace('MainThreadTreeViews#$registerTreeViewDataProvider', treeViewId, options);
+		if (product.disabledWorkbenchViews?.includes(treeViewId)) {
+			return;
+		}
 
 		this.extensionService.whenInstalledExtensionsRegistered().then(() => {
 			const dataProvider = new TreeViewDataProvider(treeViewId, this._proxy, this.notificationService);

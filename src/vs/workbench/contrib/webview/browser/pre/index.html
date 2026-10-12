@@ -5,7 +5,7 @@
 	<meta charset="UTF-8">
 
 	<meta http-equiv="Content-Security-Policy"
-		content="default-src 'none'; script-src 'sha256-g02zAgJlmKhE+bBeFC2NKTVd6HDpr/7rURKERLWuzmo=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
+		content="default-src 'none'; script-src 'sha256-5x7XOClYMDPPTGQgX0wm32jqgoKPEW/xnWC2/B0lTJg=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
 
 	<!-- Disable pinch zooming -->
 	<meta name="viewport"
@@ -1264,6 +1264,12 @@
 			hostMessaging.onMessage('execCommand', (_event, data) => {
 				const target = getActiveFrame();
 				if (!target) {
+					return;
+				}
+				// Let an embedded editor route the command to its focused cross-origin frame.
+				const contentWindow = /** @type {Window & typeof globalThis} */ (assertIsDefined(target.contentWindow));
+				const event = new contentWindow.CustomEvent('vscode-webview-exec-command', { detail: data, cancelable: true });
+				if (!contentWindow.dispatchEvent(event)) {
 					return;
 				}
 				assertIsDefined(target.contentDocument).execCommand(data);

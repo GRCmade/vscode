@@ -255,6 +255,15 @@
     "workbench.panel.markers.view",
     "workbench.panel.output",
     "workbench.panel.repl.view",
-    "~remote.forwardedPorts"
+    "~remote.forwardedPorts",
+    "workbench.debug.variablesView",
+    "workbench.debug.watchExpressionsView",
+    "workbench.debug.callStackView",
+    "workbench.debug.breakPointsView",
+    "workbench.debug.welcome",
+    "workbench.debug.loadedScriptsView",
+    "outline",
+    "timeline",
+    "npm"
   ]
 }

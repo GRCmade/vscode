@@ -95,6 +95,35 @@ export class ElectronWebviewElement extends WebviewElement {
 			: { windowId: this._nativeHostService.windowId };
 	}
 
+	public override paste(): void {
+		if (this.extension?.id.value !== 'studio.studio-workstation') {
+			super.paste();
+			return;
+		}
+		void this.pasteWithHostClipboard();
+	}
+
+	private async pasteWithHostClipboard(): Promise<void> {
+		const element = this.element;
+		if (!element) {
+			return;
+		}
+		try {
+			// Loopback frames cannot use their parent webview's clipboard permission.
+			const [text, image] = await Promise.all([
+				this._nativeHostService.readClipboardText(),
+				this._nativeHostService.readImage()
+			]);
+			if (this.element === element && this.isFocused) {
+				this.execCommand({ command: 'paste', clipboard: { text, image } });
+			}
+		} catch {
+			if (this.element === element && this.isFocused) {
+				super.paste();
+			}
+		}
+	}
+
 	/**
 	 * Webviews expose a stateful find API.
 	 * Successive calls to find will move forward or backward through onFindResults

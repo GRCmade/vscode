@@ -39,6 +39,7 @@ export type FromWebviewMessage = {
 	'no-csp-found': void;
 	'did-keydown': KeyEvent;
 	'did-keyup': KeyEvent;
+	'did-paste': void;
 	'did-context-menu': { clientX: number; clientY: number; context: { [key: string]: unknown } };
 	'drag-start': void;
 	'drag': WebViewDragEvent;
@@ -61,7 +62,7 @@ interface UpdateContentEvent {
 export type ToWebviewMessage = {
 	'focus': void;
 	'message': { message: any; transfer?: ArrayBuffer[] };
-	'execCommand': string;
+	'execCommand': string | { command: 'paste'; clipboard: { text: string; image: Uint8Array } };
 	'did-load-resource':
 	| { id: number; status: 401 | 404; path: string }
 	| { id: number; status: 304; path: string; mime: string; mtime: number | undefined }

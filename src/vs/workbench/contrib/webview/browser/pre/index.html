@@ -5,7 +5,7 @@
 	<meta charset="UTF-8">
 
 	<meta http-equiv="Content-Security-Policy"
-		content="default-src 'none'; script-src 'sha256-5x7XOClYMDPPTGQgX0wm32jqgoKPEW/xnWC2/B0lTJg=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
+		content="default-src 'none'; script-src 'sha256-hDasiTuDJCrorIBo/csZ26+mrdEAhYpsIaJLiGuPtVA=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
 
 	<!-- Disable pinch zooming -->
 	<meta name="viewport"
@@ -848,6 +848,7 @@
 			const options = data.options;
 			const text = data.contents;
 			const newDocument = new DOMParser().parseFromString(text, 'text/html');
+			newDocument.documentElement.dataset.vscodeNativeClipboard = onElectron ? '1' : '0';
 
 			newDocument.querySelectorAll('a').forEach(a => {
 				if (!a.title) {
@@ -1178,6 +1179,11 @@
 					contentWindow.addEventListener('click', handleInnerClick);
 					contentWindow.addEventListener('auxclick', handleAuxClick);
 					contentWindow.addEventListener('keydown', handleInnerKeydown);
+					contentWindow.addEventListener('vscode-webview-paste', () => {
+						if (onElectron) {
+							hostMessaging.postMessage('did-paste', undefined);
+						}
+					});
 					contentWindow.addEventListener('keyup', handleInnerKeyup);
 					contentWindow.addEventListener('contextmenu', e => {
 						if (e.defaultPrevented) {
@@ -1272,7 +1278,7 @@
 				if (!contentWindow.dispatchEvent(event)) {
 					return;
 				}
-				assertIsDefined(target.contentDocument).execCommand(data);
+				assertIsDefined(target.contentDocument).execCommand(typeof data === 'string' ? data : data.command);
 			});
 
 			/** @type {string | undefined} */

@@ -254,6 +254,12 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 		this._register(this.on('did-keydown', (data) => {
 			this.handleKeyEvent('keydown', data);
 		}));
+		this._register(this.on('did-paste', () => {
+			if (this.extension?.id.value === 'studio.studio-workstation' && this.isActiveElement()) {
+				this.handleFocusChange(true);
+				this.paste();
+			}
+		}));
 
 		this._register(this.on('did-keyup', (data) => {
 			this.handleKeyEvent('keyup', data);
@@ -782,7 +788,7 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 		this.execCommand('redo');
 	}
 
-	private execCommand(command: string) {
+	protected execCommand(command: ToWebviewMessage['execCommand']) {
 		if (this.element) {
 			this._send('execCommand', command);
 		}

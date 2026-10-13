@@ -5,7 +5,7 @@
 	<meta charset="UTF-8">
 
 	<meta http-equiv="Content-Security-Policy"
-		content="default-src 'none'; script-src 'sha256-hDasiTuDJCrorIBo/csZ26+mrdEAhYpsIaJLiGuPtVA=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
+		content="default-src 'none'; script-src 'sha256-ZeqMNjSz2deq6uofl/jzH/n9wgLXytk87cOCLOVG7Qo=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
 
 	<!-- Disable pinch zooming -->
 	<meta name="viewport"
@@ -1276,6 +1276,33 @@
 				const contentWindow = /** @type {Window & typeof globalThis} */ (assertIsDefined(target.contentWindow));
 				const event = new contentWindow.CustomEvent('vscode-webview-exec-command', { detail: data, cancelable: true });
 				if (!contentWindow.dispatchEvent(event)) {
+					return;
+				}
+				if (typeof data !== 'string' && data.command === 'copy') {
+					let copyDocument = assertIsDefined(target.contentDocument);
+					let copyWindow = contentWindow;
+					// Local document previews may keep their selection in a same-origin frame.
+					while (copyDocument.activeElement?.tagName === 'IFRAME') {
+						const frame = /** @type {HTMLIFrameElement} */ (copyDocument.activeElement);
+						try {
+							if (!frame.contentDocument || !frame.contentWindow) {
+								break;
+							}
+							copyDocument = frame.contentDocument;
+							copyWindow = /** @type {Window & typeof globalThis} */ (frame.contentWindow);
+						} catch {
+							break;
+						}
+					}
+					const input = /** @type {HTMLInputElement | HTMLTextAreaElement | null} */ (copyDocument.activeElement);
+					if (input?.tagName === 'INPUT' && input.type === 'password') {
+						return;
+					}
+					const text = input && typeof input.selectionStart === 'number' && typeof input.selectionEnd === 'number'
+						? input.value.slice(input.selectionStart, input.selectionEnd) : copyWindow.getSelection()?.toString();
+					if (text) {
+						hostMessaging.postMessage('did-copy', text);
+					}
 					return;
 				}
 				assertIsDefined(target.contentDocument).execCommand(typeof data === 'string' ? data : data.command);

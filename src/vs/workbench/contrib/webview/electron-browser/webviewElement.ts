@@ -62,6 +62,16 @@ export class ElectronWebviewElement extends WebviewElement {
 		this._webviewKeyboardHandler = new WindowIgnoreMenuShortcutsManager(configurationService, mainProcessService, _nativeHostService);
 
 		this._webviewMainService = ProxyChannel.toService<IWebviewManagerService>(mainProcessService.getChannel('webview'));
+		this._register(this.on('did-copy', async text => {
+			if (this.extension?.id.value !== 'studio.studio-workstation' || !this.isFocused || typeof text !== 'string' || !text) {
+				return;
+			}
+			try {
+				await this._nativeHostService.writeClipboardText(text);
+			} catch (error) {
+				notificationService.error(error);
+			}
+		}));
 
 		if (initInfo.options.enableFindWidget) {
 			this._register(this.onDidHtmlChange((newContent) => {
@@ -93,6 +103,14 @@ export class ElectronWebviewElement extends WebviewElement {
 		return isAuxiliaryWindow(targetWindow)
 			? { webContentsId: targetWindow.vscodeWindowId }
 			: { windowId: this._nativeHostService.windowId };
+	}
+
+	public override copy(): void {
+		if (this.extension?.id.value === 'studio.studio-workstation') {
+			this.execCommand({ command: 'copy' });
+		} else {
+			super.copy();
+		}
 	}
 
 	public override paste(): void {

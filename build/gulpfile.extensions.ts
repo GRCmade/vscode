@@ -235,7 +235,8 @@ const tasks = compilations.map(function (tsconfigFile) {
 const transpileExtensionsTask = task.define('transpile-extensions', task.parallel(...tasks.map(t => t.transpileTask)));
 task.task(transpileExtensionsTask);
 
-export const compileExtensionsTask = task.define('compile-extensions', task.parallel(...tasks.map(t => t.compileTask)));
+export const compileExtensionsTask = task.define('compile-extensions',
+	(process.env.STUDIO_CI_SERIAL_BUILD === '1' ? task.series : task.parallel)(...tasks.map(t => t.compileTask)));
 task.task(compileExtensionsTask);
 
 export const watchExtensionsTask = task.define('watch-extensions', task.parallel(...tasks.map(t => t.watchTask)));

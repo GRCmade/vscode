@@ -30,13 +30,15 @@ import { IHostService } from '../../services/host/browser/host.js';
 import { ResourceMap } from '../../../base/common/map.js';
 import { Codicon } from '../../../base/common/codicons.js';
 import { ThemeIcon } from '../../../base/common/themables.js';
-import { CommandsRegistry } from '../../../platform/commands/common/commands.js';
+import { CommandsRegistry, ICommandService } from '../../../platform/commands/common/commands.js';
 import { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
 import { ServicesAccessor } from '../../../platform/instantiation/common/instantiation.js';
 import { isFolderBackupInfo, isWorkspaceBackupInfo } from '../../../platform/backup/common/backup.js';
 import { getActiveElement, getActiveWindow, isHTMLElement } from '../../../base/browser/dom.js';
 import { IWorkbenchEnvironmentService } from '../../services/environment/common/environmentService.js';
 import { isEqual } from '../../../base/common/resources.js';
+import { DisposableStore } from '../../../base/common/lifecycle.js';
+import { studioProjectIcon } from '../../common/studioProjectIcons.js';
 
 export const inRecentFilesPickerContextKey = 'inRecentFilesPicker';
 
@@ -99,6 +101,7 @@ abstract class BaseOpenRecentAction extends Action2 {
 		const hostService = accessor.get(IHostService);
 		const dialogService = accessor.get(IDialogService);
 		const environmentService = accessor.get(IWorkbenchEnvironmentService);
+		const commandService = accessor.get(ICommandService);
 
 		const [mainWindows, recentlyOpened, dirtyWorkspacesAndFolders] = await Promise.all([
 			hostService.getWindows({ includeAuxiliaryWindows: false }),
@@ -177,42 +180,84 @@ abstract class BaseOpenRecentAction extends Action2 {
 		const fileSeparator: IQuickPickSeparator = { type: 'separator', label: localize('files', "files") };
 		const picks = [workspaceSeparator, ...workspacePicks, fileSeparator, ...filePicks];
 
-		const pick = await quickInputService.pick(picks, {
-			contextKey: inRecentFilesPickerContextKey,
-			activeItem: [...workspacePicks, ...filePicks][autoFocusSecondEntry ? 1 : 0],
-			placeHolder: isMacintosh ? localize('openRecentPlaceholderMac', "Select to open (hold Cmd-key to force new window or Option-key for same window)") : localize('openRecentPlaceholder', "Select to open (hold Ctrl-key to force new window or Alt-key for same window)"),
-			matchOnDescription: true,
-			sortByLabel: false,
-			onKeyMods: mods => keyMods = mods,
-			quickNavigate: this.isQuickNavigate() ? { keybindings: keybindingService.lookupKeybindings(this.desc.id) } : undefined,
-			hideInput: this.isQuickNavigate(),
-			onDidTriggerItemButton: async context => {
+		const disposables = new DisposableStore();
+		const picker = disposables.add(quickInputService.createQuickPick<IRecentlyOpenedPick>({ useSeparators: true }));
+		picker.contextKey = inRecentFilesPickerContextKey;
+		picker.items = picks;
+		const activeItem = [...workspacePicks, ...filePicks][autoFocusSecondEntry ? 1 : 0];
+		picker.activeItems = activeItem ? [activeItem] : [];
+		picker.placeholder = isMacintosh ? localize('openRecentPlaceholderMac', "Select to open (hold Cmd-key to force new window or Option-key for same window)") : localize('openRecentPlaceholder', "Select to open (hold Ctrl-key to force new window or Alt-key for same window)");
+		picker.matchOnDescription = true;
+		picker.sortByLabel = false;
+		picker.quickNavigate = this.isQuickNavigate() ? { keybindings: keybindingService.lookupKeybindings(this.desc.id) } : undefined;
+		picker.hideInput = this.isQuickNavigate();
+		picker.keepScrollPosition = true;
+		disposables.add(picker.onDidTriggerItemButton(async context => {
 
-				// Remove
-				if (context.button === this.removeFromRecentlyOpened || context.button === this.windowOpenedRecentlyOpenedFolder || context.button === this.windowOpenedRecentlyOpenedWorkspace) {
-					await workspacesService.removeRecentlyOpened([context.item.resource]);
-					context.removeItem();
-				}
+			// Remove
+			if (context.button === this.removeFromRecentlyOpened || context.button === this.windowOpenedRecentlyOpenedFolder || context.button === this.windowOpenedRecentlyOpenedWorkspace) {
+				await workspacesService.removeRecentlyOpened([context.item.resource]);
+				if (disposables.isDisposed) { return; }
+				const active = picker.activeItems.filter(item => item !== context.item);
+				picker.items = picker.items.filter(item => item !== context.item);
+				picker.activeItems = active;
+			}
 
-				// Dirty Folder/Workspace
-				else if (context.button === this.dirtyRecentlyOpenedFolder || context.button === this.dirtyRecentlyOpenedWorkspace) {
-					const isDirtyWorkspace = context.button === this.dirtyRecentlyOpenedWorkspace;
-					const { confirmed } = await dialogService.confirm({
-						title: isDirtyWorkspace ? localize('dirtyWorkspace', "Workspace with Unsaved Files") : localize('dirtyFolder', "Folder with Unsaved Files"),
-						message: isDirtyWorkspace ? localize('dirtyWorkspaceConfirm', "Do you want to open the workspace to review the unsaved files?") : localize('dirtyFolderConfirm', "Do you want to open the folder to review the unsaved files?"),
-						detail: isDirtyWorkspace ? localize('dirtyWorkspaceConfirmDetail', "Workspaces with unsaved files cannot be removed until all unsaved files have been saved or reverted.") : localize('dirtyFolderConfirmDetail', "Folders with unsaved files cannot be removed until all unsaved files have been saved or reverted.")
-					});
+			// Dirty Folder/Workspace
+			else if (context.button === this.dirtyRecentlyOpenedFolder || context.button === this.dirtyRecentlyOpenedWorkspace) {
+				const isDirtyWorkspace = context.button === this.dirtyRecentlyOpenedWorkspace;
+				const { confirmed } = await dialogService.confirm({
+					title: isDirtyWorkspace ? localize('dirtyWorkspace', "Workspace with Unsaved Files") : localize('dirtyFolder', "Folder with Unsaved Files"),
+					message: isDirtyWorkspace ? localize('dirtyWorkspaceConfirm', "Do you want to open the workspace to review the unsaved files?") : localize('dirtyFolderConfirm', "Do you want to open the folder to review the unsaved files?"),
+					detail: isDirtyWorkspace ? localize('dirtyWorkspaceConfirmDetail', "Workspaces with unsaved files cannot be removed until all unsaved files have been saved or reverted.") : localize('dirtyFolderConfirmDetail', "Folders with unsaved files cannot be removed until all unsaved files have been saved or reverted.")
+				});
 
-					if (confirmed) {
-						hostService.openWindow(
-							[context.item.openable], {
+				if (confirmed) {
+					hostService.openWindow(
+						[context.item.openable], {
 							remoteAuthority: context.item.remoteAuthority || null // local window if remoteAuthority is not set or can not be deducted from the openable
 						});
-						quickInputService.cancel();
-					}
+					quickInputService.cancel();
 				}
 			}
-		});
+		}));
+
+		let pick: IRecentlyOpenedPick | undefined;
+		try {
+			pick = await new Promise<IRecentlyOpenedPick | undefined>(resolve => {
+				const accept = (item: IRecentlyOpenedPick | undefined): void => {
+					if (item) { keyMods = picker.keyMods; resolve(item); picker.hide(); }
+				};
+				disposables.add(picker.onDidAccept(() => accept(picker.activeItems[0])));
+				disposables.add(picker.onDidChangeSelection(items => accept(items[0])));
+				disposables.add(picker.onDidChangeValue(value => {
+					if (!value && activeItem && picker.items.includes(activeItem)) { picker.activeItems = [activeItem]; }
+				}));
+				disposables.add(picker.onDidHide(() => resolve(undefined)));
+				picker.show();
+				const folders = workspacePicks.filter(item => 'folderUri' in item.openable);
+				void commandService.executeCommand<{ uri: string; projectType?: string }[]>('studio.internalDetectProjectTypes', folders.map(item => item.resource.toString())).then(projects => {
+					if (disposables.isDisposed || !Array.isArray(projects)) { return; }
+					const types = new Map(projects.map(project => [project.uri, project.projectType]));
+					let changed = false;
+					for (const item of folders) {
+						const icon = studioProjectIcon(types.get(item.resource.toString()));
+						if (icon) {
+							item.iconClasses = undefined;
+							item.iconClass = ThemeIcon.asClassName({ id: icon });
+							changed = true;
+						}
+					}
+					if (changed) {
+						const active = picker.activeItems;
+						picker.items = [...picker.items];
+						picker.activeItems = active;
+					}
+				}, () => undefined);
+			});
+		} finally {
+			disposables.dispose();
+		}
 
 		if (pick) {
 			return hostService.openWindow([pick.openable], {

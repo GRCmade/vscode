@@ -10,6 +10,7 @@ import { generateUuid } from '../../../../base/common/uuid.js';
 import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
+import { studioProjectIcon } from '../../../common/studioProjectIcons.js';
 import './media/studioStart.css';
 
 /** Versioned, credential-free state supplied by the Studio extension host. */
@@ -18,7 +19,7 @@ export interface StudioStartState {
 	labels: Record<string, string>;
 	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
 	projects: { uri: string; name: string; projectType: string }[];
-	recent: { uri: string; label: string; kind: string; lastOpened: number }[];
+	recent: { uri: string; label: string; kind: string; lastOpened: number; projectType?: string }[];
 	pending: { id: string; name: string; directory: string; status: string; error?: string }[];
 	environment: { studio: string; vscode: string; node?: string; core?: string; cli?: string; account: string; server: string; error?: string };
 	summary?: { projects: number; running: number; waiting: number; unavailable: number; generatedAt: number };
@@ -183,17 +184,16 @@ export class StudioStartView extends Disposable {
 			action.button.disabled = action.creation && (!state.canCreate || state.busy);
 		}
 		const listKey = { labels: state.labels, busy: state.busy, canCreate: state.canCreate };
-		const icons: Record<string, string> = { workflow: 'run-all', conversation: 'comment-discussion', kanban: 'layout' };
 		this.list('create', { ...listKey, templates: state.templates.filter(template => template.kind === 'starter') }, (root, store) => {
 			for (const template of state.templates.filter(template => template.kind === 'starter')) {
-				const button = this.button(root, template.name, icons[template.projectType], 'studio.createProject', template.projectType, true, false, store);
+				const button = this.button(root, template.name, studioProjectIcon(template.projectType) ?? 'folder', 'studio.createProject', template.projectType, true, false, store);
 				button.disabled = !state.canCreate || state.busy;
 			}
 		});
 		this.list('examples', { ...listKey, templates: state.templates.filter(template => template.kind === 'example') }, (root, store) => {
 			for (const template of state.templates.filter(template => template.kind === 'example')) {
 				const row = append(root, $('.studio-start-example'));
-				const button = this.button(row, template.name, icons[template.projectType], 'studio.createExample', template.id, true, false, store);
+				const button = this.button(row, template.name, studioProjectIcon(template.projectType) ?? 'folder', 'studio.createExample', template.id, true, false, store);
 				button.disabled = !state.canCreate || state.busy;
 				append(row, $('p', undefined, template.description));
 			}
@@ -202,7 +202,7 @@ export class StudioStartView extends Disposable {
 			if (!state.projects.length && !state.pending.length) { append(root, $('p.studio-start-muted', undefined, text('noCurrent'))); }
 			for (const project of state.projects) {
 				const row = append(root, $('.studio-start-project'));
-				this.button(row, project.name, icons[project.projectType] ?? 'folder', 'studio.openWorkflow', { uri: project.uri }, false, false, store);
+				this.button(row, project.name, studioProjectIcon(project.projectType) ?? 'folder', 'studio.openWorkflow', { uri: project.uri }, false, false, store);
 				this.button(row, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
 			}
 			for (const project of state.pending) {
@@ -219,7 +219,7 @@ export class StudioStartView extends Disposable {
 			if (!state.recent.length) { append(root, $('p.studio-start-muted', undefined, text('noRecent'))); }
 			for (const project of state.recent) {
 				const row = append(root, $('.studio-start-project'));
-				const button = this.button(row, project.label, project.kind === 'workspace' ? 'file-submodule' : 'folder', 'studio.openRecentProject', project, false, false, store);
+				const button = this.button(row, project.label, project.kind === 'workspace' ? 'file-submodule' : studioProjectIcon(project.projectType) ?? 'folder', 'studio.openRecentProject', project, false, false, store);
 				button.title = project.uri;
 				this.button(row, text('removeRecent'), 'close', 'studio.removeRecentProject', project, false, true, store);
 			}

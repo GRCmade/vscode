@@ -85,16 +85,18 @@ export class StudioStartView extends Disposable {
 		@ICommandService private readonly commands: ICommandService
 	) {
 		super();
-		this.element = append(container, $('main.studio-start'));
+		this.element = append(container, $('main.studio-start.loading'));
 		this.element.tabIndex = -1;
 		this.element.setAttribute('aria-label', 'Workflow Studio');
 		const inner = append(this.element, $('.studio-start-inner'));
 		const header = append(inner, $('header.studio-start-header'));
 		append(header, $('span.codicon.codicon-layout.studio-start-logo')).setAttribute('aria-hidden', 'true');
 		append(header, $('h1', undefined, 'Workflow Studio'));
+		append(header, $('span.codicon.codicon-loading.codicon-modifier-spin.studio-start-loading-indicator')).setAttribute('aria-hidden', 'true');
 		const top = append(header, $('.studio-start-toolbar'));
 		this.button(top, 'create', 'add', 'studio.createProject', undefined, true).classList.add('studio-start-primary');
 		this.button(top, 'refresh', 'refresh', 'studio.refreshStart', undefined, false, true);
+		this.createLoadingPlaceholder(inner);
 		const grid = append(inner, $('.studio-start-grid'));
 		this.section(grid, 'current');
 		this.section(grid, 'recent');
@@ -133,7 +135,31 @@ export class StudioStartView extends Disposable {
 		this.publishVisibility();
 	}
 
-	focus(): void { this.element.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus(); }
+	focus(): void { (this.element.querySelector<HTMLButtonElement>('button:not(:disabled)') ?? this.element).focus(); }
+
+	private createLoadingPlaceholder(parent: HTMLElement): void {
+		const loading = append(parent, $('.studio-start-loading', { role: 'progressbar', 'aria-label': 'Workflow Studio' }));
+		const content = append(loading, $('div', { 'aria-hidden': 'true' }));
+		append(content, $('.studio-start-skeleton.studio-start-skeleton-heading'));
+		const projects = append(content, $('.studio-start-loading-projects'));
+		for (let index = 0; index < 3; index++) {
+			const card = append(projects, $('.studio-start-loading-card'));
+			append(card, $('.studio-start-skeleton.studio-start-skeleton-heading'));
+			append(card, $('.studio-start-skeleton.studio-start-skeleton-type'));
+			append(card, $('.studio-start-skeleton.studio-start-skeleton-path'));
+			append(card, $('.studio-start-skeleton.studio-start-skeleton-button'));
+		}
+		const grid = append(content, $('.studio-start-loading-grid'));
+		for (const [key, count] of [['recent', 4], ['system', 10], ['quick', 5]] as const) {
+			const section = append(grid, $(`div.studio-start-loading-${key}`));
+			append(section, $('.studio-start-skeleton.studio-start-skeleton-heading'));
+			for (let index = 0; index < count; index++) {
+				const row = append(section, $('.studio-start-loading-row'));
+				if (key !== 'recent') { append(row, $('.studio-start-skeleton.studio-start-skeleton-key')); }
+				append(row, $('.studio-start-skeleton.studio-start-skeleton-value'));
+			}
+		}
+	}
 
 	private section(parent: HTMLElement, key: string): HTMLElement {
 		const section = append(parent, $(`section.studio-start-${key}`));
@@ -173,7 +199,12 @@ export class StudioStartView extends Disposable {
 
 	private render(): void {
 		const state = this.service.state;
-		if (!state) { return; }
+		this.element.classList.toggle('loading', !state);
+		this.element.setAttribute('aria-busy', String(!state));
+		if (!state) {
+			for (const action of this.actions) { action.button.disabled = true; }
+			return;
+		}
 		const text = (key: string): string => state.labels[key] ?? key;
 		for (const [key, element] of this.labels) { if (element.textContent !== text(key)) { element.textContent = text(key); } }
 		for (const action of this.actions) {

@@ -1,0 +1,34 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+.monaco-dialog-modal-block .monaco-dialog-box.studio-create-dialog { box-sizing:border-box; width:560px; max-width:calc(100vw - 32px); min-width:0; border-radius:6px; user-select:text; }
+.studio-create-dialog .dialog-message-container { min-width:0; width:100%; scrollbar-width:thin; scrollbar-color:transparent transparent; }
+.studio-create-dialog .dialog-message-container:hover, .studio-create-dialog .dialog-message-container:focus-within { scrollbar-color:var(--vscode-scrollbarSlider-background) transparent; }
+.studio-create-form { display:flex; flex-direction:column; gap:18px; padding-top:12px; min-width:0; letter-spacing:0; }
+.studio-create-form fieldset { border:0; padding:0; margin:0; min-width:0; }
+.studio-create-form legend, .studio-create-field > label { display:block; font-size:12px; font-weight:600; padding:0; margin:0 0 8px; }
+.studio-create-types { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; }
+.studio-create-type { display:flex; align-items:center; justify-content:center; gap:6px; padding:8px 4px; border:1px solid var(--vscode-input-border,transparent); background:var(--vscode-input-background); border-radius:4px; cursor:pointer; min-width:0; overflow-wrap:anywhere; }
+.studio-create-type:has(:checked) { border-color:var(--vscode-focusBorder); background:var(--vscode-list-activeSelectionBackground); color:var(--vscode-list-activeSelectionForeground); }
+.studio-create-type input { position:absolute; opacity:0; width:1px; height:1px; }
+.studio-create-type:focus-within { outline:1px solid var(--vscode-focusBorder); outline-offset:2px; }
+.studio-create-options { max-height:230px; overflow:auto; scrollbar-width:thin; scrollbar-color:transparent transparent; }
+.studio-create-options:hover, .studio-create-options:focus-within { scrollbar-color:var(--vscode-scrollbarSlider-background) transparent; }
+.studio-create-template { display:grid; grid-template-columns:16px minmax(0,1fr); align-items:start; gap:8px; padding:10px 8px; border-bottom:1px solid var(--vscode-widget-border,transparent); cursor:pointer; }
+.studio-create-template:hover { background:var(--vscode-list-hoverBackground); }
+.studio-create-template input { margin:3px 0 0; accent-color:var(--vscode-focusBorder); }
+.studio-create-template-details { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; font-size:13px; line-height:18px; overflow-wrap:anywhere; }
+.studio-create-template-kind, .studio-create-template-description { color:var(--vscode-descriptionForeground); font-size:12px; }
+.studio-create-template-description { grid-column:1/-1; }
+.studio-create-field { min-width:0; }
+.studio-create-directory { display:grid; grid-template-columns:minmax(0,1fr) 30px; align-items:end; gap:8px; }
+.studio-create-browse { display:flex; align-items:center; justify-content:center; height:28px; padding:0; border:0; border-radius:4px; background:transparent; color:var(--vscode-icon-foreground); cursor:pointer; }
+.studio-create-browse:hover { background:var(--vscode-toolbar-hoverBackground); }
+.studio-create-browse:focus-visible { outline:1px solid var(--vscode-focusBorder); }
+.studio-create-error { min-height:18px; margin:0; color:var(--vscode-errorForeground); font-size:12px; line-height:18px; white-space:pre-wrap; overflow-wrap:anywhere; }
+@media (max-width:480px) {
+ .studio-create-type { flex-direction:column; font-size:12px; }
+ .studio-create-template-details { grid-template-columns:minmax(0,1fr); }
+ .studio-create-template-description { grid-column:auto; }
+}

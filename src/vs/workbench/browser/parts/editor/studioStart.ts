@@ -18,7 +18,7 @@ export interface StudioStartState {
 	version: 1;
 	labels: Record<string, string>;
 	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
-	projects: { uri: string; name: string; projectType: string }[];
+	projects: { uri: string; name: string; projectType: string; folderPath: string }[];
 	recent: { uri: string; label: string; kind: string; lastOpened: number; projectType?: string }[];
 	pending: { id: string; name: string; directory: string; status: string; error?: string }[];
 	environment: { studio: string; vscode: string; node?: string; core?: string; cli?: string; account: string; server: string; error?: string };
@@ -93,11 +93,10 @@ export class StudioStartView extends Disposable {
 		append(header, $('span.codicon.codicon-layout.studio-start-logo')).setAttribute('aria-hidden', 'true');
 		append(header, $('h1', undefined, 'Workflow Studio'));
 		const top = append(header, $('.studio-start-toolbar'));
+		this.button(top, 'create', 'add', 'studio.createProject', undefined, true).classList.add('studio-start-primary');
 		this.button(top, 'refresh', 'refresh', 'studio.refreshStart', undefined, false, true);
 		const grid = append(inner, $('.studio-start-grid'));
-		this.section(grid, 'create');
 		this.section(grid, 'current');
-		this.section(grid, 'examples');
 		this.section(grid, 'recent');
 		const system = this.section(grid, 'system');
 		const details = append(system, $('dl.studio-start-stats'));
@@ -139,7 +138,7 @@ export class StudioStartView extends Disposable {
 	private section(parent: HTMLElement, key: string): HTMLElement {
 		const section = append(parent, $(`section.studio-start-${key}`));
 		this.labels.set(key, append(section, $('h2')));
-		if (['create', 'current', 'examples', 'recent'].includes(key)) {
+		if (['current', 'recent'].includes(key)) {
 			this.lists.set(key, { element: append(section, $('.studio-start-list')), key: '', disposables: this._register(new DisposableStore()) });
 		}
 		return section;
@@ -184,26 +183,18 @@ export class StudioStartView extends Disposable {
 			action.button.disabled = action.creation && (!state.canCreate || state.busy);
 		}
 		const listKey = { labels: state.labels, busy: state.busy, canCreate: state.canCreate };
-		this.list('create', { ...listKey, templates: state.templates.filter(template => template.kind === 'starter') }, (root, store) => {
-			for (const template of state.templates.filter(template => template.kind === 'starter')) {
-				const button = this.button(root, template.name, studioProjectIcon(template.projectType) ?? 'folder', 'studio.createProject', template.projectType, true, false, store);
-				button.disabled = !state.canCreate || state.busy;
-			}
-		});
-		this.list('examples', { ...listKey, templates: state.templates.filter(template => template.kind === 'example') }, (root, store) => {
-			for (const template of state.templates.filter(template => template.kind === 'example')) {
-				const row = append(root, $('.studio-start-example'));
-				const button = this.button(row, template.name, studioProjectIcon(template.projectType) ?? 'folder', 'studio.createExample', template.id, true, false, store);
-				button.disabled = !state.canCreate || state.busy;
-				append(row, $('p', undefined, template.description));
-			}
-		});
 		this.list('current', { projects: state.projects, pending: state.pending, installing: state.installing, ...listKey }, (root, store) => {
 			if (!state.projects.length && !state.pending.length) { append(root, $('p.studio-start-muted', undefined, text('noCurrent'))); }
 			for (const project of state.projects) {
-				const row = append(root, $('.studio-start-project'));
-				this.button(row, project.name, studioProjectIcon(project.projectType) ?? 'folder', 'studio.openWorkflow', { uri: project.uri }, false, false, store);
-				this.button(row, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
+				const card = append(root, $('article.studio-start-project-card'));
+				const heading = append(card, $('.studio-start-project-heading'));
+				append(heading, $(`span.codicon.codicon-${studioProjectIcon(project.projectType) ?? 'folder'}`)).setAttribute('aria-hidden', 'true');
+				append(heading, $('h3', undefined, project.name));
+				append(card, $('p.studio-start-project-type', undefined, text(`type.${project.projectType}`)));
+				append(card, $('p.studio-start-project-path', undefined, project.folderPath));
+				const actions = append(card, $('.studio-start-project-actions'));
+				this.button(actions, text('run'), 'play', 'studio.openWorkflow', { uri: project.uri }, false, false, store).classList.add('studio-start-primary');
+				this.button(actions, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
 			}
 			for (const project of state.pending) {
 				const row = append(root, $('.studio-start-pending'));

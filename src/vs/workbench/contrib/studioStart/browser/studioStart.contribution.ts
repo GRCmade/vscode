@@ -19,6 +19,7 @@ import { EditorExtensions, IEditorFactoryRegistry, IUntypedEditorInput } from '.
 import { EditorInput } from '../../../common/editor/editorInput.js';
 import { IEditorGroup } from '../../../services/editor/common/editorGroupsService.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
+import { ProjectCreationDialogRequest, StudioProjectCreateDialog } from './studioProjectCreateDialog.js';
 
 class StudioStartInput extends EditorInput {
 	static readonly ID = 'studio.start';
@@ -59,3 +60,8 @@ Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane
 	EditorPaneDescriptor.create(StudioStartEditor, StudioStartEditor.ID, 'Studio'), [new SyncDescriptor(StudioStartInput)]);
 CommandsRegistry.registerCommand('studio.openStart', accessor => accessor.get(IEditorService).openEditor(
 	accessor.get(IInstantiationService).createInstance(StudioStartInput), { pinned: true, revealIfOpened: true }));
+CommandsRegistry.registerCommand('studio.internalShowCreateProject', async (accessor, request: ProjectCreationDialogRequest) => {
+	const dialog = accessor.get(IInstantiationService).createInstance(StudioProjectCreateDialog, request);
+	try { return await dialog.show(); }
+	finally { dialog.dispose(); }
+});

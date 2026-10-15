@@ -62,6 +62,8 @@ export interface IDialogOptions {
 	readonly inputs?: IDialogInputOptions[];
 	readonly keyEventProcessor?: (event: StandardKeyboardEvent) => void;
 	readonly renderBody?: (container: HTMLElement) => void;
+	/** Additional controls in a custom body, in visual tab order. */
+	readonly focusableElements?: () => readonly HTMLElement[];
 	readonly renderFooter?: (container: HTMLElement) => void;
 	readonly icon?: ThemeIcon;
 	readonly buttonOptions?: Array<undefined | { sublabel?: string; styleButton?: (button: IButton) => void }>;
@@ -358,6 +360,7 @@ export class Dialog extends Disposable {
 			const window = getWindow(this.container);
 			let sawEscapeKeyDown = false;
 			this._register(addDisposableListener(window, 'keydown', e => {
+				if (isHTMLElement(e.target) && this.options.isExternalFocusAllowed?.(e.target)) { return; }
 				const evt = new StandardKeyboardEvent(e);
 
 				if (evt.equals(KeyCode.Escape)) {
@@ -425,6 +428,10 @@ export class Dialog extends Disposable {
 							}
 						}
 					}
+					for (const element of this.options.focusableElements?.() ?? []) {
+						focusableElements.push(element);
+						if (isActiveElement(element)) { focusedIndex = focusableElements.length - 1; }
+					}
 
 					for (const input of this.inputs) {
 						focusableElements.push(input);
@@ -442,6 +449,7 @@ export class Dialog extends Disposable {
 
 					if (this.buttonBar) {
 						for (const button of this.buttonBar.buttons) {
+							if (!button.enabled) { continue; }
 							if (button instanceof ButtonWithDropdown) {
 								focusableElements.push(button.primaryButton);
 								if (button.primaryButton.hasFocus()) {
@@ -502,6 +510,7 @@ export class Dialog extends Disposable {
 			}, true));
 
 			this._register(addDisposableListener(window, 'keyup', e => {
+				if (isHTMLElement(e.target) && this.options.isExternalFocusAllowed?.(e.target)) { return; }
 				EventHelper.stop(e, true);
 				const evt = new StandardKeyboardEvent(e);
 

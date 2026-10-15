@@ -6,7 +6,7 @@
 import './media/multieditortabscontrol.css';
 import { isLinux, isMacintosh, isWindows } from '../../../../base/common/platform.js';
 import { shorten } from '../../../../base/common/labels.js';
-import { EditorResourceAccessor, Verbosity, IEditorPartOptions, SideBySideEditor, DEFAULT_EDITOR_ASSOCIATION, EditorInputCapabilities, IUntypedEditorInput, preventEditorClose, EditorCloseMethod, EditorsOrder, IToolbarActions } from '../../../common/editor.js';
+import { EditorResourceAccessor, Verbosity, IEditorPartOptions, SideBySideEditor, EditorInputCapabilities, IUntypedEditorInput, preventEditorClose, EditorCloseMethod, EditorsOrder, IToolbarActions } from '../../../common/editor.js';
 import { EditorInput } from '../../../common/editor/editorInput.js';
 import { computeEditorAriaLabel } from '../../editor.js';
 import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
@@ -420,36 +420,6 @@ export class MultiEditorTabsControl extends EditorTabsControl {
 				});
 			}
 		}));
-
-		// New file when double-clicking on tabs container (but not tabs)
-		for (const eventType of [TouchEventType.Tap, EventType.DBLCLICK]) {
-			this._register(addDisposableListener(tabsContainer, eventType, (e: MouseEvent | GestureEvent) => {
-				if (eventType === EventType.DBLCLICK) {
-					if (e.target !== tabsContainer) {
-						return; // ignore if target is not tabs container
-					}
-				} else {
-					if ((<GestureEvent>e).tapCount !== 2) {
-						return; // ignore single taps
-					}
-
-					if ((<GestureEvent>e).initialTarget !== tabsContainer) {
-						return; // ignore if target is not tabs container
-					}
-				}
-
-				EventHelper.stop(e);
-
-				this.editorService.openEditor({
-					resource: undefined,
-					options: {
-						pinned: true,
-						index: this.groupView.count, // always at the end
-						override: DEFAULT_EDITOR_ASSOCIATION.id
-					}
-				}, this.groupView.id);
-			}));
-		}
 
 		// Prevent auto-scrolling (https://github.com/microsoft/vscode/issues/16690)
 		this._register(addDisposableListener(tabsContainer, EventType.MOUSE_DOWN, e => {

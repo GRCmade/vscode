@@ -11,7 +11,7 @@ import { WorkbenchActionExecutedClassification, WorkbenchActionExecutedEvent } f
 import { Event } from '../../../../../base/common/event.js';
 import { Disposable } from '../../../../../base/common/lifecycle.js';
 import { Schemas } from '../../../../../base/common/network.js';
-import { ContentWidgetPositionPreference, ICodeEditor, IContentWidget, IContentWidgetPosition, IOverlayWidget } from '../../../../../editor/browser/editorBrowser.js';
+import { ContentWidgetPositionPreference, ICodeEditor, IContentWidget, IContentWidgetPosition } from '../../../../../editor/browser/editorBrowser.js';
 import { EditorContributionInstantiation, registerEditorContribution } from '../../../../../editor/browser/editorExtensions.js';
 import { ConfigurationChangedEvent, EditorOption } from '../../../../../editor/common/config/editorOptions.js';
 import { Position } from '../../../../../editor/common/core/position.js';
@@ -32,8 +32,6 @@ import { ChatAgentLocation } from '../../../chat/common/constants.js';
 import { IInlineChatSessionService } from '../../../inlineChat/browser/inlineChatSessionService.js';
 import { EmptyTextEditorHintContributionId, IEmptyTextEditorHintContribution } from './emptyTextEditorHintTypes.js';
 import './emptyTextEditorHint.css';
-import { StudioStartView } from '../../../../browser/parts/editor/studioStart.js';
-import { KeyCode } from '../../../../../base/common/keyCodes.js';
 
 export const emptyTextEditorHintSetting = 'workbench.editor.empty.hint';
 export class EmptyTextEditorHintContribution extends Disposable implements IEmptyTextEditorHintContribution {
@@ -41,7 +39,6 @@ export class EmptyTextEditorHintContribution extends Disposable implements IEmpt
 	static readonly ID = EmptyTextEditorHintContributionId;
 
 	private textHintContentWidget: EmptyTextEditorHintContentWidget | undefined;
-	private studioStartWidget: StudioStartOverlayWidget | undefined;
 
 	constructor(
 		protected readonly editor: ICodeEditor,
@@ -63,7 +60,7 @@ export class EmptyTextEditorHintContribution extends Disposable implements IEmpt
 			}
 		}));
 		this._register(this.configurationService.onDidChangeConfiguration(e => {
-			if (e.affectsConfiguration(emptyTextEditorHintSetting) || e.affectsConfiguration('studio.startPage.enabled')) {
+			if (e.affectsConfiguration(emptyTextEditorHintSetting)) {
 				this.update();
 			}
 		}));
@@ -117,17 +114,6 @@ export class EmptyTextEditorHintContribution extends Disposable implements IEmpt
 	}
 
 	protected update(): void {
-		const model = this.editor.getModel();
-		const showStart = this.configurationService.getValue<boolean>('studio.startPage.enabled') === true && !this.editor.isSimpleWidget
-			&& !this.editor.getOption(EditorOption.readOnly) && !this.editor.getOption(EditorOption.inDiffEditor)
-			&& model?.uri.scheme === Schemas.untitled && model.getValueLength() === 0;
-		if (showStart) {
-			if (!this.studioStartWidget) { this.studioStartWidget = this.instantiationService.createInstance(StudioStartOverlayWidget, this.editor); }
-			this.disposeHint();
-			return;
-		}
-		this.studioStartWidget?.dispose();
-		this.studioStartWidget = undefined;
 		const shouldRenderHint = this.shouldRenderHint();
 		if (shouldRenderHint && !this.textHintContentWidget) {
 			this.textHintContentWidget = this.instantiationService.createInstance(EmptyTextEditorHintContentWidget, this.editor);
@@ -143,35 +129,9 @@ export class EmptyTextEditorHintContribution extends Disposable implements IEmpt
 
 	override dispose(): void {
 		super.dispose();
-		this.studioStartWidget?.dispose();
 
 		this.disposeHint();
 	}
-}
-
-class StudioStartOverlayWidget extends Disposable implements IOverlayWidget {
-	private readonly element = $('.studio-start-overlay');
-	constructor(editor: ICodeEditor, @IInstantiationService instantiationService: IInstantiationService) {
-		super();
-		const view = this._register(instantiationService.createInstance(StudioStartView, this.element));
-		const layout = () => {
-			const size = editor.getLayoutInfo();
-			this.element.style.width = `${size.width}px`;
-			this.element.style.height = `${size.height}px`;
-		};
-		this._register(editor.onDidLayoutChange(layout));
-		this._register(editor.onKeyDown(event => {
-			if (editor.hasTextFocus() && event.keyCode === KeyCode.Tab && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
-				event.preventDefault(); event.stopPropagation(); view.focus();
-			}
-		}));
-		editor.addOverlayWidget(this);
-		layout();
-		this._register({ dispose: () => editor.removeOverlayWidget(this) });
-	}
-	getId(): string { return 'studio.startPage'; }
-	getDomNode(): HTMLElement { return this.element; }
-	getPosition() { return null; }
 }
 
 class EmptyTextEditorHintContentWidget extends Disposable implements IContentWidget {

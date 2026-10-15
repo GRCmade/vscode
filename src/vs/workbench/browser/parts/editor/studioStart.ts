@@ -67,7 +67,7 @@ class StudioStartService extends Disposable implements IStudioStartService {
 }
 registerSingleton(IStudioStartService, StudioStartService, InstantiationType.Delayed);
 
-/** Shared native view for empty groups, untitled editors and the Start editor. */
+/** Shared native view for empty groups and the Start editor. */
 export class StudioStartView extends Disposable {
 	readonly element: HTMLElement;
 	private readonly id = generateUuid();

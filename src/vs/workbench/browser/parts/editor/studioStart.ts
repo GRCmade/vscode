@@ -146,8 +146,9 @@ export class StudioStartView extends Disposable {
 
 	private button(parent: HTMLElement, label: string, icon: string, command: string, arg?: object | string, creation = false, iconOnly = false, store?: DisposableStore): HTMLButtonElement {
 		const button = append(parent, $('button.studio-start-action', { type: 'button' })) as HTMLButtonElement;
+		button.classList.toggle('studio-start-action-icon', iconOnly);
 		append(button, $(`span.codicon.codicon-${icon}`)).setAttribute('aria-hidden', 'true');
-		if (!iconOnly) { append(button, $('span')); }
+		if (!iconOnly) { append(button, $('span.studio-start-action-label')); }
 		button.dataset.action = command;
 		if (arg && typeof arg === 'object' && 'uri' in arg) { button.dataset.uri = String(arg.uri); }
 		const disposable = addDisposableListener(button, 'click', event => {

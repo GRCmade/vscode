@@ -16,26 +16,29 @@
 .studio-start-toolbar { margin-left:auto; }
 .studio-start-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:28px 40px; }
 .studio-start section { min-width:0; }
-.studio-start h2 { font-size:14px; font-weight:600; margin:0 0 12px; }
-.studio-start-action { display:inline-flex; align-items:center; gap:9px; min-height:30px; padding:5px 6px; border:1px solid transparent; border-radius:3px; color:var(--vscode-textLink-foreground); background:transparent; font:inherit; line-height:1.4; text-align:left; cursor:pointer; max-width:100%; user-select:text; }
+.studio-start h2 { font-size:14px; font-weight:600; line-height:20px; margin:0 0 12px; }
+.studio-start-action { display:grid; grid-template-columns:16px minmax(0,1fr); align-items:start; gap:8px; box-sizing:border-box; width:100%; min-width:0; min-height:32px; padding:6px 8px; border:0; border-radius:var(--vscode-cornerRadius-small,4px); color:var(--vscode-textLink-foreground); background:transparent; font:inherit; line-height:20px; text-align:left; cursor:pointer; max-width:100%; user-select:text; }
 .studio-start-action:hover { background:var(--vscode-list-hoverBackground); color:var(--vscode-textLink-activeForeground); }
 .studio-start-action:focus-visible { outline:1px solid var(--vscode-focusBorder); outline-offset:1px; }
 .studio-start-action:disabled { opacity:.5; cursor:default; }
-.studio-start-action .codicon { flex:0 0 16px; }
-.studio-start-action > span:last-child { min-width:0; overflow-wrap:anywhere; }
-.studio-start-create .studio-start-list, .studio-start-quick { display:flex; flex-direction:column; align-items:flex-start; }
-.studio-start-quick h2 { align-self:stretch; }
+.studio-start-action > .codicon { display:flex; align-items:center; justify-content:center; width:16px; height:20px; font-size:16px; line-height:16px; }
+.studio-start-action-label { min-width:0; overflow-wrap:anywhere; }
+.studio-start-action-icon { display:flex; align-items:center; justify-content:center; flex:none; width:32px; height:32px; padding:8px; }
+.studio-start-action-icon > .codicon { height:16px; }
+.studio-start-create .studio-start-list, .studio-start-quick { display:flex; flex-direction:column; align-items:stretch; }
 .studio-start-example { margin-bottom:8px; }
-.studio-start-example p { margin:0 0 4px 31px; color:var(--vscode-descriptionForeground); font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
-.studio-start-project { display:flex; align-items:center; justify-content:space-between; gap:6px; }
-.studio-start-project > button:first-child { flex:1; min-width:0; }
-.studio-start-project > button:last-child { flex:0 0 28px; justify-content:center; }
-.studio-start-stats { display:grid; grid-template-columns:minmax(90px,auto) minmax(0,1fr); gap:7px 16px; margin:0 0 12px; line-height:1.5; }
+.studio-start-example p { margin:0 8px 4px 32px; color:var(--vscode-descriptionForeground); font-size:12px; line-height:20px; overflow-wrap:anywhere; }
+.studio-start-project { display:grid; grid-template-columns:minmax(0,1fr) 32px; align-items:start; gap:4px; }
+.studio-start-recent [data-action="studio.removeRecentProject"] { opacity:0; pointer-events:none; }
+.studio-start-recent .studio-start-project:hover > [data-action="studio.removeRecentProject"], .studio-start-recent .studio-start-project:focus-within > [data-action="studio.removeRecentProject"] { opacity:1; pointer-events:auto; }
+.studio-start-stats { display:grid; grid-template-columns:minmax(90px,auto) minmax(0,1fr); gap:0 16px; margin:0 0 12px; line-height:20px; }
+.studio-start-stats dt, .studio-start-stats dd { padding:6px 0; }
 .studio-start-stats dt { color:var(--vscode-descriptionForeground); overflow-wrap:anywhere; }
 .studio-start-stats dd { margin:0; overflow-wrap:anywhere; }
 .studio-start-muted { color:var(--vscode-descriptionForeground); line-height:1.5; margin:0; }
 .studio-start-error { color:var(--vscode-errorForeground); white-space:pre-wrap; overflow-wrap:anywhere; margin:24px 0 0; line-height:1.5; }
 .studio-start-pending { display:flex; flex-wrap:wrap; gap:5px 10px; align-items:center; margin-bottom:10px; overflow-wrap:anywhere; }
+.studio-start-pending > .studio-start-action:not(.studio-start-action-icon) { width:auto; }
 .studio-start-pending small { color:var(--vscode-descriptionForeground); }
 .studio-start-overlay { position:absolute; top:0; left:0; pointer-events:none; }
 .studio-start-overlay .studio-start { pointer-events:none; }

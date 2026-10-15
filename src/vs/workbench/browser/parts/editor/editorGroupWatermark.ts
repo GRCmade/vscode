@@ -19,6 +19,7 @@ import { IKeybindingService } from '../../../../platform/keybinding/common/keybi
 import { IStorageService, StorageScope, StorageTarget, WillSaveStateReason } from '../../../../platform/storage/common/storage.js';
 import { defaultKeybindingLabelStyles } from '../../../../platform/theme/browser/defaultStyles.js';
 import { IWorkspaceContextService, WorkbenchState } from '../../../../platform/workspace/common/workspace.js';
+import { StudioStartView } from './studioStart.js';
 
 interface WatermarkEntry {
 	readonly id: string;
@@ -78,6 +79,8 @@ export class EditorGroupWatermark extends Disposable {
 
 	private readonly shortcuts: HTMLElement;
 	private readonly toolbarContainer: HTMLElement;
+	private readonly watermark: HTMLElement;
+	private readonly startContainer: HTMLElement;
 	private readonly transientDisposables = this._register(new DisposableStore());
 	private readonly keybindingLabels = this._register(new DisposableStore());
 
@@ -109,6 +112,9 @@ export class EditorGroupWatermark extends Disposable {
 		]);
 
 		append(container, elements.root);
+		this.watermark = elements.root;
+		this.startContainer = append(container, $('.studio-start-watermark'));
+		this._register(this.instantiationService.createInstance(StudioStartView, this.startContainer));
 		this.shortcuts = elements.shortcuts;
 		this.toolbarContainer = elements.toolbarContainer;
 
@@ -125,6 +131,7 @@ export class EditorGroupWatermark extends Disposable {
 
 	private registerListeners(): void {
 		this._register(this.configurationService.onDidChangeConfiguration(e => {
+			if (e.affectsConfiguration('studio.startPage.enabled')) { this.render(); }
 			if (
 				e.affectsConfiguration(EditorGroupWatermark.SETTINGS_KEY) &&
 				this.enabled !== this.configurationService.getValue<boolean>(EditorGroupWatermark.SETTINGS_KEY)
@@ -156,12 +163,15 @@ export class EditorGroupWatermark extends Disposable {
 	}
 
 	private render(): void {
+		const startEnabled = this.configurationService.getValue<boolean>('studio.startPage.enabled') === true;
+		this.startContainer.hidden = !startEnabled;
+		this.watermark.style.display = startEnabled ? 'none' : '';
 		this.enabled = this.configurationService.getValue<boolean>(EditorGroupWatermark.SETTINGS_KEY);
 
 		clearNode(this.shortcuts);
 		this.transientDisposables.clear();
 
-		if (!this.enabled) {
+		if (startEnabled || !this.enabled) {
 			return;
 		}
 

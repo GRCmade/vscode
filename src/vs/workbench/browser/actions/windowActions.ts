@@ -236,12 +236,14 @@ abstract class BaseOpenRecentAction extends Action2 {
 				disposables.add(picker.onDidHide(() => resolve(undefined)));
 				picker.show();
 				const folders = workspacePicks.filter(item => 'folderUri' in item.openable);
-				void commandService.executeCommand<{ uri: string; projectType?: string }[]>('studio.internalDetectProjectTypes', folders.map(item => item.resource.toString())).then(projects => {
+				void commandService.executeCommand<{ uri: string; projectType?: string; version?: string }[]>('studio.internalDetectProjectTypes', folders.map(item => item.resource.toString())).then(projects => {
 					if (disposables.isDisposed || !Array.isArray(projects)) { return; }
-					const types = new Map(projects.map(project => [project.uri, project.projectType]));
+					const metadata = new Map(projects.map(project => [project.uri, project]));
 					let changed = false;
 					for (const item of folders) {
-						const icon = studioProjectIcon(types.get(item.resource.toString()));
+						const project = metadata.get(item.resource.toString());
+						const icon = studioProjectIcon(project?.projectType);
+						if (project?.version) { item.description = [item.description, project.version].filter(Boolean).join(' \u00b7 '); changed = true; }
 						if (icon) {
 							item.iconClasses = undefined;
 							item.iconClass = ThemeIcon.asClassName({ id: icon });

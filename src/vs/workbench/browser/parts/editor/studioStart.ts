@@ -18,8 +18,8 @@ export interface StudioStartState {
 	version: 1;
 	labels: Record<string, string>;
 	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
-	projects: { uri: string; name: string; projectType: string; folderPath: string }[];
-	recent: { uri: string; label: string; kind: string; lastOpened: number; projectType?: string }[];
+	projects: { uri: string; name: string; version?: string; projectType: string; folderPath: string; update?: { status: string; serverVersion?: string; canDownload: boolean; busy?: boolean } }[];
+	recent: { uri: string; label: string; kind: string; lastOpened: number; projectType?: string; version?: string }[];
 	pending: { id: string; name: string; directory: string; status: string; error?: string }[];
 	environment: { studio: string; vscode: string; node?: string; core?: string; cli?: string; account: string; server: string; error?: string };
 	summary?: { projects: number; running: number; waiting: number; unavailable: number; generatedAt: number };
@@ -110,6 +110,7 @@ export class StudioStartView extends Disposable {
 		const quick = this.section(grid, 'quick');
 		for (const [label, icon, command] of [
 			['openFolder', 'folder-opened', 'studio.openFolder'], ['openWorkspace', 'file-submodule', 'studio.openWorkspace'],
+			['download', 'cloud-download', 'studio.downloadProject'], ['versions', 'versions', 'studio.versions.focus'],
 			['assistant', 'hubot', 'studio.openAssistant'], ['account', 'account', 'studio.openWorkflowAccount'], ['settings', 'settings-gear', 'studio.openSettings'],
 		]) { this.button(quick, label, icon, command); }
 		this.error = append(inner, $('p.studio-start-error'));
@@ -218,13 +219,35 @@ export class StudioStartView extends Disposable {
 			if (!state.projects.length && !state.pending.length) { append(root, $('p.studio-start-muted', undefined, text('noCurrent'))); }
 			for (const project of state.projects) {
 				const card = append(root, $('article.studio-start-project-card'));
+				const updateAvailable = project.update?.status === 'upgrade';
+				card.classList.toggle('studio-start-project-update', updateAvailable);
 				const heading = append(card, $('.studio-start-project-heading'));
 				append(heading, $(`span.codicon.codicon-${studioProjectIcon(project.projectType) ?? 'folder'}`)).setAttribute('aria-hidden', 'true');
 				append(heading, $('h3', undefined, project.name));
 				append(card, $('p.studio-start-project-type', undefined, text(`type.${project.projectType}`)));
+				const versions = append(card, $('.studio-start-project-versions'));
+				append(versions, $('span', undefined, `${text('localVersion')} ${project.version ?? '\u2014'}`));
+				if (project.update?.serverVersion && project.update.status !== 'unavailable') {
+					append(versions, $('span.studio-start-project-server-version', undefined, `${text('serverVersion')} ${project.update.serverVersion}`));
+				}
+				if (updateAvailable) {
+					const badge = append(card, $('.studio-start-project-version-state'));
+					append(badge, $('span.codicon.codicon-arrow-circle-up')).setAttribute('aria-hidden', 'true');
+					append(badge, $('span', undefined, text('updateAvailable')));
+				} else if (project.update?.status === 'current' || project.update?.status === 'ahead') {
+					append(card, $('p.studio-start-project-version-state', undefined, text(project.update.status === 'current' ? 'upToDate' : 'localNewer')));
+				}
 				append(card, $('p.studio-start-project-path', undefined, project.folderPath));
 				const actions = append(card, $('.studio-start-project-actions'));
-				this.button(actions, text('run'), 'play', 'studio.openWorkflow', { uri: project.uri }, false, false, store).classList.add('studio-start-primary');
+				if (updateAvailable) {
+					const upgrade = this.button(actions, text('upgrade'), 'arrow-circle-up', 'studio.upgradeProject', { uri: project.uri }, false, false, store);
+					upgrade.classList.add('studio-start-primary');
+					upgrade.disabled = !project.update?.canDownload || !!project.update?.busy;
+					if (!project.update?.canDownload) { upgrade.title = text('downloadUnavailable'); }
+				}
+				const run = this.button(actions, text('run'), 'play', 'studio.openWorkflow', { uri: project.uri }, false, updateAvailable, store);
+				if (!updateAvailable) { run.classList.add('studio-start-primary'); }
+				this.button(actions, text('upload'), 'cloud-upload', 'studio.uploadProject', { uri: project.uri }, false, true, store);
 				this.button(actions, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
 			}
 			for (const project of state.pending) {
@@ -241,7 +264,8 @@ export class StudioStartView extends Disposable {
 			if (!state.recent.length) { append(root, $('p.studio-start-muted', undefined, text('noRecent'))); }
 			for (const project of state.recent) {
 				const row = append(root, $('.studio-start-project'));
-				const button = this.button(row, project.label, project.kind === 'workspace' ? 'file-submodule' : studioProjectIcon(project.projectType) ?? 'folder', 'studio.openRecentProject', project, false, false, store);
+				const label = [project.label, project.version].filter(Boolean).join(' \u00b7 ');
+				const button = this.button(row, label, project.kind === 'workspace' ? 'file-submodule' : studioProjectIcon(project.projectType) ?? 'folder', 'studio.openRecentProject', project, false, false, store);
 				button.title = project.uri;
 				this.button(row, text('removeRecent'), 'close', 'studio.removeRecentProject', project, false, true, store);
 			}

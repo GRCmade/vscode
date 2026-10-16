@@ -515,7 +515,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 				toolbarOptions: {
 					primaryGroup: () => true,
 				},
-				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && action.id === 'studio.openWorkflow'
+				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && ['studio.openWorkflow', 'studio.uploadProject'].includes(action.id)
 					? this.instantiationService.createInstance(StudioWorkflowRunActionViewItem, action, options)
 					: createActionViewItem(this.instantiationService, action, options),
 				hoverDelegate: this.hoverDelegate

@@ -36,6 +36,17 @@ MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
 	order: 0
 });
 
+MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
+	command: {
+		id: 'studio.uploadProject',
+		get title() { return MenuRegistry.getCommand('studio.uploadProject')?.title ?? localize('studio.uploadProject', "Upload Project"); },
+		icon: Codicon.cloudUpload
+	},
+	when: ContextKeyExpr.equals('studio.workflowUploadAvailable', true),
+	group: '0_studio',
+	order: 1
+});
+
 // --- Context Menu Actions --- //
 
 export class ToggleTitleBarConfigAction extends Action2 {

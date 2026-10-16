@@ -20,6 +20,7 @@ import { EditorInput } from '../../../common/editor/editorInput.js';
 import { IEditorGroup } from '../../../services/editor/common/editorGroupsService.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { ProjectCreationDialogRequest, StudioProjectCreateDialog } from './studioProjectCreateDialog.js';
+import { ProjectUploadDialogRequest, StudioProjectUploadDialog } from './studioProjectUploadDialog.js';
 
 class StudioStartInput extends EditorInput {
 	static readonly ID = 'studio.start';
@@ -64,4 +65,15 @@ CommandsRegistry.registerCommand('studio.internalShowCreateProject', async (acce
 	const dialog = accessor.get(IInstantiationService).createInstance(StudioProjectCreateDialog, request);
 	try { return await dialog.show(); }
 	finally { dialog.dispose(); }
+});
+
+let projectUploadDialog: StudioProjectUploadDialog | undefined;
+CommandsRegistry.registerCommand('studio.internalShowProjectUpload', async (accessor, request: ProjectUploadDialogRequest) => {
+	if (projectUploadDialog) { return; }
+	const dialog = projectUploadDialog = accessor.get(IInstantiationService).createInstance(StudioProjectUploadDialog, request);
+	try { await dialog.show(); }
+	finally { dialog.dispose(); projectUploadDialog = undefined; }
+});
+CommandsRegistry.registerCommand('studio.internalUpdateProjectUpload', (_accessor, progress: { id: string; message: string }) => {
+	projectUploadDialog?.update(progress);
 });

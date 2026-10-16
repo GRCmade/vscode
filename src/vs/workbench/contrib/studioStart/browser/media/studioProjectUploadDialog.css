@@ -1,0 +1,29 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+.monaco-dialog-modal-block .monaco-dialog-box.studio-upload-dialog { box-sizing:border-box; width:560px; max-width:calc(100vw - 32px); min-width:0; border-radius:6px; user-select:text; }
+.studio-upload-dialog .dialog-message-container { min-width:0; width:100%; }
+.studio-upload-dialog .dialog-buttons-row { display:none; }
+.studio-upload-form { display:flex; flex-direction:column; gap:18px; padding-top:12px; min-width:0; letter-spacing:0; }
+.studio-upload-metadata { display:grid; grid-template-columns:auto minmax(0,1fr); gap:8px 20px; margin:0; font-size:12px; line-height:18px; }
+.studio-upload-metadata dt { margin:0; color:var(--vscode-descriptionForeground); }
+.studio-upload-metadata dd { margin:0; min-width:0; overflow-wrap:anywhere; white-space:pre-wrap; }
+.studio-upload-field label { display:block; margin-bottom:8px; font-size:12px; font-weight:600; }
+.studio-upload-field textarea { display:block; box-sizing:border-box; width:100%; min-height:110px; max-height:240px; padding:8px; resize:vertical; border:1px solid var(--vscode-input-border,transparent); border-radius:3px; background:var(--vscode-input-background); color:var(--vscode-input-foreground); font:inherit; line-height:20px; }
+.studio-upload-status { min-height:36px; margin:0; color:var(--vscode-descriptionForeground); white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; line-height:18px; }
+.studio-upload-form.has-error .studio-upload-status { color:var(--vscode-errorForeground); }
+.studio-upload-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; }
+.studio-upload-actions button { display:inline-flex; align-items:center; justify-content:center; gap:6px; box-sizing:border-box; min-width:96px; min-height:30px; padding:4px 12px; border:1px solid var(--vscode-button-border,transparent); border-radius:3px; font:inherit; cursor:pointer; }
+.studio-upload-actions .studio-upload-submit { background:var(--vscode-button-background); color:var(--vscode-button-foreground); }
+.studio-upload-actions .studio-upload-submit:hover:not(:disabled) { background:var(--vscode-button-hoverBackground); }
+.studio-upload-actions .studio-upload-submit .codicon { color:inherit; }
+.studio-upload-actions .studio-upload-cancel { background:var(--vscode-button-secondaryBackground); color:var(--vscode-button-secondaryForeground); }
+.studio-upload-actions .studio-upload-cancel:hover:not(:disabled) { background:var(--vscode-button-secondaryHoverBackground); }
+.studio-upload-actions button:disabled { cursor:default; opacity:.6; }
+.studio-upload-actions button[hidden] { display:none; }
+.studio-upload-form button:focus-visible, .studio-upload-form textarea:focus { outline:1px solid var(--vscode-focusBorder); outline-offset:1px; }
+.studio-upload-dialog, .studio-upload-dialog button, .studio-upload-dialog textarea { user-select:text; -webkit-user-select:text; }
+.studio-upload-dialog .dialog-message-container, .studio-upload-field textarea { scrollbar-width:thin; scrollbar-color:transparent transparent; }
+.studio-upload-dialog .dialog-message-container:hover, .studio-upload-field textarea:hover { scrollbar-color:var(--vscode-scrollbarSlider-background) transparent; }
+@media (max-width:380px) { .studio-upload-metadata { grid-template-columns:minmax(0,1fr); gap:4px; } .studio-upload-metadata dd:not(:last-child) { margin-bottom:6px; } }

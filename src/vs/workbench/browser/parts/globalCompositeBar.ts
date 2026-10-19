@@ -19,7 +19,7 @@ import { ThemeIcon } from '../../../base/common/themables.js';
 import { registerIcon } from '../../../platform/theme/common/iconRegistry.js';
 import { Action, IAction, Separator, SubmenuAction, toAction } from '../../../base/common/actions.js';
 import { Emitter } from '../../../base/common/event.js';
-import { IMenu, IMenuService, MenuId, MenuRegistry } from '../../../platform/actions/common/actions.js';
+import { IMenu, IMenuService, MenuId } from '../../../platform/actions/common/actions.js';
 import { addDisposableListener, EventType, append, clearNode, hide, show, EventHelper, $, runWhenWindowIdle, getWindow } from '../../../base/browser/dom.js';
 import { StandardKeyboardEvent } from '../../../base/browser/keyboardEvent.js';
 import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
@@ -28,7 +28,7 @@ import { AnchorAlignment, AnchorAxisAlignment } from '../../../base/browser/ui/c
 import { Lazy } from '../../../base/common/lazy.js';
 import { getActionBarActions } from '../../../platform/actions/browser/menuEntryActionViewItem.js';
 import { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
-import { ContextKeyExpr, IContextKeyService } from '../../../platform/contextkey/common/contextkey.js';
+import { IContextKeyService } from '../../../platform/contextkey/common/contextkey.js';
 import { IContextMenuService } from '../../../platform/contextview/browser/contextView.js';
 import { IKeybindingService } from '../../../platform/keybinding/common/keybinding.js';
 import { ILogService } from '../../../platform/log/common/log.js';
@@ -51,21 +51,7 @@ import { ICommandService } from '../../../platform/commands/common/commands.js';
 import { IDefaultAccountService } from '../../../platform/defaultAccount/common/defaultAccount.js';
 import { WORKBENCH_MENU_MOTION_CLASS, workbenchMenuCloseAnimation } from '../actions/menuMotion.js';
 import { createCodexAccountMenuActions, ICodexAccountService, shouldShowCodexAccount } from '../../services/agentHost/browser/codexAccountService.js';
-
-for (const [id, title, authenticated] of [
-	['studio.openAccount', localize('studio.account', "\u767b\u5f55\u4e0e\u7ba1\u7406\u8d26\u53f7"), false],
-	['studio.validateLogin', localize('studio.validateLogin', "\u9a8c\u8bc1\u767b\u5f55"), true],
-	['studio.logout', localize('studio.logout', "\u9000\u51fa\u767b\u5f55"), true],
-] as const) {
-	MenuRegistry.appendMenuItem(MenuId.AccountsContext, {
-		command: { id, title },
-		when: ContextKeyExpr.and(
-			ContextKeyExpr.equals('studio.accountAvailable', true),
-			authenticated ? ContextKeyExpr.equals('studio.authenticated', true) : undefined
-		),
-		group: '0_project'
-	});
-}
+import { StudioAccountMenu } from './studioAccountMenu.js';
 
 export class GlobalCompositeBar extends Disposable {
 
@@ -194,7 +180,7 @@ abstract class AbstractGlobalActivityActionViewItem extends CompositeBarActionVi
 		action: CompositeBarAction,
 		options: ICompositeBarActionViewItemOptions,
 		private readonly contextMenuActionsProvider: () => IAction[],
-		private readonly contextMenuAlignmentOptions: () => Readonly<{ anchorAlignment: AnchorAlignment; anchorAxisAlignment: AnchorAxisAlignment }> | undefined,
+		protected readonly contextMenuAlignmentOptions: () => Readonly<{ anchorAlignment: AnchorAlignment; anchorAxisAlignment: AnchorAxisAlignment }> | undefined,
 		@IThemeService themeService: IThemeService,
 		@IHoverService hoverService: IHoverService,
 		@IMenuService private readonly menuService: IMenuService,
@@ -267,7 +253,7 @@ abstract class AbstractGlobalActivityActionViewItem extends CompositeBarActionVi
 		return this.contextMenuActionsProvider();
 	}
 
-	private async run(): Promise<void> {
+	protected async run(): Promise<void> {
 		const disposables = new DisposableStore();
 		const menu = disposables.add(this.menuService.createMenu(this.menuId, this.contextKeyService));
 		const actions = await this.resolveMainMenuActions(menu, disposables);
@@ -301,6 +287,7 @@ export class AccountsActivityActionViewItem extends AbstractGlobalActivityAction
 	private initialized = false;
 	private sessionFromEmbedder = new Lazy<Promise<AuthenticationSessionInfo | undefined>>(() => getCurrentAuthenticationSessionInfo(this.secretStorageService, this.productService));
 	private avatarImg: HTMLImageElement | undefined;
+	private readonly studioAccountMenu: StudioAccountMenu;
 
 	constructor(
 		contextMenuActionsProvider: () => IAction[],
@@ -333,6 +320,7 @@ export class AccountsActivityActionViewItem extends AbstractGlobalActivityAction
 		});
 		super(MenuId.AccountsContext, action, options, contextMenuActionsProvider, contextMenuAlignmentOptions, themeService, hoverService, menuService, contextMenuService, contextKeyService, configurationService, keybindingService, activityService);
 		this._register(action);
+		this.studioAccountMenu = this._register(instantiationService.createInstance(StudioAccountMenu));
 		this.registerListeners();
 		this.initialize();
 	}
@@ -474,6 +462,14 @@ export class AccountsActivityActionViewItem extends AbstractGlobalActivityAction
 	}
 
 	//#region overrides
+
+	protected override async run(): Promise<void> {
+		if (this.studioAccountMenu.isAvailable) {
+			await this.studioAccountMenu.toggle(this.label, this.contextMenuAlignmentOptions());
+			return;
+		}
+		await super.run();
+	}
 
 	protected override async resolveMainMenuActions(accountsMenu: IMenu, disposables: DisposableStore): Promise<IAction[]> {
 		await super.resolveMainMenuActions(accountsMenu, disposables);

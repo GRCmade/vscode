@@ -25,6 +25,7 @@
 	scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
 }
 
+.studio-account-menu:focus { outline: none !important; }
 .studio-account-menu [hidden] { display: none !important; }
 .studio-account-menu button { font: inherit; color: inherit; cursor: pointer; }
 .studio-account-menu button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -2px; }

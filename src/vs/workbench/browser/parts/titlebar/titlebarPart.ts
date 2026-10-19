@@ -65,7 +65,7 @@ export interface ITitleVariable {
 	readonly contextKey: string;
 }
 
-class StudioWorkflowRunActionViewItem extends MenuEntryActionViewItem {
+class StudioProjectRunActionViewItem extends MenuEntryActionViewItem {
 	override render(container: HTMLElement): void {
 		this.options.icon = true;
 		this.options.label = false;
@@ -515,8 +515,8 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 				toolbarOptions: {
 					primaryGroup: () => true,
 				},
-				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && ['studio.openWorkflow', 'studio.uploadProject'].includes(action.id)
-					? this.instantiationService.createInstance(StudioWorkflowRunActionViewItem, action, options)
+				actionViewItemProvider: (action, options) => action instanceof MenuItemAction && ['studio.openProject', 'studio.uploadProject'].includes(action.id)
+					? this.instantiationService.createInstance(StudioProjectRunActionViewItem, action, options)
 					: createActionViewItem(this.instantiationService, action, options),
 				hoverDelegate: this.hoverDelegate
 			}));

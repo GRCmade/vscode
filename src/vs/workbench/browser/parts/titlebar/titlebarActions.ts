@@ -27,11 +27,11 @@ export const TitleBarLeadingActionsGroup = '0_leading';
 
 MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
 	command: {
-		id: 'studio.openWorkflow',
-		get title() { return MenuRegistry.getCommand('studio.openWorkflow')?.title ?? localize('studio.runWorkflowProject', "Run Project"); },
+		id: 'studio.openProject',
+		get title() { return MenuRegistry.getCommand('studio.openProject')?.title ?? localize('studio.runProject', "Run Project"); },
 		icon: Codicon.play
 	},
-	when: ContextKeyExpr.equals('studio.workflowAvailable', true),
+	when: ContextKeyExpr.equals('studio.projectAvailable', true),
 	group: '0_studio',
 	order: 0
 });
@@ -42,7 +42,7 @@ MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
 		get title() { return MenuRegistry.getCommand('studio.uploadProject')?.title ?? localize('studio.uploadProject', "Upload Project"); },
 		icon: Codicon.cloudUpload
 	},
-	when: ContextKeyExpr.equals('studio.workflowUploadAvailable', true),
+	when: ContextKeyExpr.equals('studio.projectUploadAvailable', true),
 	group: '0_studio',
 	order: 1
 });

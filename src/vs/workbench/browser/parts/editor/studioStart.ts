@@ -87,11 +87,11 @@ export class StudioStartView extends Disposable {
 		super();
 		this.element = append(container, $('main.studio-start.loading'));
 		this.element.tabIndex = -1;
-		this.element.setAttribute('aria-label', 'Workflow Studio');
+		this.element.setAttribute('aria-label', 'SteamHarness Studio');
 		const inner = append(this.element, $('.studio-start-inner'));
 		const header = append(inner, $('header.studio-start-header'));
 		append(header, $('span.codicon.codicon-layout.studio-start-logo')).setAttribute('aria-hidden', 'true');
-		append(header, $('h1', undefined, 'Workflow Studio'));
+		append(header, $('h1', undefined, 'SteamHarness Studio'));
 		append(header, $('span.codicon.codicon-loading.codicon-modifier-spin.studio-start-loading-indicator')).setAttribute('aria-hidden', 'true');
 		const top = append(header, $('.studio-start-toolbar'));
 		this.button(top, 'create', 'add', 'studio.createProject', undefined, true).classList.add('studio-start-primary');
@@ -111,7 +111,7 @@ export class StudioStartView extends Disposable {
 		for (const [label, icon, command] of [
 			['openFolder', 'folder-opened', 'studio.openFolder'], ['openWorkspace', 'file-submodule', 'studio.openWorkspace'],
 			['download', 'cloud-download', 'studio.downloadProject'], ['versions', 'versions', 'studio.versions.focus'],
-			['assistant', 'hubot', 'studio.openAssistant'], ['account', 'account', 'studio.openWorkflowAccount'], ['settings', 'settings-gear', 'studio.openSettings'],
+			['assistant', 'hubot', 'studio.openAssistant'], ['account', 'account', 'studio.openAccount'], ['settings', 'settings-gear', 'studio.openSettings'],
 		]) { this.button(quick, label, icon, command); }
 		this.error = append(inner, $('p.studio-start-error'));
 		this.error.setAttribute('role', 'status');
@@ -139,7 +139,7 @@ export class StudioStartView extends Disposable {
 	focus(): void { (this.element.querySelector<HTMLButtonElement>('button:not(:disabled)') ?? this.element).focus(); }
 
 	private createLoadingPlaceholder(parent: HTMLElement): void {
-		const loading = append(parent, $('.studio-start-loading', { role: 'progressbar', 'aria-label': 'Workflow Studio' }));
+		const loading = append(parent, $('.studio-start-loading', { role: 'progressbar', 'aria-label': 'SteamHarness Studio' }));
 		const content = append(loading, $('div', { 'aria-hidden': 'true' }));
 		append(content, $('.studio-start-skeleton.studio-start-skeleton-heading'));
 		const projects = append(content, $('.studio-start-loading-projects'));
@@ -245,10 +245,10 @@ export class StudioStartView extends Disposable {
 					upgrade.disabled = !project.update?.canDownload || !!project.update?.busy;
 					if (!project.update?.canDownload) { upgrade.title = text('downloadUnavailable'); }
 				}
-				const run = this.button(actions, text('run'), 'play', 'studio.openWorkflow', { uri: project.uri }, false, updateAvailable, store);
+				const run = this.button(actions, text('run'), 'play', 'studio.openProject', { uri: project.uri }, false, updateAvailable, store);
 				if (!updateAvailable) { run.classList.add('studio-start-primary'); }
 				this.button(actions, text('upload'), 'cloud-upload', 'studio.uploadProject', { uri: project.uri }, false, true, store);
-				this.button(actions, text('source'), 'code', 'studio.openWorkflowSource', { uri: project.uri }, false, true, store);
+				this.button(actions, text('source'), 'code', 'studio.openProjectSource', { uri: project.uri }, false, true, store);
 			}
 			for (const project of state.pending) {
 				const row = append(root, $('.studio-start-pending'));

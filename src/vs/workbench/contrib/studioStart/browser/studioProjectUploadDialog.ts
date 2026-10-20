@@ -21,6 +21,7 @@ export interface ProjectUploadDialogRequest {
 	serverUrl: string;
 	folderPath: string;
 	labels: Record<string, string>;
+	options?: { id: string; label: string; checked: boolean }[];
 }
 
 /** Keeps upload input, progress, and results in one native dialog. */
@@ -28,6 +29,7 @@ export class StudioProjectUploadDialog extends Disposable {
 	private readonly dialog: Dialog;
 	private form!: HTMLElement;
 	private notes!: HTMLTextAreaElement;
+	private readonly options = new Map<string, HTMLInputElement>();
 	private status!: HTMLElement;
 	private uploadButton!: HTMLButtonElement;
 	private cancelButton!: HTMLButtonElement;
@@ -47,7 +49,7 @@ export class StudioProjectUploadDialog extends Disposable {
 		this.dialog = this._register(new Dialog(layout.activeContainer, this.text('title'), [], createWorkbenchDialogOptions({
 			type: 'none', disableDefaultAction: true, extraClasses: ['studio-upload-dialog'],
 			renderBody: container => this.render(container),
-			focusableElements: () => Array.from(this.form.querySelectorAll<HTMLElement>('textarea,button')).filter(element => !element.matches(':disabled') && !element.hidden),
+			focusableElements: () => Array.from(this.form.querySelectorAll<HTMLElement>('textarea,input,button')).filter(element => !element.matches(':disabled') && !element.hidden),
 		}, keybindings, layout, host)));
 	}
 
@@ -64,6 +66,13 @@ export class StudioProjectUploadDialog extends Disposable {
 		const id = generateUuid();
 		append(field, $('label', { for: id }, this.text('releaseLog')));
 		this.notes = append(field, $<HTMLTextAreaElement>('textarea', { id, rows: 5 }));
+		for (const option of this.request.options ?? []) {
+			const label = append(this.form, $('label.studio-upload-option'));
+			const checkbox = append(label, $<HTMLInputElement>('input', { type: 'checkbox' }));
+			checkbox.checked = option.checked;
+			append(label, $('span', undefined, option.label));
+			this.options.set(option.id, checkbox);
+		}
 		this.status = append(this.form, $('p.studio-upload-status', { role: 'status', 'aria-live': 'polite' }));
 		const actions = append(this.form, $('.studio-upload-actions'));
 		this.uploadButton = append(actions, $<HTMLButtonElement>('button.studio-upload-submit', { type: 'button' }));
@@ -101,17 +110,22 @@ export class StudioProjectUploadDialog extends Disposable {
 		this.form.setAttribute('aria-busy', 'true');
 		this.form.classList.remove('has-error');
 		this.notes.readOnly = true;
+		for (const checkbox of this.options.values()) { checkbox.disabled = true; }
 		this.uploadButton.disabled = true;
 		this.uploadButton.lastElementChild!.textContent = this.text('uploading');
 		this.status.textContent = this.text('preparing');
 		try {
-			const result = await this.commands.executeCommand<{ success?: boolean; error?: string }>('studio.internalUploadProject', { id: this.request.id, releaseLog: this.notes.value });
+			const result = await this.commands.executeCommand<{ success?: boolean; error?: string; message?: string; warning?: boolean }>('studio.internalUploadProject', {
+				id: this.request.id, releaseLog: this.notes.value,
+				options: Object.fromEntries(Array.from(this.options, ([key, checkbox]) => [key, checkbox.checked])),
+			});
 			if (this.closed) { return; }
 			if (!result?.success) { throw new Error(result?.error ?? this.text('failed')); }
 			this.uploaded = true;
 			this.uploadButton.hidden = true;
 			this.cancelButton.textContent = this.text('close');
-			this.status.textContent = this.text('success');
+			this.status.textContent = result.message || this.text('success');
+			this.form.classList.toggle('has-error', !!result.warning);
 		} catch (error) {
 			if (!this.closed) {
 				this.form.classList.add('has-error');
@@ -122,6 +136,7 @@ export class StudioProjectUploadDialog extends Disposable {
 			if (!this.closed) {
 				this.form.setAttribute('aria-busy', 'false');
 				this.notes.readOnly = this.uploaded;
+				for (const checkbox of this.options.values()) { checkbox.disabled = this.uploaded; }
 				this.uploadButton.disabled = this.uploaded;
 				this.uploadButton.lastElementChild!.textContent = this.text('upload');
 				this.cancelButton.disabled = false;

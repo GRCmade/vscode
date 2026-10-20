@@ -14,6 +14,15 @@
 	-webkit-app-region: no-drag;
 }
 
+/* Native macOS leaves the left title bar empty for its unscaled window buttons. */
+.monaco-workbench.mac:not(.web):not(.fullscreen) .studio-mode-switcher {
+	margin-left: calc(70px / var(--zoom-factor, 1) + 8px);
+}
+
+.monaco-workbench.mac:not(.web):not(.fullscreen) .titlebar-container.counter-zoom .studio-mode-switcher {
+	margin-left: 78px;
+}
+
 .monaco-workbench .studio-mode-switcher button,
 .monaco-workbench .studio-steam-tools-action {
 	position: relative;
@@ -32,6 +41,8 @@
 	font-size: 11px;
 	cursor: pointer;
 	white-space: nowrap;
+	user-select: text;
+	-webkit-user-select: text;
 	-webkit-app-region: no-drag;
 	transition: background-color 160ms ease, color 160ms ease, opacity 160ms ease;
 }

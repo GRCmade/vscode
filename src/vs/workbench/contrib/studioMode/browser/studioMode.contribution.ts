@@ -244,15 +244,17 @@ export class StudioModeContribution extends Disposable {
 			if (snapshot.visible[index]) { this.layout.setSize(part, snapshot.sizes[index]); }
 		}
 		const mainPart = this.groups.mainPart;
-		if (snapshot.groups.length === mainPart.groups.length && snapshot.groups.every(id => mainPart.getGroup(id))) {
+		// A maximized grid serializes its expanded size alongside cached hidden sizes.
+		// Reapplying that layout would shrink the hidden groups on every switch.
+		if (!snapshot.editorMaximized && snapshot.groups.length === mainPart.groups.length && snapshot.groups.every(id => mainPart.getGroup(id))) {
 			mainPart.applyLayout(snapshot.editorLayout);
-			if (snapshot.editorMaximized) {
-				mainPart.arrangeGroups(GroupsArrangement.MAXIMIZE, mainPart.getGroup(snapshot.activeGroup) ?? mainPart.activeGroup);
-			}
 		}
 		const previous = this.ideEditor;
 		if (previous && mainPart.getGroup(previous.group.id)?.contains(previous.editor)) { await this.editors.openEditor(previous.editor, undefined, previous.group); }
-		// Opening an editor can unmaximize the panel, so restore this state last.
+		// Opening an editor can unmaximize a group or the panel, so restore these states last.
+		if (snapshot.editorMaximized && mainPart.getGroup(snapshot.activeGroup)) {
+			mainPart.arrangeGroups(GroupsArrangement.MAXIMIZE, snapshot.activeGroup);
+		}
 		if (snapshot.visible[2] && this.layout.isPanelMaximized() !== !!snapshot.panelMaximized) { this.layout.toggleMaximizedPanel(); }
 		this.layout.setAuxiliaryBarMaximized(snapshot.auxiliaryMaximized);
 		this.ideEditor = undefined;

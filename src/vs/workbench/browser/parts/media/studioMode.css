@@ -1,0 +1,132 @@
+.monaco-workbench .studio-mode-switcher {
+	/* Match native title bar actions above the window's draggable layer. */
+	position: relative;
+	z-index: 2500;
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: 2px;
+	margin: 0 8px;
+	padding: 2px;
+	border: 1px solid var(--vscode-widget-border, transparent);
+	border-radius: 7px;
+	background: color-mix(in srgb, var(--vscode-foreground) 4%, var(--vscode-sideBar-background, var(--vscode-editor-background)));
+	-webkit-app-region: no-drag;
+}
+
+.monaco-workbench .studio-mode-switcher button,
+.monaco-workbench .studio-steam-tools-action {
+	position: relative;
+	z-index: 2500;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	min-height: 24px;
+	padding: 2px 8px;
+	border: 0;
+	border-radius: 5px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-size: 11px;
+	cursor: pointer;
+	white-space: nowrap;
+	-webkit-app-region: no-drag;
+	transition: background-color 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+.monaco-workbench .studio-mode-switcher button[aria-pressed="true"] {
+	background: var(--vscode-editor-background);
+	box-shadow: 0 1px 3px #0002;
+}
+
+.monaco-workbench .studio-mode-switcher .studio-mode-steam[aria-pressed="true"] {
+	color: var(--vscode-testing-iconPassed, var(--vscode-textLink-foreground));
+}
+
+.monaco-workbench .studio-mode-switcher button:disabled {
+	opacity: .45;
+	cursor: default;
+}
+
+.monaco-workbench .studio-mode-switcher button:focus-visible,
+.monaco-workbench .studio-steam-tools-action:focus-visible,
+.monaco-workbench .studio-steam-tool:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+}
+
+.monaco-workbench .studio-steam-tools-action[hidden] { display: none; }
+.monaco-workbench .studio-steam-tools-action:hover { background: var(--vscode-toolbar-hoverBackground); }
+
+.monaco-workbench .studio-steam-tools {
+	height: 100%;
+	box-sizing: border-box;
+	display: flex;
+	align-items: safe center;
+	justify-content: center;
+	padding: 28px 24px;
+	overflow: auto;
+	container-type: inline-size;
+	user-select: text;
+	-webkit-user-select: text;
+	scrollbar-width: none;
+}
+
+.monaco-workbench .studio-steam-tools:hover,
+.monaco-workbench .studio-steam-tools:focus-within { scrollbar-width: thin; }
+.monaco-workbench .studio-steam-tools-content { width: 100%; max-width: 560px; text-align: center; }
+.monaco-workbench .studio-steam-tools-emblem { color: var(--vscode-descriptionForeground); font-size: 28px; }
+.monaco-workbench .studio-steam-tools h2 { margin: 18px 0 8px; font-size: 23px; font-weight: 600; }
+.monaco-workbench .studio-steam-tools p { margin: 0 0 30px; color: var(--vscode-descriptionForeground); line-height: 1.6; }
+.monaco-workbench .studio-steam-tools-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+
+.monaco-workbench .studio-steam-tool {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	min-width: 0;
+	min-height: 116px;
+	padding: 20px 10px;
+	border: 1px solid var(--vscode-widget-border, transparent);
+	border-radius: 10px;
+	background: color-mix(in srgb, var(--vscode-foreground) 4%, var(--vscode-sideBar-background, var(--vscode-editor-background)));
+	color: var(--vscode-foreground);
+	font: inherit;
+	cursor: pointer;
+	user-select: text;
+	-webkit-user-select: text;
+	transition: transform 180ms ease, background-color 180ms ease, border-color 180ms ease;
+}
+
+.monaco-workbench .studio-steam-tool:hover { transform: translateY(-2px); background: var(--vscode-list-hoverBackground); border-color: var(--vscode-focusBorder); }
+.monaco-workbench .studio-steam-tool > .codicon { font-size: 23px; color: var(--vscode-textLink-foreground); }
+.monaco-workbench .studio-steam-tool[data-tool="kv"] > .codicon { color: var(--vscode-testing-iconPassed, var(--vscode-textLink-foreground)); }
+.monaco-workbench .studio-steam-tool[data-tool="knowledge"] > .codicon { color: var(--vscode-symbolIcon-classForeground, var(--vscode-textLink-foreground)); }
+.monaco-workbench .studio-steam-tool-label { font-weight: 500; }
+.monaco-workbench .studio-steam-tool-hint { color: var(--vscode-descriptionForeground); font-size: 11px; line-height: 1.5; }
+
+@container (min-width: 480px) {
+	.monaco-workbench .studio-steam-tools-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@container (max-width: 230px) {
+	.monaco-workbench .studio-steam-tools-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+html.studio-mode-transition::view-transition-old(root) { animation: studio-mode-out 120ms ease both; }
+html.studio-mode-transition::view-transition-new(root) { animation: studio-mode-in 240ms cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes studio-mode-out { to { opacity: 0; transform: translateY(3px); } }
+@keyframes studio-mode-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+	.monaco-workbench .studio-mode-switcher button,
+	.monaco-workbench .studio-steam-tools-action,
+	.monaco-workbench .studio-steam-tool { transition: none; }
+	.monaco-workbench .studio-steam-tool:hover { transform: none; }
+	html.studio-mode-transition::view-transition-old(root),
+	html.studio-mode-transition::view-transition-new(root) { animation: none; }
+}

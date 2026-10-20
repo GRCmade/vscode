@@ -389,6 +389,7 @@ import './contrib/surveys/browser/languageSurveys.contribution.js';
 // Welcome
 import './contrib/welcomeGettingStarted/browser/gettingStarted.contribution.js';
 import './contrib/studioStart/browser/studioStart.contribution.js';
+import './contrib/studioMode/browser/studioMode.contribution.js';
 import './contrib/welcomeAgentSessions/browser/agentSessionsWelcome.contribution.js';
 import './contrib/welcomeWalkthrough/browser/walkThrough.contribution.js';
 import './contrib/welcomeViews/common/viewsWelcome.contribution.js';

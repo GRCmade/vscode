@@ -30,6 +30,7 @@ import { IContextKey, IContextKeyService } from '../../../../platform/contextkey
 import { IHostService } from '../../../services/host/browser/host.js';
 import { WindowTitle } from './windowTitle.js';
 import { CommandCenterControl } from './commandCenterControl.js';
+import { StudioModeSwitcher } from '../studioMode.js';
 import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
 import { HiddenItemStrategy, MenuWorkbenchToolBar, WorkbenchToolBar } from '../../../../platform/actions/browser/toolbar.js';
 import { IActionViewItemService } from '../../../../platform/actions/browser/actionViewItemService.js';
@@ -482,6 +483,9 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		this.leftContent = append(this.rootContainer, $('.titlebar-left'));
 		this.centerContent = append(this.rootContainer, $('.titlebar-center'));
 		this.rightContent = append(this.rootContainer, $('.titlebar-right'));
+		if (!this.isAuxiliary && hasCustomTitlebar(this.configurationService, this.titleBarStyle)) {
+			this._register(this.instantiationService.createInstance(StudioModeSwitcher, this.leftContent, this.rightContent));
+		}
 
 		// App Icon (Windows, Linux)
 		if ((isWindows || isLinux) && !hasNativeTitlebar(this.configurationService, this.titleBarStyle)) {

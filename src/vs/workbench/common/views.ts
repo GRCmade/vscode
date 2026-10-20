@@ -632,6 +632,8 @@ export interface IViewDescriptorService {
 
 	readonly onDidChangeContainerLocation: Event<{ viewContainer: ViewContainer; from: ViewContainerLocation; to: ViewContainerLocation }>;
 	moveViewContainerToLocation(viewContainer: ViewContainer, location: ViewContainerLocation, requestedIndex?: number, reason?: string): void;
+	/** Override a container location in this window until disposed, without saving profile customizations. */
+	overrideViewContainerLocation(viewContainer: ViewContainer, location: ViewContainerLocation): IDisposable;
 
 	getViewContainerBadgeEnablementState(id: string): boolean;
 	setViewContainerBadgeEnablementState(id: string, badgesEnabled: boolean): void;

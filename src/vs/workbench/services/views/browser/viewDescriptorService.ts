@@ -62,6 +62,7 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
 	private readonly viewContainersRegistry: IViewContainersRegistry;
 
 	private viewContainersCustomLocations: Map<string, ViewContainerLocation>;
+	private readonly viewContainerLocationOverrides = new Map<string, ViewContainerLocation>();
 	private viewDescriptorsCustomLocations: Map<string, string>;
 	private viewContainerBadgeEnablementStates: Map<string, boolean>;
 
@@ -304,7 +305,29 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
 	}
 
 	getViewContainerLocation(viewContainer: ViewContainer): ViewContainerLocation {
-		return this.viewContainersCustomLocations.get(viewContainer.id) ?? this.getDefaultViewContainerLocation(viewContainer);
+		return this.viewContainerLocationOverrides.get(viewContainer.id) ?? this.viewContainersCustomLocations.get(viewContainer.id) ?? this.getDefaultViewContainerLocation(viewContainer);
+	}
+
+	overrideViewContainerLocation(viewContainer: ViewContainer, location: ViewContainerLocation): IDisposable {
+		const from = this.getViewContainerLocation(viewContainer);
+		if (from === location || !this.canMoveViews()) { return Disposable.None; }
+		const previousIndex = viewContainer.requestedIndex;
+		const previousOverride = this.viewContainerLocationOverrides.get(viewContainer.id);
+		const notify = (from: ViewContainerLocation, to: ViewContainerLocation) => {
+			this.getOrCreateDefaultViewContainerLocationContextKey(viewContainer).set(to === this.getDefaultViewContainerLocation(viewContainer));
+			this._onDidChangeContainerLocation.fire({ viewContainer, from, to });
+			this._onDidChangeLocation.fire({ views: this.getViewsByContainer(viewContainer), from, to });
+		};
+		this.viewContainerLocationOverrides.set(viewContainer.id, location);
+		viewContainer.requestedIndex = undefined;
+		notify(from, location);
+		return toDisposable(() => {
+			if (previousOverride === undefined) { this.viewContainerLocationOverrides.delete(viewContainer.id); }
+			else { this.viewContainerLocationOverrides.set(viewContainer.id, previousOverride); }
+			viewContainer.requestedIndex = previousIndex;
+			const restored = this.getViewContainerLocation(viewContainer);
+			if (restored !== location) { notify(location, restored); }
+		});
 	}
 
 	getDefaultViewContainerLocation(viewContainer: ViewContainer): ViewContainerLocation {

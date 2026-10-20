@@ -18,8 +18,8 @@ export interface StudioStartState {
 	version: 1;
 	labels: Record<string, string>;
 	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
-	projects: { uri: string; name: string; version?: string; projectType: string; folderPath: string; update?: { status: string; serverVersion?: string; canDownload: boolean; busy?: boolean } }[];
-	recent: { uri: string; label: string; kind: string; lastOpened: number; projectType?: string; version?: string }[];
+	projects: { uri: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: { status: string; serverVersion?: string; canDownload: boolean; busy?: boolean } }[];
+	recent: { uri: string; label: string; kind: string; lastOpened: number; projectType?: string; version?: string; avatarUrl?: string }[];
 	pending: { id: string; name: string; directory: string; status: string; error?: string }[];
 	environment: { studio: string; vscode: string; node?: string; core?: string; cli?: string; account: string; server: string; error?: string };
 	summary?: { projects: number; running: number; waiting: number; unavailable: number; generatedAt: number };
@@ -222,7 +222,11 @@ export class StudioStartView extends Disposable {
 				const updateAvailable = project.update?.status === 'upgrade';
 				card.classList.toggle('studio-start-project-update', updateAvailable);
 				const heading = append(card, $('.studio-start-project-heading'));
-				append(heading, $(`span.codicon.codicon-${studioProjectIcon(project.projectType) ?? 'folder'}`)).setAttribute('aria-hidden', 'true');
+				const avatar = this.button(heading, `${text('run')} \u00b7 ${project.name}`, studioProjectIcon(project.projectType) ?? 'folder', 'studio.openProject', { uri: project.uri }, false, true, store);
+				avatar.classList.add('studio-start-project-avatar-button');
+				if (project.avatarUrl?.startsWith('data:image/svg+xml,')) {
+					avatar.firstElementChild?.replaceWith($('img.studio-start-project-avatar', { src: project.avatarUrl, alt: '' }));
+				}
 				append(heading, $('h3', undefined, project.name));
 				append(card, $('p.studio-start-project-type', undefined, text(`type.${project.projectType}`)));
 				const versions = append(card, $('.studio-start-project-versions'));
@@ -266,6 +270,9 @@ export class StudioStartView extends Disposable {
 				const row = append(root, $('.studio-start-project'));
 				const label = [project.label, project.version].filter(Boolean).join(' \u00b7 ');
 				const button = this.button(row, label, project.kind === 'workspace' ? 'file-submodule' : studioProjectIcon(project.projectType) ?? 'folder', 'studio.openRecentProject', project, false, false, store);
+				if (project.avatarUrl?.startsWith('data:image/svg+xml,')) {
+					button.firstElementChild?.replaceWith($('img.studio-start-recent-avatar', { src: project.avatarUrl, alt: '' }));
+				}
 				button.title = project.uri;
 				this.button(row, text('removeRecent'), 'close', 'studio.removeRecentProject', project, false, true, store);
 			}

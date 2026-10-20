@@ -49,7 +49,10 @@
 .studio-start-current { grid-column:1 / -1; }
 .studio-start-current .studio-start-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); align-items:stretch; gap:12px; }
 .studio-start-project-card, .studio-start-loading-card { display:flex; flex-direction:column; box-sizing:border-box; min-width:0; padding:16px; border:1px solid var(--vscode-widget-border,var(--vscode-panel-border)); border-radius:6px; }
-.studio-start-project-heading { display:grid; grid-template-columns:20px minmax(0,1fr); align-items:start; gap:8px; }
+.studio-start-project-heading { display:grid; grid-template-columns:48px minmax(0,1fr); align-items:center; gap:12px; }
+.studio-start-project-avatar { width:48px; height:48px; border-radius:6px; }
+.studio-start-project-avatar-button { width:48px; height:48px; padding:0; border:0; border-radius:6px; background:transparent; }
+.studio-start-recent-avatar { width:24px; height:24px; flex:0 0 24px; border-radius:4px; }
 .studio-start-project-heading > .codicon { line-height:20px; color:var(--vscode-descriptionForeground); }
 .studio-start-project-heading h3 { margin:0; font-size:14px; font-weight:600; line-height:20px; overflow-wrap:anywhere; }
 .studio-start-project-type { margin:8px 0 4px; font-size:12px; line-height:18px; color:var(--vscode-descriptionForeground); }

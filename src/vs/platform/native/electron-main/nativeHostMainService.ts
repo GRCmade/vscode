@@ -36,6 +36,7 @@ import { IThemeMainService } from '../../theme/electron-main/themeMainService.js
 import { defaultWindowState, ICodeWindow } from '../../window/electron-main/window.js';
 import { IColorScheme, IOpenedAuxiliaryWindow, IOpenedMainWindow, IOpenEmptyWindowOptions, IOpenWindowOptions, IPoint, IRectangle, IWindowOpenable } from '../../window/common/window.js';
 import { defaultBrowserWindowOptions, IWindowsMainService, OpenContext } from '../../windows/electron-main/windows.js';
+import { openWithProjectWindowChoice } from '../../windows/electron-main/studioProjectWindow.js';
 import { isWorkspaceIdentifier, toWorkspaceIdentifier } from '../../workspace/common/workspace.js';
 import { IWorkspacesManagementMainService } from '../../workspaces/electron-main/workspacesManagementMainService.js';
 import { VSBuffer } from '../../../base/common/buffer.js';
@@ -287,7 +288,7 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 
 	private async doOpenWindow(windowId: number | undefined, toOpen: IWindowOpenable[], options: IOpenWindowOptions = Object.create(null)): Promise<void> {
 		if (toOpen.length > 0) {
-			const windows = await this.windowsMainService.open({
+			const windows = await openWithProjectWindowChoice({
 				context: OpenContext.API,
 				contextWindowId: windowId,
 				urisToOpen: toOpen,
@@ -305,14 +306,14 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 				remoteAuthority: options.remoteAuthority || undefined,
 				forceProfile: options.forceProfile,
 				forceTempProfile: options.forceTempProfile,
-			});
+			}, this.windowsMainService, (id, dialog) => this.showMessageBox(id, dialog));
 
 			// Hand off a chat session to the opened window so it restores both the
 			// folder and the session (e.g. the Agents window "Open in VS Code" flow).
 			// Only meaningful when exactly one window is opened so the session is
 			// not sent to an ambiguous target.
 			const chatSessionToOpen = options.chatSessionToOpen;
-			if (chatSessionToOpen && windows.length === 1) {
+			if (chatSessionToOpen && windows?.length === 1) {
 				windows[0].sendWhenReady('vscode:openChatSession', CancellationToken.None, URI.revive(chatSessionToOpen).toString());
 			}
 		}
@@ -636,14 +637,14 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 	}
 
 	private async doOpenPicked(openable: IWindowOpenable[], options: INativeOpenDialogOptions, windowId: number | undefined): Promise<void> {
-		await this.windowsMainService.open({
+		await openWithProjectWindowChoice({
 			context: OpenContext.DIALOG,
 			contextWindowId: windowId,
 			cli: this.environmentMainService.args,
 			urisToOpen: openable,
 			forceNewWindow: options.forceNewWindow,
 			/* remoteAuthority will be determined based on openable */
-		});
+		}, this.windowsMainService, (id, dialog) => this.showMessageBox(id, dialog));
 	}
 
 	//#endregion

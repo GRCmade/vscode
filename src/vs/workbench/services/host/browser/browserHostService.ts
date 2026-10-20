@@ -45,6 +45,7 @@ import { VSBuffer } from '../../../../base/common/buffer.js';
 import { MarkdownString } from '../../../../base/common/htmlContent.js';
 import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { showBrowserToast } from './toasts.js';
+import { projectWindowLabels, shouldChooseProjectWindow } from '../../../../platform/window/common/studioProjectWindow.js';
 
 enum HostShutdownReason {
 
@@ -249,6 +250,18 @@ export class BrowserHostService extends Disposable implements IHostService {
 	}
 
 	private async doOpenWindow(toOpen: IWindowOpenable[], options?: IOpenWindowOptions): Promise<void> {
+		if (shouldChooseProjectWindow(toOpen, options)) {
+			const labels = projectWindowLabels();
+			const { result } = await this.dialogService.prompt<boolean>({
+				type: Severity.Info, message: labels.message,
+				buttons: [{ label: labels.newWindow, run: () => true }, { label: labels.currentWindow, run: () => false }],
+				cancelButton: labels.cancel
+			});
+			if (result === undefined || this._store.isDisposed) {
+				return;
+			}
+			options = { ...options, forceNewWindow: result, forceReuseWindow: !result };
+		}
 		const payload = this.preservePayload(false /* not an empty window */, options);
 		const fileOpenables: IFileToOpen[] = [];
 

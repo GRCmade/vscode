@@ -24,6 +24,7 @@ import { ITelemetryService } from '../../telemetry/common/telemetry.js';
 import { IUpdateService, StateType } from '../../update/common/update.js';
 import { INativeRunActionInWindowRequest, INativeRunKeybindingInWindowRequest, IWindowOpenable, hasNativeMenu } from '../../window/common/window.js';
 import { IWindowsCountChangedEvent, IWindowsMainService, OpenContext } from '../../windows/electron-main/windows.js';
+import { openWithProjectWindowChoice } from '../../windows/electron-main/studioProjectWindow.js';
 import { IWorkspacesHistoryMainService } from '../../workspaces/electron-main/workspacesHistoryMainService.js';
 import { Disposable } from '../../../base/common/lifecycle.js';
 
@@ -566,14 +567,19 @@ export class Menubar extends Disposable {
 			label: item.label,
 			click: async (menuItem, win, event) => {
 				const openInNewWindow = this.isOptionClick(event);
-				const success = (await this.windowsMainService.open({
+				const opened = await openWithProjectWindowChoice({
 					context: OpenContext.MENU,
+					contextWindowId: win?.id,
 					cli: this.environmentMainService.args,
 					urisToOpen: [openable],
 					forceNewWindow: openInNewWindow,
 					gotoLineMode: false,
 					remoteAuthority: item.remoteAuthority
-				})).length > 0;
+				}, this.windowsMainService, (id, dialog) => this.nativeHostMainService.showMessageBox(id, dialog));
+				if (!opened) {
+					return; // Cancelling must not remove a valid recent project.
+				}
+				const success = opened.length > 0;
 
 				if (!success) {
 					await this.workspacesHistoryMainService.removeRecentlyOpened([revivedUri]);

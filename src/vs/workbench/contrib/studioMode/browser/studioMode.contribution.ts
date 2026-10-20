@@ -22,6 +22,7 @@ import { WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/
 import { EditorInput } from '../../../common/editor/editorInput.js';
 import { Extensions, IViewContainersRegistry, IViewDescriptorService, IViewsRegistry, ViewContainerLocation } from '../../../common/views.js';
 import { EditorGroupLayout, GroupsArrangement, IEditorGroup, IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
+import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
 import { IViewsService } from '../../../services/views/common/viewsService.js';
 
@@ -42,6 +43,9 @@ interface IdeLayout {
 	sizes: { width: number; height: number }[];
 	containers: (string | undefined)[];
 	auxiliaryMaximized: boolean;
+	panelMaximized: boolean;
+	editorMaximized: boolean;
+	activeGroup: number;
 	sideBarMemoryLocation?: string;
 	editorLayout: EditorGroupLayout;
 	groups: number[];
@@ -90,6 +94,7 @@ export class StudioModeContribution extends Disposable {
 	constructor(
 		@IWorkbenchLayoutService private readonly layout: IWorkbenchLayoutService,
 		@IEditorGroupsService private readonly groups: IEditorGroupsService,
+		@IEditorService private readonly editors: IEditorService,
 		@IViewsService private readonly views: IViewsService,
 		@IViewDescriptorService private readonly descriptors: IViewDescriptorService,
 		@IContextKeyService private readonly contextKeys: IContextKeyService,
@@ -130,25 +135,33 @@ export class StudioModeContribution extends Disposable {
 			studioModeState.setMode(this.steam, true);
 			try {
 				if (next) {
-					const group = this.groups.activeGroup;
+					const group = this.groups.mainPart.activeGroup;
 					if (!this.snapshot && group.activeEditor) { this.ideEditor = { group, editor: group.activeEditor }; }
 					this.captureIde();
 					// Preparing can start a worker. Keep it outside the short layout animation.
-					if (!await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject')) {
+					let prepared: boolean | undefined;
+					try {
+						prepared = await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject');
+					} catch (error) {
+						if (revision !== this.revision || this._store.isDisposed) { return; }
+						throw error;
+					}
+					if (revision !== this.revision || !studioModeState.state.available || this._store.isDisposed) { return; }
+					if (!prepared) {
 						this.requested = false;
 						if (this.snapshot) { await this.restoreIde(); }
 						await this.rememberMode(false);
 						return;
 					}
-					if (revision !== this.revision || !studioModeState.state.available || this._store.isDisposed) { return; }
 				}
 				await this.transition(() => next ? this.enterSteam() : this.restoreIde());
 				await this.rememberMode(next);
 			} catch (error) {
-				this.requested = false;
+				if (this._store.isDisposed) { return; }
+				if (revision === this.revision) { this.requested = false; }
 				await this.restoreIde();
 				await this.rememberMode(false);
-				throw error;
+				if (revision === this.revision) { throw error; }
 			} finally { studioModeState.setMode(this.steam, false); }
 		});
 	}
@@ -170,8 +183,11 @@ export class StudioModeContribution extends Disposable {
 				sizes: sideParts.map(part => this.layout.getSize(part)),
 				containers: [ViewContainerLocation.Sidebar, ViewContainerLocation.Panel, ViewContainerLocation.AuxiliaryBar].map(location => this.views.getVisibleViewContainer(location)?.id),
 				auxiliaryMaximized: this.layout.isAuxiliaryBarMaximized(),
+				panelMaximized: this.layout.isPanelMaximized(),
+				editorMaximized: this.groups.mainPart.hasMaximizedGroup(),
+				activeGroup: this.groups.mainPart.activeGroup.id,
 				sideBarMemoryLocation: this.configuration.inspect<string>('workbench.sideBar.location').memoryValue,
-				editorLayout: this.groups.getLayout(), groups: this.groups.groups.map(group => group.id),
+				editorLayout: this.groups.mainPart.getLayout(), groups: this.groups.mainPart.groups.map(group => group.id),
 			};
 			this.saveSnapshot();
 		}
@@ -186,11 +202,11 @@ export class StudioModeContribution extends Disposable {
 		this.layout.mainContainer.classList.add('studio-steam-mode');
 		this.layout.setAuxiliaryBarMaximized(false);
 		this.editorOptions.value = this.groups.enforcePartOptions({ showTabs: 'none' });
-		const containers = new Set(Object.values(toolViews).map(id => this.descriptors.getViewContainerByViewId(id)));
+		const containers = new Set([toolsContainer, ...Object.values(toolViews).map(id => this.descriptors.getViewContainerByViewId(id))]);
 		for (const container of containers) {
 			if (container) { this.toolLocations.add(this.descriptors.overrideViewContainerLocation(container, ViewContainerLocation.AuxiliaryBar)); }
 		}
-		this.groups.arrangeGroups(GroupsArrangement.MAXIMIZE);
+		this.groups.mainPart.arrangeGroups(GroupsArrangement.MAXIMIZE);
 		for (const part of [Parts.ACTIVITYBAR_PART, Parts.SIDEBAR_PART, Parts.PANEL_PART]) { this.layout.setPartHidden(true, part); }
 		this.layout.setPartHidden(false, Parts.EDITOR_PART);
 		await this.openTools();
@@ -227,11 +243,17 @@ export class StudioModeContribution extends Disposable {
 			this.layout.setPartHidden(!snapshot.visible[index], part);
 			if (snapshot.visible[index]) { this.layout.setSize(part, snapshot.sizes[index]); }
 		}
-		if (snapshot.groups.length === this.groups.groups.length && snapshot.groups.every(id => this.groups.getGroup(id))) {
-			this.groups.applyLayout(snapshot.editorLayout);
+		const mainPart = this.groups.mainPart;
+		if (snapshot.groups.length === mainPart.groups.length && snapshot.groups.every(id => mainPart.getGroup(id))) {
+			mainPart.applyLayout(snapshot.editorLayout);
+			if (snapshot.editorMaximized) {
+				mainPart.arrangeGroups(GroupsArrangement.MAXIMIZE, mainPart.getGroup(snapshot.activeGroup) ?? mainPart.activeGroup);
+			}
 		}
 		const previous = this.ideEditor;
-		if (previous && this.groups.getGroup(previous.group.id)?.contains(previous.editor)) { await previous.group.openEditor(previous.editor); }
+		if (previous && mainPart.getGroup(previous.group.id)?.contains(previous.editor)) { await this.editors.openEditor(previous.editor, undefined, previous.group); }
+		// Opening an editor can unmaximize the panel, so restore this state last.
+		if (snapshot.visible[2] && this.layout.isPanelMaximized() !== !!snapshot.panelMaximized) { this.layout.toggleMaximizedPanel(); }
 		this.layout.setAuxiliaryBarMaximized(snapshot.auxiliaryMaximized);
 		this.ideEditor = undefined;
 		this.snapshot = undefined;
@@ -246,8 +268,11 @@ export class StudioModeContribution extends Disposable {
 			document.documentElement.classList.add('studio-mode-transition');
 			try {
 				const transition = document.startViewTransition(change);
+				// A background tab or skipped animation can reject ready even when the layout succeeds.
+				void transition.ready.catch(() => undefined);
+				const finished = transition.finished.catch(() => undefined);
 				await transition.updateCallbackDone;
-				await transition.finished.catch(() => undefined);
+				await finished;
 			} finally { document.documentElement.classList.remove('studio-mode-transition'); }
 		} else {
 			await change();

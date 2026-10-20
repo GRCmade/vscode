@@ -62,7 +62,7 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
 	private readonly viewContainersRegistry: IViewContainersRegistry;
 
 	private viewContainersCustomLocations: Map<string, ViewContainerLocation>;
-	private readonly viewContainerLocationOverrides = new Map<string, ViewContainerLocation>();
+	private readonly viewContainerLocationOverrides = new Map<string, { location: ViewContainerLocation; requestedIndex: number | undefined }>();
 	private viewDescriptorsCustomLocations: Map<string, string>;
 	private viewContainerBadgeEnablementStates: Map<string, boolean>;
 
@@ -305,26 +305,28 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
 	}
 
 	getViewContainerLocation(viewContainer: ViewContainer): ViewContainerLocation {
-		return this.viewContainerLocationOverrides.get(viewContainer.id) ?? this.viewContainersCustomLocations.get(viewContainer.id) ?? this.getDefaultViewContainerLocation(viewContainer);
+		return this.viewContainerLocationOverrides.get(viewContainer.id)?.location ?? this.viewContainersCustomLocations.get(viewContainer.id) ?? this.getDefaultViewContainerLocation(viewContainer);
 	}
 
 	overrideViewContainerLocation(viewContainer: ViewContainer, location: ViewContainerLocation): IDisposable {
 		const from = this.getViewContainerLocation(viewContainer);
-		if (from === location || !this.canMoveViews()) { return Disposable.None; }
-		const previousIndex = viewContainer.requestedIndex;
+		if (!this.canMoveViews()) { return Disposable.None; }
+		const override = { location, requestedIndex: viewContainer.requestedIndex };
 		const previousOverride = this.viewContainerLocationOverrides.get(viewContainer.id);
 		const notify = (from: ViewContainerLocation, to: ViewContainerLocation) => {
 			this.getOrCreateDefaultViewContainerLocationContextKey(viewContainer).set(to === this.getDefaultViewContainerLocation(viewContainer));
 			this._onDidChangeContainerLocation.fire({ viewContainer, from, to });
 			this._onDidChangeLocation.fire({ views: this.getViewsByContainer(viewContainer), from, to });
 		};
-		this.viewContainerLocationOverrides.set(viewContainer.id, location);
-		viewContainer.requestedIndex = undefined;
-		notify(from, location);
+		this.viewContainerLocationOverrides.set(viewContainer.id, override);
+		if (from !== location) {
+			viewContainer.requestedIndex = undefined;
+			notify(from, location);
+		}
 		return toDisposable(() => {
 			if (previousOverride === undefined) { this.viewContainerLocationOverrides.delete(viewContainer.id); }
 			else { this.viewContainerLocationOverrides.set(viewContainer.id, previousOverride); }
-			viewContainer.requestedIndex = previousIndex;
+			viewContainer.requestedIndex = override.requestedIndex;
 			const restored = this.getViewContainerLocation(viewContainer);
 			if (restored !== location) { notify(location, restored); }
 		});
@@ -527,13 +529,19 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
 	private moveViewContainerToLocationWithoutSaving(viewContainer: ViewContainer, location: ViewContainerLocation, requestedIndex?: number): void {
 		const from = this.getViewContainerLocation(viewContainer);
 		const to = location;
-		if (from !== to) {
+		const override = this.viewContainerLocationOverrides.get(viewContainer.id);
+		if (from !== to || override) {
 			const isGeneratedViewContainer = this.isGeneratedContainerId(viewContainer.id);
 			const isDefaultViewContainerLocation = to === this.getDefaultViewContainerLocation(viewContainer);
 			if (isGeneratedViewContainer || !isDefaultViewContainerLocation) {
 				this.viewContainersCustomLocations.set(viewContainer.id, to);
 			} else {
 				this.viewContainersCustomLocations.delete(viewContainer.id);
+			}
+			// Keep temporary placement active; apply the user's preference when it ends.
+			if (override) {
+				override.requestedIndex = requestedIndex;
+				return;
 			}
 			this.getOrCreateDefaultViewContainerLocationContextKey(viewContainer).set(isGeneratedViewContainer || isDefaultViewContainerLocation);
 

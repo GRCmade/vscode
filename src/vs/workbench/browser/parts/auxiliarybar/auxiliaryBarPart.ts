@@ -103,7 +103,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 			Parts.AUXILIARYBAR_PART,
 			{
 				hasTitle: true,
-				titleHeight: () => studioModeState.steam && studioSteamWorkspaceState.instances.length ? 70 : undefined,
+				titleHeight: () => studioModeState.steam ? (studioSteamWorkspaceState.instances.length ? 80 : 40) : undefined,
 				trailingSeparator: true,
 				borderWidth: () => (this.getColor(SIDE_BAR_BORDER) || this.getColor(contrastBorder)) ? 1 : 0,
 			},

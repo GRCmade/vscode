@@ -12,7 +12,7 @@ import { promiseWithResolvers, ThrottledDelayer } from '../../../../base/common/
 import { CancellationTokenSource } from '../../../../base/common/cancellation.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Lazy } from '../../../../base/common/lazy.js';
-import { Disposable, DisposableStore, IDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
+import { Disposable, DisposableStore, IDisposable, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { COI } from '../../../../base/common/network.js';
 import { observableValue } from '../../../../base/common/observable.js';
 import { listenStream } from '../../../../base/common/stream.js';
@@ -37,6 +37,7 @@ import { loadLocalResource, WebviewResourceResponse } from './resourceLoading.js
 import { WebviewThemeDataProvider } from './themeing.js';
 import { areWebviewContentOptionsEqual, IWebviewElement, WebviewContentOptions, WebviewExtensionDescription, WebviewInitInfo, WebviewMessageReceivedEvent, WebviewOptions } from './webview.js';
 import { WebviewFindDelegate, WebviewFindWidget } from './webviewFindWidget.js';
+import { StudioWindowDragRegions } from './studioWindowDrag.js';
 import { FromWebviewMessage, KeyEvent, ToWebviewMessage, WebViewDragEvent } from './webviewMessages.js';
 
 interface WebviewContent {
@@ -139,6 +140,7 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 	private readonly _portMappingManager: WebviewPortMappingManager;
 
 	private readonly _resourceLoadingDisposables = this._register(new DisposableStore());
+	private readonly _studioWindowDrag = this._register(new MutableDisposable<StudioWindowDragRegions>());
 
 	private _contextKeyService: IContextKeyService | undefined;
 
@@ -211,6 +213,12 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 		}));
 
 		this._register(this.on('onmessage', ({ message, transfer }) => {
+			if (message?.type === 'studio-window-drag-regions' && this.providedViewType === 'studio.project'
+				&& this.extension?.id.value === 'studio.studio-workstation' && this.element?.parentElement) {
+				const drag = this._studioWindowDrag.value ?? (this._studioWindowDrag.value = new StudioWindowDragRegions(this.element));
+				drag.update(message);
+				return;
+			}
 			this._onMessage.fire({ message, transfer });
 		}));
 
@@ -492,6 +500,7 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 		this._registerMessageHandler(targetWindow);
 
 		if (this._webviewFindWidget) {
+			this._webviewFindWidget.getDomNode().style.setProperty('-webkit-app-region', 'no-drag');
 			element.appendChild(this._webviewFindWidget.getDomNode());
 		}
 
@@ -677,6 +686,7 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 	}
 
 	private doUpdateContent(newContent: WebviewContent) {
+		this._studioWindowDrag.clear();
 		this._logService.debug(`Webview(${this.id}): will update content`);
 
 		this._content = newContent;

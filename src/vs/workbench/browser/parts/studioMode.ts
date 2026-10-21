@@ -89,9 +89,6 @@ export class StudioModeSwitcher extends Disposable {
 		const steam = append(element, $('button.studio-mode-steam', { type: 'button' })) as HTMLButtonElement;
 		const steamIcon = append(steam, $('span.codicon.codicon-rocket', { 'aria-hidden': 'true' }));
 		append(steam, $('span', undefined, 'Steam'));
-		const tools = append(right, $('button.studio-steam-tools-action', { type: 'button' })) as HTMLButtonElement;
-		append(tools, $('span.codicon.codicon-tools', { 'aria-hidden': 'true' }));
-		const toolsLabel = append(tools, $('span'));
 		const toggle = append(right, $('button.studio-steam-toggle-tools', { type: 'button', 'aria-controls': Parts.AUXILIARYBAR_PART })) as HTMLButtonElement;
 		const toggleIcon = append(toggle, $('span.codicon', { 'aria-hidden': 'true' }));
 		const toggleHover = this._register(hoverService.setupManagedHover(getDefaultHoverDelegate('mouse'), toggle, ''));
@@ -125,7 +122,7 @@ export class StudioModeSwitcher extends Disposable {
 			const modeParent = active ? dock : left;
 			const toolsParent = active ? toolsDock : right;
 			if (element.parentElement !== modeParent) { modeParent.append(element); }
-			if (tools.parentElement !== toolsParent) { toolsParent.append(tools, toggle); }
+			if (toggle.parentElement !== toolsParent) { toolsParent.append(toggle); }
 			const toolsVisible = layout.isVisible(Parts.AUXILIARYBAR_PART);
 			const title = active && toolsVisible ? layout.getContainer(getWindow(dock), Parts.AUXILIARYBAR_PART)?.querySelector(':scope > .title') : undefined;
 			const dockParent = title ?? layout.mainContainer;
@@ -141,9 +138,6 @@ export class StudioModeSwitcher extends Disposable {
 			steamIcon.className = busy && targetSteam ? 'codicon codicon-loading codicon-modifier-spin' : 'codicon codicon-rocket';
 			ide.disabled = busy && !targetSteam;
 			steam.disabled = !state.available || busy && targetSteam;
-			tools.hidden = !active;
-			tools.disabled = busy;
-			tools.title = toolsLabel.textContent = state.labels.tools ?? 'Open Tools';
 			const visible = layout.isVisible(Parts.AUXILIARYBAR_PART);
 			toggle.hidden = !active;
 			toggle.disabled = busy;
@@ -154,7 +148,7 @@ export class StudioModeSwitcher extends Disposable {
 			toggleIcon.className = `codicon codicon-layout-sidebar-right${visible ? '' : '-off'}`;
 			scheduleChrome();
 		};
-		for (const [button, command] of [[ide, 'studio.internalEnterIdeMode'], [steam, 'studio.internalEnterSteamMode'], [tools, 'studio.internalOpenSteamTools'], [toggle, 'workbench.action.toggleAuxiliaryBar']] as const) {
+		for (const [button, command] of [[ide, 'studio.internalEnterIdeMode'], [steam, 'studio.internalEnterSteamMode'], [toggle, 'workbench.action.toggleAuxiliaryBar']] as const) {
 			this._register(addDisposableListener(button, 'click', () => {
 				void this.commands.executeCommand(command).catch(error => this.notifications.error(error));
 			}));
@@ -223,11 +217,11 @@ export class StudioSteamTabs extends Disposable {
 	) {
 		super();
 		this.element = append(parent, $('.studio-steam-tabs'));
-		this.list = append(this.element, $('.studio-steam-tab-list', { role: 'tablist' }));
 		this.add = append(this.element, $('button.studio-steam-add-tab.codicon.codicon-add', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
+		this.list = append(this.element, $('.studio-steam-tab-list', { role: 'tablist' }));
 		this.instances = append(parent, $('.studio-steam-instances'));
-		this.instanceList = append(this.instances, $('.studio-steam-instance-list', { role: 'tablist' }));
 		this.newInstance = append(this.instances, $('button.studio-steam-new-instance.codicon.codicon-add', { type: 'button' })) as HTMLButtonElement;
+		this.instanceList = append(this.instances, $('.studio-steam-instance-list', { role: 'tablist' }));
 		this._register(addDisposableListener(this.newInstance, 'click', () => { void this.run('studio.internalNewSteamInstance', studioSteamWorkspaceState.tool); }));
 		this.instanceActions = append(this.instances, $('button.studio-steam-instance-actions.codicon.codicon-chevron-down', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
 		this._register(addDisposableListener(this.instanceActions, 'click', () => this.contextMenu.showContextMenu({
@@ -286,7 +280,6 @@ export class StudioSteamTabs extends Disposable {
 		const labels = studioModeState.state.labels;
 		const selectCommand = instances ? 'studio.internalSelectSteamInstance' : 'studio.internalSelectSteamTab';
 		const closeCommand = instances ? 'studio.internalCloseSteamInstance' : 'studio.internalCloseSteamTab';
-		if (!instances && !tabs.length) { append(list, $('span.studio-steam-empty-tabs', undefined, labels.tools ?? 'Open Tools')); }
 		for (const [index, tab] of tabs.entries()) {
 			const item = append(list, $(instances ? '.studio-steam-instance' : '.studio-steam-tab', { 'data-tab': tab.id, 'data-icon': tab.icon }));
 			item.classList.toggle('active', tab.id === active); item.classList.toggle('dirty', !!tab.dirty);

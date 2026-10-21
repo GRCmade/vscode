@@ -24,7 +24,6 @@
 }
 
 .monaco-workbench .studio-mode-switcher button,
-.monaco-workbench .studio-steam-tools-action,
 .monaco-workbench .studio-steam-toggle-tools {
 	position: relative;
 	z-index: 2500;
@@ -63,16 +62,13 @@
 }
 
 .monaco-workbench .studio-mode-switcher button:focus-visible,
-.monaco-workbench .studio-steam-tools-action:focus-visible,
 .monaco-workbench .studio-steam-toggle-tools:focus-visible,
 .monaco-workbench .studio-steam-tool:focus-visible {
 	outline: 1px solid var(--vscode-focusBorder);
 	outline-offset: 2px;
 }
 
-.monaco-workbench .studio-steam-tools-action[hidden],
 .monaco-workbench .studio-steam-toggle-tools[hidden] { display: none; }
-.monaco-workbench .studio-steam-tools-action:hover,
 .monaco-workbench .studio-steam-toggle-tools:hover { background: var(--vscode-toolbar-hoverBackground); }
 .monaco-workbench .studio-steam-toggle-tools {
 	order: 1;
@@ -88,7 +84,10 @@
 .monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .title-label,
 .monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .global-actions { display: none; }
 .monaco-workbench.studio-steam-mode .part.auxiliarybar.pane-composite-part > .title.composite > .title-actions { order: 2; flex: 0 0 auto; }
-.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title { padding-left: var(--vscode-spacing-size60); }
+.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title {
+	padding-left: var(--vscode-spacing-size60);
+	-webkit-app-region: drag;
+}
 .monaco-workbench.studio-steam-mode .studio-steam-tabs {
 	display: flex;
 	align-items: center;
@@ -96,18 +95,20 @@
 	min-width: 0;
 	height: 100%;
 	gap: var(--vscode-spacing-size80);
+	padding-right: var(--vscode-spacing-size240);
 	user-select: text;
 	-webkit-user-select: text;
 }
 .monaco-workbench .studio-steam-tab-list {
 	display: flex;
 	align-items: center;
-	flex: 1;
+	flex: 0 1 auto;
 	min-width: 0;
 	height: 100%;
 	gap: var(--vscode-spacing-size80);
 	overflow-x: auto;
 	scrollbar-width: none;
+	-webkit-app-region: no-drag;
 }
 .monaco-workbench .studio-steam-tab-list:hover { scrollbar-width: thin; }
 .monaco-workbench .studio-steam-tab {
@@ -133,6 +134,7 @@
 }
 .monaco-workbench .studio-steam-tab:hover { background: var(--vscode-tab-hoverBackground); }
 .monaco-workbench .studio-steam-tabs button {
+	-webkit-app-region: no-drag;
 	border: 0;
 	border-radius: var(--vscode-cornerRadius-small);
 	background: transparent;
@@ -161,7 +163,6 @@
 .monaco-workbench .studio-steam-tabs .studio-steam-add-tab { width: var(--vscode-spacing-size280); height: var(--vscode-spacing-size280); flex-shrink: 0; padding: var(--vscode-spacing-size60); background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background, var(--vscode-editor-background))); }
 .monaco-workbench .studio-steam-tabs :is(.studio-steam-add-tab, .studio-steam-tab-close):hover { background: var(--vscode-toolbar-hoverBackground); }
 .monaco-workbench .studio-steam-tabs button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
-.monaco-workbench .studio-steam-empty-tabs { padding: 0 var(--vscode-spacing-size120); align-self: center; color: var(--vscode-descriptionForeground); }
 .monaco-workbench.studio-steam-mode .part.auxiliarybar { position: relative; }
 /* This part shares the auxiliary card; it must not inherit main-editor floating margins. */
 .monaco-workbench .part.auxiliarybar > .part.editor.studio-steam-editors {
@@ -273,7 +274,6 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
 
 @media (prefers-reduced-motion: reduce) {
 	.monaco-workbench .studio-mode-switcher button,
-	.monaco-workbench .studio-steam-tools-action,
 	.monaco-workbench .studio-steam-toggle-tools,
 	.monaco-workbench .studio-steam-tab,
 	.monaco-workbench .studio-steam-tool { transition: none; }
@@ -303,7 +303,6 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
 .monaco-workbench .studio-steam-window-chrome .studio-mode-switcher { margin-top: 0; margin-bottom: 0; }
 .monaco-workbench .part.auxiliarybar > .title > .studio-steam-tools-chrome { position: static; order: 3; flex-shrink: 0; }
 .monaco-workbench .studio-steam-tools-chrome .studio-steam-toggle-tools { margin-right: var(--vscode-spacing-size80); }
-.monaco-workbench .studio-steam-tools-chrome .studio-steam-tools-action { font-size: var(--vscode-fontSize-label2); }
 .monaco-workbench .studio-steam-tools-chrome > .window-controls-container {
 	display: flex;
 	order: 2;
@@ -336,6 +335,9 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
 	display: flex;
 	align-items: center;
 	height: 35px;
+	box-sizing: border-box;
+	gap: var(--vscode-spacing-size40);
+	padding: 0 var(--vscode-spacing-size240) 0 var(--vscode-spacing-size60);
 	background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-sideBar-background));
 	user-select: text;
 	-webkit-user-select: text;
@@ -344,12 +346,14 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
 .monaco-workbench .studio-steam-instances button[hidden] { display: none; }
 .monaco-workbench .studio-steam-instance-list {
 	display: flex;
+	flex: 0 1 auto;
 	align-items: stretch;
 	min-width: 0;
 	max-width: calc(100% - 72px);
 	height: 100%;
 	overflow-x: auto;
 	scrollbar-width: none;
+	-webkit-app-region: no-drag;
 }
 .monaco-workbench .studio-steam-instance-list:hover { scrollbar-width: thin; }
 .monaco-workbench .studio-steam-instance {
@@ -366,6 +370,7 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
 .monaco-workbench .studio-steam-instance.active { color: var(--vscode-tab-activeForeground); background: var(--vscode-tab-activeBackground); }
 .monaco-workbench .studio-steam-instance:hover { background: var(--vscode-tab-hoverBackground); }
 .monaco-workbench .studio-steam-instances button {
+	-webkit-app-region: no-drag;
 	border: 0;
 	background: transparent;
 	color: inherit;
@@ -381,3 +386,17 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
 .monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions) { flex-shrink: 0; width: var(--vscode-spacing-size280); height: var(--vscode-spacing-size280); border-radius: var(--vscode-cornerRadius-small); }
 .monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions, .studio-steam-tab-close):hover { background: var(--vscode-toolbar-hoverBackground); }
 .monaco-workbench .studio-steam-instances button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+
+/* Child frames cannot declare native window drag regions. Mirror only their empty header space. */
+.monaco-workbench .studio-project-drag-regions {
+	display: none;
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+.monaco-workbench.studio-steam-mode .studio-project-drag-regions { display: block; }
+.monaco-workbench .studio-project-drag-region {
+	position: absolute;
+	-webkit-app-region: drag;
+}
+.monaco-workbench:not(.web) .studio-project-drag-region { pointer-events: auto; }

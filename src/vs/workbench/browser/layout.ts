@@ -12,7 +12,7 @@ import { isWindows, isLinux, isMacintosh, isWeb, isIOS } from '../../base/common
 import { EditorInputCapabilities, GroupIdentifier, isResourceEditorInput, IUntypedEditorInput, pathsToEditors } from '../common/editor.js';
 import { SidebarPart } from './parts/sidebar/sidebarPart.js';
 import { PanelPart } from './parts/panel/panelPart.js';
-import { Position, Parts, PartOpensMaximizedOptions, IWorkbenchLayoutService, positionFromString, positionToString, partOpensMaximizedFromString, PanelAlignment, ActivityBarPosition, LayoutSettings, MULTI_WINDOW_PARTS, SINGLE_WINDOW_PARTS, ZenModeSettings, EditorTabsMode, EditorActionsLocation, shouldShowCustomTitleBar, isHorizontal, isMultiWindowPart, IPartVisibilityChangeEvent, isFloatingTopEdgeExposed, ModernUIDensity } from '../services/layout/browser/layoutService.js';
+import { Position, Parts, PartOpensMaximizedOptions, IWorkbenchLayoutService, IEmbeddedSideBar, positionFromString, positionToString, partOpensMaximizedFromString, PanelAlignment, ActivityBarPosition, LayoutSettings, MULTI_WINDOW_PARTS, SINGLE_WINDOW_PARTS, ZenModeSettings, EditorTabsMode, EditorActionsLocation, shouldShowCustomTitleBar, isHorizontal, isMultiWindowPart, IPartVisibilityChangeEvent, isFloatingTopEdgeExposed, ModernUIDensity } from '../services/layout/browser/layoutService.js';
 import { isTemporaryWorkspace, IWorkspaceContextService, WorkbenchState } from '../../platform/workspace/common/workspace.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../platform/storage/common/storage.js';
 import { IConfigurationChangeEvent, IConfigurationService, isConfigured } from '../../platform/configuration/common/configuration.js';
@@ -27,6 +27,7 @@ import { IEditorService } from '../services/editor/common/editorService.js';
 import { EditorGroupLayout, GroupActivationReason, GroupOrientation, GroupsOrder, IEditorGroupsService } from '../services/editor/common/editorGroupsService.js';
 import { SerializableGrid, ISerializableView, ISerializedGrid, Orientation, ISerializedNode, ISerializedLeafNode, Direction, IViewSize, Sizing } from '../../base/browser/ui/grid/grid.js';
 import { Part } from './part.js';
+import { PartHost } from './partHost.js';
 import { IStatusbarService } from '../services/statusbar/browser/statusbar.js';
 import { IFileService } from '../../platform/files/common/files.js';
 import { isCodeEditor } from '../../editor/browser/editorBrowser.js';
@@ -287,7 +288,8 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 	private titleBarPartView!: ISerializableView;
 	private bannerPartView!: ISerializableView;
 	private activityBarPartView!: ISerializableView;
-	private sideBarPartView!: ISerializableView;
+	private sideBarPartView!: PartHost;
+	private embeddedSideBar: { visible: boolean; requestVisibility: (visible: boolean) => void } | undefined;
 	private panelPartView!: ISerializableView;
 	private auxiliaryBarPartView!: ISerializableView;
 	private editorPartView!: ISerializableView;
@@ -1272,6 +1274,10 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 		return part;
 	}
 
+	private getPartView(key: Parts): ISerializableView {
+		return key === Parts.SIDEBAR_PART ? this.sideBarPartView : this.getPart(key);
+	}
+
 	registerNotifications(delegate: { onDidChangeNotificationsVisibility: Event<boolean> }): void {
 		this._register(delegate.onDidChangeNotificationsVisibility(visible => this._onDidChangeNotificationsVisibility.fire(visible)));
 	}
@@ -1375,7 +1381,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 					this.workbenchGrid.isViewVisible(this.titleBarPartView) :
 					this.shouldShowTitleBar();
 			case Parts.SIDEBAR_PART:
-				return !this.stateModel.getRuntimeValue(LayoutStateKeys.SIDEBAR_HIDDEN);
+				return this.embeddedSideBar?.visible ?? !this.stateModel.getRuntimeValue(LayoutStateKeys.SIDEBAR_HIDDEN);
 			case Parts.PANEL_PART:
 				return !this.stateModel.getRuntimeValue(LayoutStateKeys.PANEL_HIDDEN);
 			case Parts.AUXILIARYBAR_PART:
@@ -1656,7 +1662,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 		// View references for all parts
 		this.titleBarPartView = titleBar;
 		this.bannerPartView = bannerPart;
-		this.sideBarPartView = sideBar;
+		this.sideBarPartView = this._register(new PartHost(sideBar));
 		this.activityBarPartView = activityBar;
 		this.editorPartView = editorPart;
 		this.panelPartView = panelPart;
@@ -1821,11 +1827,11 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 	}
 
 	getSize(part: Parts): IViewSize {
-		return this.workbenchGrid.getViewSize(this.getPart(part));
+		return this.workbenchGrid.getViewSize(this.getPartView(part));
 	}
 
 	setSize(part: Parts, size: IViewSize): void {
-		this.workbenchGrid.resizeView(this.getPart(part), size);
+		this.workbenchGrid.resizeView(this.getPartView(part), size);
 	}
 
 	resizePart(part: Parts, sizeChangeWidth: number, sizeChangeHeight: number): void {
@@ -1948,6 +1954,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 	}
 
 	private setSideBarHidden(hidden: boolean): void {
+		if (this.embeddedSideBar) { this.embeddedSideBar.requestVisibility(!hidden); return; }
 		if (!hidden && this.setAuxiliaryBarMaximized(false) && this.isVisible(Parts.SIDEBAR_PART)) {
 			return; // return: leaving maximised auxiliary bar made this part visible
 		}
@@ -2361,6 +2368,39 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 		}
 	}
 
+	createEmbeddedSideBar(container: HTMLElement, onDidRequestVisibility: (visible: boolean) => void): IEmbeddedSideBar {
+		if (this.embeddedSideBar) { throw new Error('The primary sidebar already has an embedded host.'); }
+		this.setSideBarHidden(true);
+		const sidebar = this.getPart(Parts.SIDEBAR_PART) as SidebarPart;
+		const host: NonNullable<Layout['embeddedSideBar']> = this.embeddedSideBar = { visible: false, requestVisibility: onDidRequestVisibility };
+		const mount = this.sideBarPartView.mount(container);
+		sidebar.setEmbedded(true);
+		sidebar.element.hidden = true;
+		const setVisible = (visible: boolean) => {
+			if (this.embeddedSideBar !== host || host.visible === visible) { return; }
+			host.visible = visible;
+			sidebar.element.hidden = !visible;
+			if (!visible) { this.paneCompositeService.hideActivePaneComposite(ViewContainerLocation.Sidebar); }
+			else if (!this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.Sidebar)) {
+				const id = this.paneCompositeService.getLastActivePaneCompositeId(ViewContainerLocation.Sidebar);
+				if (id) { void this.paneCompositeService.openPaneComposite(id, ViewContainerLocation.Sidebar, false); }
+			}
+			this._onDidChangePartVisibility.fire({ partId: Parts.SIDEBAR_PART, visible });
+		};
+		return {
+			setVisible,
+			layout: (width, height) => { if (host.visible) { sidebar.layout(width, height, 0, 0); } },
+			dispose: () => {
+				if (this.embeddedSideBar !== host) { return; }
+				setVisible(false);
+				this.embeddedSideBar = undefined;
+				sidebar.element.hidden = false;
+				sidebar.setEmbedded(false);
+				mount.dispose();
+			},
+		};
+	}
+
 	toggleSecondarySideBar(): void {
 		const visible = !this.isSecondarySideBarVisible();
 		this.setPartHidden(!visible, Parts.AUXILIARYBAR_PART);
@@ -2542,7 +2582,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 			return undefined;
 		}
 
-		const neighborViews = this.workbenchGrid.getNeighborViews(this.getPart(part), direction, false);
+		const neighborViews = this.workbenchGrid.getNeighborViews(this.getPartView(part), direction, false);
 
 		if (!neighborViews) {
 			return undefined;
@@ -2551,7 +2591,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 		for (const neighborView of neighborViews) {
 			const neighborPart =
 				[Parts.ACTIVITYBAR_PART, Parts.EDITOR_PART, Parts.PANEL_PART, Parts.AUXILIARYBAR_PART, Parts.SIDEBAR_PART, Parts.STATUSBAR_PART, Parts.TITLEBAR_PART]
-					.find(partId => this.getPart(partId) === neighborView && this.isVisible(partId, mainWindow));
+					.find(partId => this.getPartView(partId) === neighborView && this.isVisible(partId, mainWindow));
 
 			if (neighborPart !== undefined) {
 				return neighborPart;

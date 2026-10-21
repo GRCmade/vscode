@@ -22,6 +22,7 @@ export const studioWindowChrome = { active: false, projectUri: undefined as stri
 CommandsRegistry.registerCommand('studio.internalGetWindowChrome', () => ({ ...studioWindowChrome }));
 
 export const studioSteamToolDefinitions = [
+	{ id: 'editor', icon: 'code', editor: true },
 	{ id: 'kv', icon: 'database', view: 'studio.kv' },
 	{ id: 'knowledge', icon: 'book', view: 'studio.knowledge' },
 	{ id: 'info', icon: 'package', view: 'studio.projectInfo' },
@@ -239,7 +240,7 @@ export class StudioSteamTabs extends Disposable {
 			getActions: () => studioSteamToolDefinitions.map(tool => toAction({
 				id: tool.id, label: studioModeState.state.labels[tool.id] ?? tool.id,
 				class: `codicon codicon-${tool.icon}`,
-				checked: 'view' in tool ? studioSteamWorkspaceState.tabs.some(tab => tab.id === tool.id) : undefined,
+				checked: !('command' in tool) ? studioSteamWorkspaceState.tabs.some(tab => tab.id === tool.id) : undefined,
 				run: () => this.run('studio.internalOpenSteamTool', tool.id),
 			})),
 		})));
@@ -263,7 +264,7 @@ export class StudioSteamTabs extends Disposable {
 		this.list.setAttribute('aria-label', labels.workspace ?? 'Tool Workspace');
 		this.add.title = labels.addTool ?? 'Open Tool'; this.add.setAttribute('aria-label', this.add.title);
 		this.renderTabs(this.list, tabs, active, false);
-		this.instances.hidden = !studioSteamWorkspaceState.instances.length;
+		this.instances.hidden = !studioSteamWorkspaceState.instances.length && studioSteamWorkspaceState.tool !== 'editor';
 		this.instances.parentElement?.classList.toggle('studio-steam-has-instances', !this.instances.hidden);
 		this.instanceList.setAttribute('aria-label', labels.instances ?? 'Tool Instances');
 		this.newInstance.title = (labels.newInstance ?? 'New {0}').replace('{0}', labels[studioSteamWorkspaceState.tool ?? ''] ?? '');

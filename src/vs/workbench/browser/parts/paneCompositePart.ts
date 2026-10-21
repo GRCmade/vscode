@@ -107,6 +107,7 @@ export interface IPaneCompositePart extends IView {
 }
 
 export abstract class AbstractPaneCompositePart extends CompositePart<PaneComposite> implements IPaneCompositePart {
+	protected embedded = false;
 
 	private static readonly MIN_COMPOSITE_BAR_WIDTH = 50;
 
@@ -678,7 +679,7 @@ export abstract class AbstractPaneCompositePart extends CompositePart<PaneCompos
 	 * margin, so its width inset is larger on that side.
 	 */
 	private getFloatingInset(): { width: number; height: number; verticalMargin: number } {
-		if (!this.layoutService.isFloatingPanelsEnabled()) {
+		if (this.embedded || !this.layoutService.isFloatingPanelsEnabled()) {
 			return { width: 0, height: 0, verticalMargin: 0 };
 		}
 

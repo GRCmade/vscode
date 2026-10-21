@@ -3,7 +3,9 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $, append, clearNode, getWindow } from '../../../../base/browser/dom.js';
+import { $, addDisposableListener, append, clearNode, getWindow } from '../../../../base/browser/dom.js';
+import { SplitView, Orientation } from '../../../../base/browser/ui/splitview/splitview.js';
+import { Event } from '../../../../base/common/event.js';
 import { RunOnceScheduler } from '../../../../base/common/async.js';
 import { onUnexpectedError } from '../../../../base/common/errors.js';
 import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
@@ -11,23 +13,24 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../../platfo
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { TerminalLocation } from '../../../../platform/terminal/common/terminal.js';
 import { studioModeState, studioSteamToolDefinitions, studioSteamWorkspaceState, StudioSteamTab } from '../../../browser/parts/studioMode.js';
-import { EditorsOrder, IUntypedEditorInput } from '../../../common/editor.js';
+import { EditorResourceAccessor, EditorsOrder, IUntypedEditorInput, SideBySideEditor } from '../../../common/editor.js';
 import { EditorInput } from '../../../common/editor/editorInput.js';
 import { IViewDescriptorService } from '../../../common/views.js';
 import { GroupsOrder, IEditorGroup, IEditorGroupsService, IEmbeddedEditorPart } from '../../../services/editor/common/editorGroupsService.js';
 import { IEditorGroupView } from '../../../browser/parts/editor/editor.js';
 import { registerEditorOpenTarget } from '../../../services/editor/common/editorOpenTarget.js';
-import { PreferredGroup } from '../../../services/editor/common/editorService.js';
-import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
+import { IEditorService, PreferredGroup } from '../../../services/editor/common/editorService.js';
+import { IEmbeddedSideBar, IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
 import { IViewsService } from '../../../services/views/common/viewsService.js';
 import { WebviewInput } from '../../webviewPanel/browser/webviewEditorInput.js';
+import { CustomEditorInput } from '../../customEditor/browser/customEditorInput.js';
 import { ITerminalGroupService, ITerminalService } from '../../terminal/browser/terminal.js';
 
 const TABS_KEY = 'studio.steamWorkspaceTabs';
 const HOME_VIEW = 'studio.steamTools';
-interface SavedTabs { tools: string[]; active?: string }
-type ViewTool = Extract<typeof studioSteamToolDefinitions[number], { view: string }>;
-interface WorkspaceTab { id: string; tool?: ViewTool; editor?: EditorInput; group?: IEditorGroup }
+interface SavedTabs { tools: string[]; active?: string; emptyEditor?: boolean }
+type NativeTool = Exclude<typeof studioSteamToolDefinitions[number], { command: string }>;
+interface WorkspaceTab { id: string; tool?: NativeTool; editor?: EditorInput; group?: IEditorGroup }
 
 /**
  * The run surface belongs to the main editor part. All other editor inputs use a
@@ -39,6 +42,16 @@ export class StudioSteamWorkspace extends Disposable {
 	private readonly partLifetime = this._register(new DisposableStore());
 	private readonly modeLifetime = this._register(new DisposableStore());
 	private readonly host: HTMLElement;
+	private readonly surface: HTMLElement;
+	private readonly empty: HTMLElement;
+	private readonly emptyLabel: HTMLElement;
+	private readonly openFile: HTMLButtonElement;
+	private readonly split: SplitView;
+	private readonly sidebarHost: HTMLElement;
+	private readonly sidebar = this._register(new MutableDisposable<IEmbeddedSideBar>());
+	private sidebarRequested = true;
+	private sidebarOpened = false;
+	private sidebarWidth: number;
 	private readonly refresh = this._register(new RunOnceScheduler(() => this.syncEditors(), 0));
 	private tabs: WorkspaceTab[] = [];
 	private active: string | undefined;
@@ -51,6 +64,7 @@ export class StudioSteamWorkspace extends Disposable {
 	private readonly editorIds = new WeakMap<EditorInput, string>();
 	private editorId = 0;
 	private savedActive: string | undefined;
+	private savedEmptyEditor = false;
 	private visibilityRevision = 0;
 	private readonly selectedInstances = new Map<string, string>();
 
@@ -67,16 +81,38 @@ export class StudioSteamWorkspace extends Disposable {
 		@ICommandService private readonly commands: ICommandService,
 		@ITerminalService private readonly terminals: ITerminalService,
 		@ITerminalGroupService private readonly terminalGroups: ITerminalGroupService,
+		@IEditorService private readonly editors: IEditorService,
 	) {
 		super();
 		const saved = storage.getObject<SavedTabs>(TABS_KEY, StorageScope.WORKSPACE);
 		this.tabs = [...new Set(saved?.tools ?? [])].flatMap(id => {
 			const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
-			return tool && 'view' in tool ? [{ id, tool }] : [];
+			return tool && !('command' in tool) ? [{ id, tool }] : [];
 		});
 		this.savedActive = saved?.active;
-		this.host = append(parent, $('.part.editor.studio-steam-editors'));
-		this.host.hidden = true;
+		this.savedEmptyEditor = saved?.emptyEditor ?? false;
+		this.surface = append(parent, $('.studio-steam-editor-workspace'));
+		this.surface.hidden = true;
+		const editorPane = $('.studio-steam-code-pane');
+		this.host = append(editorPane, $('.part.editor.studio-steam-editors'));
+		this.empty = append(editorPane, $('.studio-steam-code-empty'));
+		append(this.empty, $('span.codicon.codicon-code', { 'aria-hidden': 'true' }));
+		this.emptyLabel = append(this.empty, $('p'));
+		this.openFile = append(this.empty, $('button', { type: 'button' })) as HTMLButtonElement;
+		this._register(addDisposableListener(this.openFile, 'click', () => { void this.commands.executeCommand('workbench.action.quickOpen').catch(onUnexpectedError); }));
+		this.sidebarHost = $('.studio-steam-code-sidebar');
+		this.sidebarWidth = storage.getNumber('studio.steamEditorSidebarWidth', StorageScope.WORKSPACE, 240);
+		this.split = this._register(new SplitView(this.surface, { orientation: Orientation.HORIZONTAL, proportionalLayout: false }));
+		this.split.addView({ element: editorPane, minimumSize: 120, maximumSize: Number.POSITIVE_INFINITY, onDidChange: Event.None,
+			layout: width => { if (!this.host.hidden) { this.part?.layout(width, this.surface.clientHeight, 0, 0); } } }, 400);
+		this.split.addView({ element: this.sidebarHost, minimumSize: 140, maximumSize: 600, onDidChange: Event.None,
+			layout: width => this.sidebar.value?.layout(width, this.surface.clientHeight) }, this.sidebarWidth);
+		this._register(this.split.onDidSashChange(() => {
+			if (this.split.isViewVisible(1)) {
+				this.sidebarWidth = this.split.getViewSize(1);
+				this.storage.store('studio.steamEditorSidebarWidth', this.sidebarWidth, StorageScope.WORKSPACE, StorageTarget.MACHINE);
+			}
+		}));
 		this._register(studioModeState.onDidChangeState(() => this.publish()));
 		this._register(this.views.onDidChangeViewVisibility(event => {
 			if (!this.enabled || !event.visible) { return; }
@@ -93,7 +129,7 @@ export class StudioSteamWorkspace extends Disposable {
 		const observer = new (getWindow(parent).ResizeObserver)(() => this.layoutEditors());
 		observer.observe(parent);
 		this._register(this.layout.onDidChangePartVisibility(() => this.layoutEditors()));
-		this._register(toDisposable(() => { observer.disconnect(); this.host.remove(); studioSteamWorkspaceState.update([], undefined); }));
+		this._register(toDisposable(() => { observer.disconnect(); this.surface.remove(); studioSteamWorkspaceState.update([], undefined); }));
 		// Restore saved inputs even if a removed project forces the next mode back to IDE.
 		if (storage.get('studio.workbenchMode', StorageScope.WORKSPACE) === 'steam') { this.ensurePart(); }
 	}
@@ -112,9 +148,12 @@ export class StudioSteamWorkspace extends Disposable {
 			this.partLifetime.add(group.onDidModelChange(() => this.refresh.schedule()));
 			this.partLifetime.add(group.onDidActiveEditorChange(() => {
 				this.syncEditors();
+				const codePreview = this.toolFor(this.tabs.find(tab => tab.id === this.active))?.id === 'editor'
+					&& this.toolFor(this.tabs.find(tab => tab.editor === group.activeEditor))?.id === 'editor';
 				// Closing an input starts an asynchronous native fallback. A later tool
 				// selection owns the surface and must not be replaced when it finishes.
-				if (this.enabled && this.groups.activeGroup === group && group.activeEditor
+				// Explorer and Search also open previews without taking focus from their sidebar.
+				if (this.enabled && (this.groups.activeGroup === group || codePreview) && group.activeEditor
 					&& opening?.editor === group.activeEditor && opening.revision === this.visibilityRevision) { this.revealEditor(group.activeEditor, group); }
 			}));
 		};
@@ -134,6 +173,7 @@ export class StudioSteamWorkspace extends Disposable {
 		const part = this.ensurePart();
 		await part.whenReady;
 		const restoreActive = this.savedActive;
+		const restoreEmptyEditor = this.savedEmptyEditor;
 		const restoredEditor = part.activeGroup.activeEditor;
 		const restoredGroup = part.activeGroup;
 		const projectGroup = this.projectGroup = this.groups.mainPart.getGroups(GroupsOrder.GRID_APPEARANCE)[0];
@@ -156,8 +196,15 @@ export class StudioSteamWorkspace extends Disposable {
 				.map(editor => ({ editor, options: { preserveFocus: true } })), projectGroup);
 		}
 		this.enabled = true;
+		this.sidebarRequested = true;
+		this.sidebarOpened = false;
+		this.sidebar.value = this.layout.createEmbeddedSideBar(this.sidebarHost, visible => {
+			this.sidebarRequested = visible;
+			if (visible) { void this.openTool('editor', true).catch(onUnexpectedError); }
+			else { this.layoutEditors(); }
+		});
 		this.syncEditors();
-		if (restoreActive === 'editor' && restoredEditor && restoredGroup.contains(restoredEditor)) {
+		if (restoreActive === 'editor' && !restoreEmptyEditor && restoredEditor && restoredGroup.contains(restoredEditor)) {
 			// Moving an IDE source into this group can change its active input.
 			await this.select(this.id(restoredEditor, restoredGroup));
 		} else if (restoreActive && this.tabs.some(tab => tab.tool && tab.id === restoreActive)) {
@@ -170,7 +217,8 @@ export class StudioSteamWorkspace extends Disposable {
 		if (!part) { return; }
 		await part.whenReady;
 		this.enabled = false; ++this.visibilityRevision;
-		part.setVisible(false); this.host.hidden = true;
+		part.setVisible(false); this.surface.hidden = true;
+		this.sidebar.value?.setVisible(false);
 		// Move inputs, without closing or saving them, so IDE can access every new and dirty editor.
 		for (const group of part.groups) {
 			const destinations = new Map<IEditorGroup, EditorInput[]>();
@@ -188,6 +236,7 @@ export class StudioSteamWorkspace extends Disposable {
 				}
 			}
 		}
+		this.sidebar.clear();
 		this.modeLifetime.clear();
 		this.part = undefined;
 		this.partLifetime.clear();
@@ -205,22 +254,24 @@ export class StudioSteamWorkspace extends Disposable {
 		await this.views.openView(HOME_VIEW, true);
 	}
 
-	async openTool(id: string): Promise<void> {
+	async openTool(id: string, preserveFocus = false): Promise<void> {
 		if (!this.enabled) { return; }
 		const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
 		if (!tool) { return; }
-		if (this.tabs.some(tab => this.toolFor(tab)?.id === id)) { await this.select(id); return; }
+		if (this.tabs.some(tab => this.toolFor(tab)?.id === id)) { await this.select(id, false, preserveFocus); return; }
 		if ('command' in tool) { await this.commands.executeCommand(tool.command); return; }
-		if (!this.descriptors.getViewContainerByViewId(tool.view)) { return; }
+		if ('view' in tool && !this.descriptors.getViewContainerByViewId(tool.view)) { return; }
 		if (!this.tabs.some(tab => tab.id === id)) { this.tabs.push({ id, tool }); }
-		await this.select(id);
+		await this.select(id, false, preserveFocus);
 	}
 
 	async newInstance(id: string | undefined): Promise<void> {
 		if (!this.enabled) { return; }
 		const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
 		if (!tool) { return; }
-		if (tool.id === 'terminal') {
+		if (tool.id === 'editor') {
+			await this.commands.executeCommand('workbench.action.files.newUntitledFile');
+		} else if (tool.id === 'terminal') {
 			const instance = await this.terminals.createTerminal({ location: TerminalLocation.Panel });
 			if (instance && this.enabled) { await this.openTool('terminal'); await this.terminalGroups.focusInstance(instance); }
 		} else if ('command' in tool) {
@@ -228,7 +279,7 @@ export class StudioSteamWorkspace extends Disposable {
 		} else { await this.commands.executeCommand('studio.createToolInstance', tool.id); }
 	}
 
-	async select(id: string, instance = false): Promise<void> {
+	async select(id: string, instance = false, preserveFocus = false): Promise<void> {
 		if (!this.enabled) { return; }
 		if (id.startsWith('terminal:')) {
 			const terminal = this.terminalGroups.instances.find(terminal => `terminal:${terminal.instanceId}` === id);
@@ -242,16 +293,20 @@ export class StudioSteamWorkspace extends Disposable {
 		}
 		if (!instance) {
 			const candidates = this.tabs.filter(tab => this.toolFor(tab)?.id === id);
-			id = candidates.find(tab => tab.id === this.selectedInstances.get(id))?.id ?? candidates[0]?.id ?? id;
+			id = candidates.find(tab => tab.id === this.selectedInstances.get(id))?.id ?? candidates.find(tab => tab.editor)?.id ?? candidates[0]?.id ?? id;
 		}
 		const tab = this.tabs.find(tab => tab.id === id);
 		if (!tab) { return; }
 		++this.visibilityRevision; this.active = id; this.publish();
-		if (tab.tool) { await this.views.openView(tab.tool.view, true); }
+		if (tab.tool && 'view' in tab.tool) { await this.views.openView(tab.tool.view, true); }
+		else if (tab.tool?.id === 'editor') {
+			await this.views.openView(HOME_VIEW, false);
+			if (this.enabled && this.active === id) { this.layoutEditors(); }
+		}
 		else if (tab.editor && tab.group) {
 			this.revealEditor(tab.editor, tab.group);
-			await tab.group.openEditor(tab.editor);
-			if (this.enabled && this.active === id && this.part?.groups.includes(tab.group)) { tab.group.focus(); }
+			await this.editors.openEditor(tab.editor, { preserveFocus }, tab.group);
+			if (!preserveFocus && this.enabled && this.active === id && this.part?.groups.includes(tab.group)) { tab.group.focus(); }
 		}
 	}
 
@@ -335,6 +390,9 @@ export class StudioSteamWorkspace extends Disposable {
 		const current = new Map(editors.map(tab => [tab.id, tab]));
 		this.tabs = this.tabs.flatMap(tab => tab.tool ? [tab] : current.has(tab.id) ? [current.get(tab.id)!] : []);
 		for (const tab of editors) { if (!this.tabs.some(entry => entry.id === tab.id)) { this.tabs.push(tab); } }
+		if (editors.some(tab => this.toolFor(tab)?.id === 'editor') && !this.tabs.some(tab => tab.id === 'editor')) {
+			this.tabs.push({ id: 'editor', tool: studioSteamToolDefinitions.find(tool => tool.id === 'editor')! });
+		}
 		if (this.active && !this.tabs.some(tab => tab.id === this.active)) {
 			this.active = this.part?.activeGroup.activeEditor ? this.id(this.part.activeGroup.activeEditor, this.part.activeGroup) : undefined;
 		}
@@ -351,6 +409,9 @@ export class StudioSteamWorkspace extends Disposable {
 	}
 
 	private publish(): void {
+		const labels = studioModeState.state.labels;
+		this.emptyLabel.textContent = labels.editorEmpty ?? 'Open a file from Explorer or Quick Open to start editing.';
+		this.openFile.textContent = labels.openFile ?? 'Open File';
 		const activeTool = this.toolFor(this.tabs.find(tab => tab.id === this.active));
 		if (activeTool && this.active) { this.selectedInstances.set(activeTool.id, this.active); }
 		const describe = (tab: WorkspaceTab): StudioSteamTab => ({ id: tab.id,
@@ -364,7 +425,7 @@ export class StudioSteamWorkspace extends Disposable {
 			const previous = tabs.get(id);
 			tabs.set(id, { ...(tool ? { id, label: studioModeState.state.labels[id] ?? id, icon: tool.icon } : describe(tab)), dirty: previous?.dirty || tab.editor?.isDirty() });
 		}
-		const instances = activeTool ? this.tabs.filter(tab => this.toolFor(tab)?.id === activeTool.id).flatMap(tab => tab.id === 'terminal'
+		const instances = activeTool ? this.tabs.filter(tab => this.toolFor(tab)?.id === activeTool.id && tab.id !== 'editor').flatMap(tab => tab.id === 'terminal'
 			? this.terminalGroups.instances.map(terminal => ({ id: `terminal:${terminal.instanceId}`, label: terminal.title, icon: 'terminal' })) : [describe(tab)]) : [];
 		let selected = this.active;
 		if (activeTool?.id === 'terminal' && this.active === 'terminal') {
@@ -373,7 +434,8 @@ export class StudioSteamWorkspace extends Disposable {
 		studioSteamWorkspaceState.update([...tabs.values()], activeTool?.id ?? this.active, this.enabled ? instances : [], selected, activeTool?.id);
 		if (this.enabled) {
 			this.savedActive = this.active?.startsWith('editor:') ? 'editor' : this.active;
-			this.storage.store(TABS_KEY, { tools: this.tabs.filter(tab => tab.tool).map(tab => tab.id), active: this.savedActive }, StorageScope.WORKSPACE, StorageTarget.MACHINE);
+			this.savedEmptyEditor = this.active === 'editor';
+			this.storage.store(TABS_KEY, { tools: this.tabs.filter(tab => tab.tool).map(tab => tab.id), active: this.savedActive, emptyEditor: this.savedEmptyEditor }, StorageScope.WORKSPACE, StorageTarget.MACHINE);
 		}
 		this.layoutEditors();
 	}
@@ -386,22 +448,33 @@ export class StudioSteamWorkspace extends Disposable {
 		if (editor instanceof WebviewInput) {
 			const type = editor.webview.providedViewType;
 			id = type?.startsWith('studio.tool.') ? type.slice('studio.tool.'.length)
-				: type === 'simpleBrowser.view' ? 'browser' : type === 'studio.projectTool' ? 'project' : undefined;
+				: type === 'simpleBrowser.view' ? 'browser' : type === 'studio.projectTool' ? 'project' : editor instanceof CustomEditorInput ? 'editor' : undefined;
 		} else if (editor.typeId === 'workbench.editors.terminal') { id = 'terminal'; }
 		else if (editor.typeId === 'workbench.editorinputs.browser') { id = 'browser'; }
+		else if (EditorResourceAccessor.getOriginalUri(editor, { supportSideBySide: SideBySideEditor.PRIMARY })) { id = 'editor'; }
 		return studioSteamToolDefinitions.find(tool => tool.id === id);
 	}
 
 	private layoutEditors(): void {
-		const visible = this.enabled && !!this.active?.startsWith('editor:') && this.layout.isVisible(Parts.AUXILIARYBAR_PART);
-		this.host.hidden = !visible;
-		this.host.parentElement?.classList.toggle('studio-steam-editor-active', visible);
-		if (visible) {
-			const title = this.host.parentElement?.querySelector(':scope > .title');
-			if (title) { this.host.style.top = `${title.getBoundingClientRect().height}px`; }
-			const rect = this.host.getBoundingClientRect();
-			this.part?.layout(rect.width, rect.height, 0, 0);
+		const code = this.toolFor(this.tabs.find(tab => tab.id === this.active))?.id === 'editor';
+		const visible = this.enabled && (code || !!this.active?.startsWith('editor:')) && this.layout.isVisible(Parts.AUXILIARYBAR_PART);
+		const hasInput = !!this.active?.startsWith('editor:');
+		this.surface.hidden = !visible;
+		this.host.hidden = !visible || !hasInput;
+		this.empty.hidden = hasInput;
+		this.surface.parentElement?.classList.toggle('studio-steam-editor-active', visible);
+		this.sidebar.value?.setVisible(visible && code && this.sidebarRequested);
+		if (visible && code && this.sidebarRequested && !this.sidebarOpened) {
+			this.sidebarOpened = true;
+			void this.views.openViewContainer('workbench.view.explorer', false).catch(onUnexpectedError);
 		}
-		this.part?.setVisible(visible);
+		this.split.setViewVisible(1, visible && code && this.sidebarRequested);
+		if (visible) {
+			const title = this.surface.parentElement?.querySelector(':scope > .title');
+			if (title) { this.surface.style.top = `${title.getBoundingClientRect().height}px`; }
+			this.split.layout(this.surface.clientWidth);
+			if (this.split.isViewVisible(1)) { this.split.resizeView(1, Math.min(this.sidebarWidth, Math.max(140, this.surface.clientWidth - 120))); }
+		}
+		this.part?.setVisible(visible && hasInput);
 	}
 }

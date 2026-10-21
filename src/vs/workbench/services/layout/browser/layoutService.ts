@@ -598,6 +598,9 @@ export interface IWorkbenchLayoutService extends ILayoutService {
 	 */
 	setPartHidden(hidden: boolean, part: Parts): void;
 
+	/** Mount the primary sidebar in a nested workspace, retaining native views and commands. */
+	createEmbeddedSideBar(container: HTMLElement, onDidRequestVisibility: (visible: boolean) => void): IEmbeddedSideBar;
+
 	/** Temporarily hide the main window's title and status bars without changing saved UI state. */
 	setWindowChromeHidden(hidden: boolean): void;
 
@@ -734,6 +737,11 @@ export interface IWorkbenchLayoutService extends ILayoutService {
 	 * Returns the next visible view part in a given direction in the main window.
 	 */
 	getVisibleNeighborPart(part: Parts, direction: Direction): Parts | undefined;
+}
+
+export interface IEmbeddedSideBar extends IDisposable {
+	setVisible(visible: boolean): void;
+	layout(width: number, height: number): void;
 }
 
 export function shouldShowCustomTitleBar(configurationService: IConfigurationService, window: Window, menuBarToggled?: boolean): boolean {

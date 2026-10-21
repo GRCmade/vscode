@@ -172,7 +172,7 @@
 .monaco-workbench .studio-steam-tabs button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 .monaco-workbench.studio-steam-mode .part.auxiliarybar { position: relative; }
 /* This part shares the auxiliary card; it must not inherit main-editor floating margins. */
-.monaco-workbench .part.auxiliarybar > .part.editor.studio-steam-editors {
+.monaco-workbench .part.auxiliarybar > .studio-steam-editor-workspace {
 	position: absolute;
 	inset: var(--vscode-spacing-size400) 0 0;
 	margin: 0;
@@ -182,7 +182,34 @@
 	z-index: auto;
 	background: var(--vscode-editor-background);
 }
-.monaco-workbench .part.auxiliarybar > .studio-steam-editors > .content { border-radius: 0; }
+.monaco-workbench .studio-steam-editor-workspace .studio-steam-code-pane,
+.monaco-workbench .studio-steam-editor-workspace .studio-steam-code-sidebar { height: 100%; position: relative; }
+.monaco-workbench .studio-steam-editor-workspace .part.editor.studio-steam-editors {
+	position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; border: 0; border-radius: 0; z-index: auto;
+}
+.monaco-workbench .studio-steam-editors > .content { border-radius: 0; }
+.monaco-workbench .studio-steam-code-sidebar > .part.sidebar {
+	width: 100%; height: 100% !important; margin: 0; border: 0; border-radius: 0;
+	border-left: var(--vscode-strokeThickness) solid var(--vscode-sideBar-border, var(--vscode-widget-border, transparent));
+}
+.monaco-workbench .studio-steam-code-sidebar .part.sidebar > :is(.title, .header) { -webkit-app-region: drag; }
+.monaco-workbench .studio-steam-code-sidebar :is(.composite-bar-container, .title-actions, .title-label) { -webkit-app-region: no-drag; }
+.monaco-workbench .studio-steam-code-empty {
+	display: flex; flex-direction: column; align-items: center; justify-content: center;
+	height: 100%; padding: var(--vscode-spacing-size240); box-sizing: border-box;
+	text-align: center; color: var(--vscode-descriptionForeground); user-select: text; -webkit-user-select: text;
+}
+.monaco-workbench .studio-steam-code-empty button {
+	color: var(--vscode-button-foreground); background: var(--vscode-button-background);
+	border: var(--vscode-strokeThickness) solid var(--vscode-button-border, transparent);
+	border-radius: var(--vscode-cornerRadius-small); padding: var(--vscode-spacing-size60) var(--vscode-spacing-size120);
+	font: inherit; cursor: pointer;
+}
+.monaco-workbench .studio-steam-code-empty button:hover { background: var(--vscode-button-hoverBackground); }
+.monaco-workbench .studio-steam-code-empty button:focus-visible { outline: var(--vscode-strokeThickness) solid var(--vscode-focusBorder); outline-offset: 2px; }
+.monaco-workbench .studio-steam-code-empty[hidden],
+.monaco-workbench .studio-steam-code-sidebar .part.sidebar[hidden],
+.monaco-workbench .studio-steam-editor-workspace[hidden] { display: none; }
 .monaco-workbench .studio-steam-editor-active > .content { visibility: hidden; }
 .monaco-workbench .studio-steam-editors[hidden] { display: none; }
 .monaco-workbench .studio-steam-editor-active > .title > .title-actions { display: none; }
@@ -395,6 +422,10 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
 .monaco-workbench .studio-steam-instance .studio-steam-tab-select { justify-content: flex-start; }
 .monaco-workbench .studio-steam-instance .studio-steam-tab-close { flex-shrink: 0; width: var(--vscode-spacing-size160); padding: 0; opacity: 0; font-size: var(--vscode-codiconFontSize-compact); }
 .monaco-workbench .studio-steam-instance:is(.active, :hover, :focus-within) .studio-steam-tab-close { opacity: 1; }
+.monaco-workbench .studio-steam-instance.dirty .studio-steam-tab-close { opacity: 1; }
+.monaco-workbench .studio-steam-instance.dirty:not(:hover):not(:focus-within) .studio-steam-tab-close::before {
+	content: ''; display: inline-block; width: var(--vscode-spacing-size60); height: var(--vscode-spacing-size60); border-radius: var(--vscode-cornerRadius-circle); background: currentColor;
+}
 .monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions) { flex-shrink: 0; width: var(--vscode-spacing-size240); height: var(--vscode-spacing-size240); padding: 0; border-radius: var(--vscode-cornerRadius-small); }
 .monaco-workbench .studio-steam-instances .studio-steam-new-instance { background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background, var(--vscode-editor-background))); }
 .monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions, .studio-steam-tab-close):hover { background: var(--vscode-toolbar-hoverBackground); }

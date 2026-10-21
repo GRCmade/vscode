@@ -681,6 +681,7 @@ export class TestLayoutService implements IWorkbenchLayoutService {
 	async setAuxiliaryBarHidden(_hidden: boolean): Promise<void> { }
 	async setPartHidden(_hidden: boolean, part: Parts): Promise<void> { }
 	setWindowChromeHidden(_hidden: boolean): void { }
+	createEmbeddedSideBar(): never { throw new Error('Not implemented'); }
 	isSecondarySideBarVisible(): boolean { return false; }
 	toggleSecondarySideBar(): void { }
 	isPanelHidden(): boolean { return false; }

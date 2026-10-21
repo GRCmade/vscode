@@ -103,7 +103,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 			Parts.AUXILIARYBAR_PART,
 			{
 				hasTitle: true,
-				titleHeight: () => studioModeState.steam ? (studioSteamWorkspaceState.instances.length ? 80 : 40) : undefined,
+				titleHeight: () => studioModeState.steam ? (studioSteamWorkspaceState.instances.length || studioSteamWorkspaceState.tool === 'editor' ? 80 : 40) : undefined,
 				trailingSeparator: true,
 				borderWidth: () => (this.getColor(SIDE_BAR_BORDER) || this.getColor(contrastBorder)) ? 1 : 0,
 			},
@@ -148,7 +148,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 		}));
 		let hasInstances = false;
 		this._register(studioSteamWorkspaceState.onDidChange(() => {
-			const visible = studioSteamWorkspaceState.instances.length > 0;
+			const visible = studioSteamWorkspaceState.instances.length > 0 || studioSteamWorkspaceState.tool === 'editor';
 			if (visible !== hasInstances) { hasInstances = visible; relayoutSteamNavigation(); }
 		}));
 

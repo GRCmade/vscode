@@ -164,6 +164,12 @@ export class SidebarPart extends AbstractPaneCompositePart {
 		this.rememberActivityBarVisiblePosition();
 	}
 
+	/** Retain native view containers while presenting their activity tabs in a nested workspace. */
+	setEmbedded(embedded: boolean): void {
+		this.embedded = embedded;
+		this.onDidChangeActivityBarLocation();
+	}
+
 	override updateStyles(): void {
 		super.updateStyles();
 
@@ -246,6 +252,7 @@ export class SidebarPart extends AbstractPaneCompositePart {
 	}
 
 	protected shouldShowCompositeBar(): boolean {
+		if (this.embedded) { return true; }
 		const activityBarPosition = this.configurationService.getValue<ActivityBarPosition>(LayoutSettings.ACTIVITY_BAR_LOCATION);
 		if (activityBarPosition !== ActivityBarPosition.TOP && activityBarPosition !== ActivityBarPosition.BOTTOM) {
 			return false;
@@ -275,6 +282,7 @@ export class SidebarPart extends AbstractPaneCompositePart {
 	}
 
 	protected getCompositeBarPosition(): CompositeBarPosition {
+		if (this.embedded) { return CompositeBarPosition.TOP; }
 		const activityBarPosition = this.configurationService.getValue<ActivityBarPosition>(LayoutSettings.ACTIVITY_BAR_LOCATION);
 		switch (activityBarPosition) {
 			case ActivityBarPosition.TOP: return CompositeBarPosition.TOP;

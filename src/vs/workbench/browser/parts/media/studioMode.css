@@ -86,7 +86,8 @@
 .monaco-workbench.studio-steam-mode .part.auxiliarybar.pane-composite-part > .title.composite > .title-actions { order: 2; flex: 0 0 auto; }
 .monaco-workbench.studio-steam-mode .part.auxiliarybar > .title {
 	box-sizing: border-box;
-	padding: 0 var(--vscode-spacing-size120);
+	/* Steam navigation keeps its insets across the native density presets. */
+	padding: 0 var(--vscode-spacing-size120) !important;
 	background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-editor-background));
 	-webkit-app-region: drag;
 }

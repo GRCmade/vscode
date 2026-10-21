@@ -137,14 +137,19 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 		this._register(this.visibleViewContainersTracker.onDidChange((e) => this.onDidChangeAutoHideViewContainers(e)));
 
 		this.configuration = this.resolveConfiguration();
+		const relayoutSteamNavigation = () => {
+			const dimension = this.getRelayoutDimension();
+			const position = this.contentPosition;
+			if (dimension && position) { this.layout(dimension.width, dimension.height, position.top, position.left); }
+		};
 		this._register(studioModeState.onDidChangeMode(() => {
 			this.updateCompositeBar();
-			layoutService.layout();
+			relayoutSteamNavigation();
 		}));
 		let hasInstances = false;
 		this._register(studioSteamWorkspaceState.onDidChange(() => {
 			const visible = studioSteamWorkspaceState.instances.length > 0;
-			if (visible !== hasInstances) { hasInstances = visible; layoutService.layout(); }
+			if (visible !== hasInstances) { hasInstances = visible; relayoutSteamNavigation(); }
 		}));
 
 		this._register(configurationService.onDidChangeConfiguration(e => {

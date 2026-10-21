@@ -97,8 +97,38 @@ suite('WebviewElement', () => {
 			ports: [channel.port1],
 		}));
 		channel.port2.start();
-		return { webview, instantiationService, port: channel.port2, errorNotification };
+		return { webview, container, instantiationService, port: channel.port2, errorNotification };
 	}
+
+	test('ignores a frame focus message delivered after focus moved to another editor', async () => {
+		const { webview, container, port } = await createWebview();
+		const input = document.createElement('input');
+		document.body.append(container, input);
+		store.add(toDisposable(() => { container.remove(); input.remove(); }));
+		const frame = container.querySelector('iframe');
+		assert.ok(frame);
+		let focusEvents = 0;
+		store.add(webview.onDidFocus(() => focusEvents++));
+		const reportFocus = async () => {
+			const delivered = Event.toPromise(webview.onDidScroll, store.add(new DisposableStore()));
+			port.postMessage({ channel: 'did-focus', data: undefined });
+			port.postMessage({ channel: 'did-scroll', data: { scrollYPercentage: 0 } });
+			await delivered;
+		};
+
+		frame.focus();
+		await reportFocus();
+		input.focus();
+		await reportFocus();
+		const staleFocus = { focusEvents, focused: webview.isFocused, activeElement: document.activeElement };
+		frame.focus();
+		await reportFocus();
+
+		assert.deepStrictEqual({ staleFocus, focusEvents, focused: webview.isFocused }, {
+			staleFocus: { focusEvents: 1, focused: false, activeElement: input },
+			focusEvents: 2, focused: true,
+		});
+	});
 
 	for (const extensionId of [undefined, 'publisher.extension']) {
 		test(`reports errors ${extensionId ? 'with the owning extension' : 'without an extension owner'}`, async () => {

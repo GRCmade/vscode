@@ -228,7 +228,10 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 		}));
 
 		this._register(this.on('did-focus', () => {
-			this.handleFocusChange(true);
+			// Frame messages can arrive after focus has already moved to another editor.
+			if (this.isActiveElement()) {
+				this.handleFocusChange(true);
+			}
 		}));
 
 		this._register(this.on('did-blur', () => {

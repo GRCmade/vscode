@@ -15,13 +15,13 @@ import { SyncDescriptor } from '../../../../platform/instantiation/common/descri
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
-import { StudioSteamTools, studioModeState } from '../../../browser/parts/studioMode.js';
+import { StudioModeLoading, StudioSteamTools, studioModeState } from '../../../browser/parts/studioMode.js';
 import { ViewPane } from '../../../browser/parts/views/viewPane.js';
 import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
 import { WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
 import { EditorInput } from '../../../common/editor/editorInput.js';
 import { Extensions, IViewContainersRegistry, IViewDescriptorService, IViewsRegistry, ViewContainerLocation } from '../../../common/views.js';
-import { EditorGroupLayout, GroupsArrangement, IEditorGroup, IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
+import { EditorGroupLayout, GroupsArrangement, GroupsOrder, IEditorGroup, IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
 import { IViewsService } from '../../../services/views/common/viewsService.js';
@@ -84,9 +84,11 @@ export class StudioModeContribution extends Disposable {
 	private readonly sequencer = new Sequencer();
 	private readonly editorOptions = this._register(new MutableDisposable<IDisposable>());
 	private readonly toolLocations = this._register(new DisposableStore());
+	private readonly loading: StudioModeLoading;
 	private snapshot: IdeLayout | undefined;
 	private ideEditor: { group: IEditorGroup; editor: EditorInput } | undefined;
 	private steam = false;
+	private projectReady = false;
 	private requested: boolean;
 	private initialized = false;
 	private revision = 0;
@@ -104,6 +106,7 @@ export class StudioModeContribution extends Disposable {
 		@INotificationService notifications: INotificationService,
 	) {
 		super();
+		this.loading = this._register(new StudioModeLoading(layout.mainContainer, layout.getContainer(getWindow(layout.mainContainer), Parts.EDITOR_PART)));
 		toolsTitle.value = studioModeState.state.labels.tools ?? toolsTitle.original;
 		this.snapshot = storage.getObject<IdeLayout>(SNAPSHOT_KEY, StorageScope.WORKSPACE);
 		this.requested = storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
@@ -128,24 +131,45 @@ export class StudioModeContribution extends Disposable {
 	private request(steam: boolean): Promise<void> {
 		this.requested = steam && studioModeState.state.available;
 		const revision = ++this.revision;
+		if (!this.requested && studioModeState.busy) {
+			void this.commands.executeCommand('studio.internalCancelSteamPreparation').catch(() => undefined);
+		}
 		return this.sequencer.queue(async () => {
 			if (revision !== this.revision || this._store.isDisposed) { return; }
 			const next = this.requested;
-			if (next === this.steam && (next || !this.snapshot)) { return; }
-			studioModeState.setMode(this.steam, true);
+			const projectUri = studioModeState.state.projectUri;
+			if (next === this.steam && (next ? this.projectReady : !this.snapshot)) { return; }
+			studioModeState.setMode(this.steam, true, next);
 			try {
 				if (next) {
 					const group = this.groups.mainPart.activeGroup;
 					if (!this.snapshot && group.activeEditor) { this.ideEditor = { group, editor: group.activeEditor }; }
 					this.captureIde();
-					// Preparing can start a worker. Keep it outside the short layout animation.
 					let prepared: boolean | undefined;
-					try {
-						prepared = await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject');
-					} catch (error) {
-						if (revision !== this.revision || this._store.isDisposed) { return; }
-						throw error;
+					const prepare = async () => {
+						try { return await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject', projectUri); }
+						catch (error) {
+							if (revision !== this.revision || this._store.isDisposed) { return undefined; }
+							throw error;
+						}
+					};
+					if (!this.steam) {
+						await this.transition(true, async () => {
+							await this.enterSteam();
+							this.loading.show();
+							studioModeState.setMode(true, true, true);
+							// A retained frame can be revealed in the snapshot without a loading flash.
+							if (studioModeState.state.ready && revision === this.revision) {
+								prepared = await prepare();
+								if (prepared) { this.loading.hide(); }
+							}
+						});
+					} else {
+						this.loading.show();
 					}
+					if (revision !== this.revision || this._store.isDisposed) { return; }
+					// Cold startup runs after the live loading layout, outside the frozen snapshot.
+					prepared ??= await prepare();
 					if (revision !== this.revision || !studioModeState.state.available || this._store.isDisposed) { return; }
 					if (!prepared) {
 						this.requested = false;
@@ -153,8 +177,10 @@ export class StudioModeContribution extends Disposable {
 						await this.rememberMode(false);
 						return;
 					}
+					this.projectReady = true;
+				} else {
+					await this.transition(false, async () => { this.loading.hide(); await this.restoreIde(); });
 				}
-				await this.transition(() => next ? this.enterSteam() : this.restoreIde());
 				await this.rememberMode(next);
 			} catch (error) {
 				if (this._store.isDisposed) { return; }
@@ -162,7 +188,10 @@ export class StudioModeContribution extends Disposable {
 				await this.restoreIde();
 				await this.rememberMode(false);
 				if (revision === this.revision) { throw error; }
-			} finally { studioModeState.setMode(this.steam, false); }
+			} finally {
+				if (revision === this.revision || !this.steam) { this.loading.hide(); }
+				studioModeState.setMode(this.steam, false);
+			}
 		});
 	}
 
@@ -206,7 +235,9 @@ export class StudioModeContribution extends Disposable {
 		for (const container of containers) {
 			if (container) { this.toolLocations.add(this.descriptors.overrideViewContainerLocation(container, ViewContainerLocation.AuxiliaryBar)); }
 		}
-		this.groups.mainPart.arrangeGroups(GroupsArrangement.MAXIMIZE);
+		// The project opens in ViewColumn.One. Maximize that group before revealing it,
+		// otherwise activating the first group would unmaximize a different source group.
+		this.groups.mainPart.arrangeGroups(GroupsArrangement.MAXIMIZE, this.groups.mainPart.getGroups(GroupsOrder.GRID_APPEARANCE)[0]);
 		for (const part of [Parts.ACTIVITYBAR_PART, Parts.SIDEBAR_PART, Parts.PANEL_PART]) { this.layout.setPartHidden(true, part); }
 		this.layout.setPartHidden(false, Parts.EDITOR_PART);
 		await this.openTools();
@@ -232,6 +263,7 @@ export class StudioModeContribution extends Disposable {
 		if (!snapshot) { return; }
 		if (this.steam) { this.storage.store(STEAM_WIDTH_KEY, this.layout.getSize(Parts.AUXILIARYBAR_PART).width, StorageScope.WORKSPACE, StorageTarget.MACHINE); }
 		this.steam = false;
+		this.projectReady = false;
 		this.contextKeys.createKey('studio.steamMode', false).set(false);
 		this.layout.mainContainer.classList.remove('studio-steam-mode');
 		this.editorOptions.clear();
@@ -262,25 +294,33 @@ export class StudioModeContribution extends Disposable {
 		this.storage.remove(SNAPSHOT_KEY, StorageScope.WORKSPACE);
 	}
 
-	private async transition(change: () => Promise<void>): Promise<void> {
+	private async transition(steam: boolean, change: () => Promise<void>): Promise<void> {
 		const win = getWindow(this.layout.mainContainer);
 		const document = win.document;
 		if (win.matchMedia('(prefers-reduced-motion: reduce)').matches) { await change(); return; }
 		if (document.startViewTransition) {
-			document.documentElement.classList.add('studio-mode-transition');
+			const direction = steam ? 'studio-mode-enter-steam' : 'studio-mode-enter-ide';
+			document.documentElement.classList.add('studio-mode-transition', direction);
 			try {
-				const transition = document.startViewTransition(change);
+				const transition = document.startViewTransition(async () => {
+					// Slow view restoration must not freeze the workbench behind a captured image.
+					const timeout = win.setTimeout(() => transition.skipTransition(), 120);
+					try { await change(); } finally { win.clearTimeout(timeout); }
+				});
 				// A background tab or skipped animation can reject ready even when the layout succeeds.
 				void transition.ready.catch(() => undefined);
 				const finished = transition.finished.catch(() => undefined);
 				await transition.updateCallbackDone;
 				await finished;
-			} finally { document.documentElement.classList.remove('studio-mode-transition'); }
+			} finally { document.documentElement.classList.remove('studio-mode-transition', direction); }
 		} else {
 			await change();
+			const animations: Animation[] = [];
 			for (const part of [Parts.EDITOR_PART, Parts.AUXILIARYBAR_PART]) {
-				this.layout.getContainer(win, part)?.animate([{ opacity: .6, transform: 'translateY(5px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' });
+				const animation = this.layout.getContainer(win, part)?.animate([{ opacity: .7, transform: `translateX(${steam ? 48 : -48}px)` }, { opacity: 1, transform: 'translateX(0)' }], { duration: 300, easing: 'cubic-bezier(.22,1,.36,1)' });
+				if (animation) { animations.push(animation); }
 			}
+			await Promise.all(animations.map(animation => animation.finished.catch(() => undefined)));
 		}
 	}
 }

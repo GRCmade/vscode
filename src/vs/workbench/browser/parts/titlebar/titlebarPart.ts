@@ -245,6 +245,10 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 	get minimumHeight(): number {
 		const wcoEnabled = isWeb && isWCOEnabled();
 		let value = this.isCommandCenterVisible || wcoEnabled ? DEFAULT_CUSTOM_TITLEBAR_HEIGHT : 30;
+		if (this.hasStudioModeSwitcher) {
+			// Leave a 6px inset above and below the 32px mode control.
+			value = Math.max(value, 44);
+		}
 		if (wcoEnabled) {
 			value = Math.max(value, getWCOTitlebarAreaRect(getWindow(this.element))?.height ?? 0);
 		}
@@ -483,7 +487,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		this.leftContent = append(this.rootContainer, $('.titlebar-left'));
 		this.centerContent = append(this.rootContainer, $('.titlebar-center'));
 		this.rightContent = append(this.rootContainer, $('.titlebar-right'));
-		if (!this.isAuxiliary && hasCustomTitlebar(this.configurationService, this.titleBarStyle)) {
+		if (this.hasStudioModeSwitcher) {
 			this._register(this.instantiationService.createInstance(StudioModeSwitcher, this.leftContent, this.rightContent));
 		}
 
@@ -915,6 +919,10 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 
 	protected get isCommandCenterVisible() {
 		return !this.isCompact && this.configurationService.getValue<boolean>(LayoutSettings.COMMAND_CENTER) !== false;
+	}
+
+	protected get hasStudioModeSwitcher(): boolean {
+		return !this.isAuxiliary && hasCustomTitlebar(this.configurationService, this.titleBarStyle);
 	}
 
 	private get editorActionsEnabled(): boolean {

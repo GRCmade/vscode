@@ -36,7 +36,7 @@ export class NativeTitlebarPart extends BrowserTitlebarPart {
 	//#region IView
 
 	override get minimumHeight(): number {
-		if (!isMacintosh) {
+		if (!isMacintosh || this.hasStudioModeSwitcher) {
 			return super.minimumHeight;
 		}
 
@@ -281,7 +281,9 @@ export class NativeTitlebarPart extends BrowserTitlebarPart {
 				this.cachedWindowControlHeight = newHeight;
 				this.nativeHostService.updateWindowControls({
 					targetWindowId: getWindowId(getWindow(this.element)),
-					height: newHeight
+					height: newHeight,
+					// Keep the traffic lights inside the mode switcher's fixed native inset as the title bar grows or zooms.
+					horizontalInset: isMacintosh && this.hasStudioModeSwitcher ? 10 : undefined
 				});
 			}
 		}

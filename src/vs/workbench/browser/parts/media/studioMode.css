@@ -6,7 +6,7 @@
 	flex: 0 0 auto;
 	align-items: center;
 	gap: 2px;
-	margin: 0 8px;
+	margin: var(--vscode-spacing-size60) var(--vscode-spacing-size80);
 	padding: 2px;
 	border: 1px solid var(--vscode-widget-border, transparent);
 	border-radius: 7px;

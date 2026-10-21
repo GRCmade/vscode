@@ -11,6 +11,9 @@ import { CommandsRegistry, ICommandService } from '../../../platform/commands/co
 import { INotificationService } from '../../../platform/notification/common/notification.js';
 import { toAction } from '../../../base/common/actions.js';
 import { IContextMenuService } from '../../../platform/contextview/browser/contextView.js';
+import { getDefaultHoverDelegate } from '../../../base/browser/ui/hover/hoverDelegateFactory.js';
+import { IHoverService } from '../../../platform/hover/browser/hover.js';
+import { IWorkbenchLayoutService, Parts } from '../../services/layout/browser/layoutService.js';
 
 export const studioSteamToolDefinitions = [
 	{ id: 'kv', icon: 'database', view: 'studio.kv' },
@@ -19,6 +22,9 @@ export const studioSteamToolDefinitions = [
 	{ id: 'assistant', icon: 'hubot', view: 'studio.developerAssistant' },
 	{ id: 'versions', icon: 'versions', view: 'studio.versions' },
 	{ id: 'trace', icon: 'history', view: 'studio.trace' },
+	{ id: 'terminal', icon: 'terminal', view: 'terminal' },
+	{ id: 'browser', icon: 'globe', command: 'simpleBrowser.show' },
+	{ id: 'project', icon: 'folder-opened', command: 'studio.openProjectInTab' },
 ] as const;
 
 export interface StudioSteamTab { id: string; label: string; icon: string; dirty?: boolean }
@@ -64,7 +70,9 @@ CommandsRegistry.registerCommand('studio.internalUpdateModeState', (_accessor, s
 export class StudioModeSwitcher extends Disposable {
 	constructor(left: HTMLElement, right: HTMLElement,
 		@ICommandService private readonly commands: ICommandService,
-		@INotificationService private readonly notifications: INotificationService
+		@INotificationService private readonly notifications: INotificationService,
+		@IWorkbenchLayoutService layout: IWorkbenchLayoutService,
+		@IHoverService hoverService: IHoverService,
 	) {
 		super();
 		const element = append(left, $('.studio-mode-switcher', { role: 'group' }));
@@ -77,6 +85,9 @@ export class StudioModeSwitcher extends Disposable {
 		const tools = append(right, $('button.studio-steam-tools-action', { type: 'button' })) as HTMLButtonElement;
 		append(tools, $('span.codicon.codicon-tools', { 'aria-hidden': 'true' }));
 		const toolsLabel = append(tools, $('span'));
+		const toggle = append(right, $('button.studio-steam-toggle-tools', { type: 'button', 'aria-controls': Parts.AUXILIARYBAR_PART })) as HTMLButtonElement;
+		const toggleIcon = append(toggle, $('span.codicon', { 'aria-hidden': 'true' }));
+		const toggleHover = this._register(hoverService.setupManagedHover(getDefaultHoverDelegate('mouse'), toggle, ''));
 		const update = () => {
 			const { state, steam: active, busy, targetSteam } = studioModeState;
 			element.setAttribute('aria-label', state.labels.mode ?? 'Workspace Mode');
@@ -92,14 +103,23 @@ export class StudioModeSwitcher extends Disposable {
 			tools.hidden = !active;
 			tools.disabled = busy;
 			tools.title = toolsLabel.textContent = state.labels.tools ?? 'Open Tools';
+			const visible = layout.isVisible(Parts.AUXILIARYBAR_PART);
+			toggle.hidden = !active;
+			toggle.disabled = busy;
+			toggle.setAttribute('aria-expanded', String(visible));
+			const toggleLabel = visible ? state.labels.hideTools ?? 'Hide Tools' : state.labels.showTools ?? 'Show Tools';
+			toggle.setAttribute('aria-label', toggleLabel);
+			toggleHover.update(toggleLabel);
+			toggleIcon.className = `codicon codicon-layout-sidebar-right${visible ? '' : '-off'}`;
 		};
-		for (const [button, command] of [[ide, 'studio.internalEnterIdeMode'], [steam, 'studio.internalEnterSteamMode'], [tools, 'studio.internalOpenSteamTools']] as const) {
+		for (const [button, command] of [[ide, 'studio.internalEnterIdeMode'], [steam, 'studio.internalEnterSteamMode'], [tools, 'studio.internalOpenSteamTools'], [toggle, 'workbench.action.toggleAuxiliaryBar']] as const) {
 			this._register(addDisposableListener(button, 'click', () => {
 				void this.commands.executeCommand(command).catch(error => this.notifications.error(error));
 			}));
 		}
 		this._register(studioModeState.onDidChangeState(update));
 		this._register(studioModeState.onDidChangeMode(update));
+		this._register(layout.onDidChangePartVisibility(event => { if (event.partId === Parts.AUXILIARYBAR_PART) { update(); } }));
 		update();
 	}
 }
@@ -161,7 +181,7 @@ export class StudioSteamTabs extends Disposable {
 			getActions: () => studioSteamToolDefinitions.map(tool => toAction({
 				id: tool.id, label: studioModeState.state.labels[tool.id] ?? tool.id,
 				class: `codicon codicon-${tool.icon}`,
-				checked: studioSteamWorkspaceState.tabs.some(tab => tab.id === tool.id),
+				checked: 'view' in tool ? studioSteamWorkspaceState.tabs.some(tab => tab.id === tool.id) : undefined,
 				run: () => this.run('studio.internalOpenSteamTool', tool.id),
 			})),
 		})));
@@ -187,14 +207,14 @@ export class StudioSteamTabs extends Disposable {
 		this.add.title = labels.addTool ?? 'Open Tool'; this.add.setAttribute('aria-label', this.add.title);
 		if (!tabs.length) { append(this.list, $('span.studio-steam-empty-tabs', undefined, labels.tools ?? 'Open Tools')); }
 		for (const [index, tab] of tabs.entries()) {
-			const item = append(this.list, $('.studio-steam-tab', { 'data-tab': tab.id }));
+			const item = append(this.list, $('.studio-steam-tab', { 'data-tab': tab.id, 'data-icon': tab.icon }));
 			item.classList.toggle('active', tab.id === active); item.classList.toggle('dirty', !!tab.dirty);
 			const button = append(item, $('button.studio-steam-tab-select', { type: 'button', role: 'tab', 'aria-selected': String(tab.id === active), title: tab.label })) as HTMLButtonElement;
 			button.tabIndex = tab.id === (active ?? tabs[0]?.id) ? 0 : -1;
 			append(button, $(`span.codicon.codicon-${tab.icon}`, { 'aria-hidden': 'true' }));
 			append(button, $('span.studio-steam-tab-label', undefined, tab.label));
 			const closeLabel = (labels.closeTab ?? 'Close {0}').replace('{0}', tab.label);
-			const close = append(item, $('button.studio-steam-tab-close.codicon.codicon-close', { type: 'button', 'aria-label': closeLabel, title: closeLabel })) as HTMLButtonElement;
+			const close = append(item, $('button.studio-steam-tab-close.codicon.codicon-close-compact', { type: 'button', 'aria-label': closeLabel, title: closeLabel })) as HTMLButtonElement;
 			this.tabListeners.add(addDisposableListener(button, 'click', () => { void this.run('studio.internalSelectSteamTab', tab.id); }));
 			this.tabListeners.add(addDisposableListener(close, 'click', () => { void this.run('studio.internalCloseSteamTab', tab.id); }));
 			this.tabListeners.add(addDisposableListener(item, 'auxclick', event => {

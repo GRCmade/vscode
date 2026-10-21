@@ -24,7 +24,8 @@
 }
 
 .monaco-workbench .studio-mode-switcher button,
-.monaco-workbench .studio-steam-tools-action {
+.monaco-workbench .studio-steam-tools-action,
+.monaco-workbench .studio-steam-toggle-tools {
 	position: relative;
 	z-index: 2500;
 	display: inline-flex;
@@ -63,34 +64,48 @@
 
 .monaco-workbench .studio-mode-switcher button:focus-visible,
 .monaco-workbench .studio-steam-tools-action:focus-visible,
+.monaco-workbench .studio-steam-toggle-tools:focus-visible,
 .monaco-workbench .studio-steam-tool:focus-visible {
 	outline: 1px solid var(--vscode-focusBorder);
 	outline-offset: 2px;
 }
 
-.monaco-workbench .studio-steam-tools-action[hidden] { display: none; }
-.monaco-workbench .studio-steam-tools-action:hover { background: var(--vscode-toolbar-hoverBackground); }
+.monaco-workbench .studio-steam-tools-action[hidden],
+.monaco-workbench .studio-steam-toggle-tools[hidden] { display: none; }
+.monaco-workbench .studio-steam-tools-action:hover,
+.monaco-workbench .studio-steam-toggle-tools:hover { background: var(--vscode-toolbar-hoverBackground); }
+.monaco-workbench .studio-steam-toggle-tools {
+	order: 1;
+	flex-shrink: 0;
+	width: var(--vscode-spacing-size280);
+	height: var(--vscode-spacing-size280);
+	margin-right: var(--vscode-spacing-size80);
+	padding: var(--vscode-spacing-size60);
+}
+.monaco-workbench.studio-steam-mode .titlebar-right > .window-controls-container { order: 2; }
 
 .monaco-workbench .studio-steam-tabs { display: none; }
 .monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .title-label,
 .monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .global-actions { display: none; }
-.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .title-actions { order: 2; }
-.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title { padding-left: 0; }
+.monaco-workbench.studio-steam-mode .part.auxiliarybar.pane-composite-part > .title.composite > .title-actions { order: 2; flex: 0 0 auto; }
+.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title { padding-left: var(--vscode-spacing-size60); }
 .monaco-workbench.studio-steam-mode .studio-steam-tabs {
 	display: flex;
 	align-items: center;
 	flex: 1;
 	min-width: 0;
 	height: 100%;
-	gap: var(--vscode-spacing-size40);
+	gap: var(--vscode-spacing-size80);
 	user-select: text;
 	-webkit-user-select: text;
 }
 .monaco-workbench .studio-steam-tab-list {
 	display: flex;
-	align-items: stretch;
+	align-items: center;
+	flex: 1;
 	min-width: 0;
 	height: 100%;
+	gap: var(--vscode-spacing-size80);
 	overflow-x: auto;
 	scrollbar-width: none;
 }
@@ -98,16 +113,23 @@
 .monaco-workbench .studio-steam-tab {
 	display: flex;
 	align-items: center;
-	flex-shrink: 0;
-	gap: var(--vscode-spacing-size40);
+	flex: 1 1 160px;
+	min-width: 72px;
+	max-width: 220px;
+	height: var(--vscode-spacing-size280);
+	box-sizing: border-box;
+	gap: var(--vscode-spacing-size20);
 	padding: 0 var(--vscode-spacing-size60);
-	border-bottom: 2px solid transparent;
+	border: var(--vscode-strokeThickness) solid var(--vscode-contrastBorder, transparent);
+	border-radius: var(--vscode-cornerRadius-small);
+	background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background, var(--vscode-editor-background)));
 	color: var(--vscode-tab-inactiveForeground);
+	transition: background-color 160ms ease, border-color 160ms ease;
 }
 .monaco-workbench .studio-steam-tab.active {
 	color: var(--vscode-tab-activeForeground);
-	background: var(--vscode-tab-activeBackground);
-	border-bottom-color: var(--vscode-tab-activeBorderTop, var(--vscode-focusBorder));
+	background: color-mix(in srgb, var(--vscode-foreground) 10%, var(--vscode-sideBar-background, var(--vscode-editor-background)));
+	border-color: var(--vscode-contrastActiveBorder, color-mix(in srgb, var(--vscode-foreground) 20%, transparent));
 }
 .monaco-workbench .studio-steam-tab:hover { background: var(--vscode-tab-hoverBackground); }
 .monaco-workbench .studio-steam-tabs button {
@@ -120,14 +142,23 @@
 	user-select: text;
 	-webkit-user-select: text;
 }
-.monaco-workbench .studio-steam-tabs button.codicon { font-family: codicon; font-size: 16px; }
-.monaco-workbench .studio-steam-tab-select { display: flex; align-items: center; gap: var(--vscode-spacing-size60); height: 100%; min-width: 0; }
-.monaco-workbench .studio-steam-tab-label { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.monaco-workbench .studio-steam-tabs .studio-steam-tab-close { opacity: 0; width: 20px; height: 20px; padding: 2px; }
+.monaco-workbench .studio-steam-tabs button.codicon { font-family: codicon; font-size: var(--vscode-codiconFontSize); }
+.monaco-workbench .studio-steam-tab-select { display: flex; flex: 1; align-items: center; justify-content: center; gap: var(--vscode-spacing-size60); height: 100%; min-width: 0; padding: 0; }
+.monaco-workbench .studio-steam-tab-select > .codicon { flex-shrink: 0; color: var(--vscode-symbolIcon-fileForeground, var(--vscode-descriptionForeground)); }
+.monaco-workbench .studio-steam-tab[data-icon="database"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-variableForeground); }
+.monaco-workbench .studio-steam-tab[data-icon="book"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-classForeground); }
+.monaco-workbench .studio-steam-tab[data-icon="package"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-packageForeground); }
+.monaco-workbench .studio-steam-tab[data-icon="hubot"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-methodForeground); }
+.monaco-workbench .studio-steam-tab[data-icon="versions"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-enumForeground); }
+.monaco-workbench .studio-steam-tab[data-icon="history"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-eventForeground); }
+.monaco-workbench .studio-steam-tab[data-icon="globe"] .studio-steam-tab-select > .codicon { color: var(--vscode-textLink-foreground); }
+.monaco-workbench .studio-steam-tab-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.monaco-workbench .studio-steam-tab.active .studio-steam-tab-label { font-weight: var(--vscode-fontWeight-semiBold); }
+.monaco-workbench .studio-steam-tabs .studio-steam-tab-close { opacity: 0; flex-shrink: 0; width: var(--vscode-spacing-size160); height: var(--vscode-spacing-size200); padding: var(--vscode-spacing-size20) 0; font-size: var(--vscode-codiconFontSize-compact); }
 .monaco-workbench .studio-steam-tab:is(.active, :hover, :focus-within) .studio-steam-tab-close { opacity: 1; }
 .monaco-workbench .studio-steam-tab.dirty .studio-steam-tab-close { opacity: 1; }
 .monaco-workbench .studio-steam-tab.dirty:not(:hover):not(:focus-within) .studio-steam-tab-close::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.monaco-workbench .studio-steam-tabs .studio-steam-add-tab { width: 24px; height: 24px; flex-shrink: 0; padding: 4px; }
+.monaco-workbench .studio-steam-tabs .studio-steam-add-tab { width: var(--vscode-spacing-size280); height: var(--vscode-spacing-size280); flex-shrink: 0; padding: var(--vscode-spacing-size60); background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background, var(--vscode-editor-background))); }
 .monaco-workbench .studio-steam-tabs :is(.studio-steam-add-tab, .studio-steam-tab-close):hover { background: var(--vscode-toolbar-hoverBackground); }
 .monaco-workbench .studio-steam-tabs button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 .monaco-workbench .studio-steam-empty-tabs { padding: 0 var(--vscode-spacing-size120); align-self: center; color: var(--vscode-descriptionForeground); }
@@ -243,6 +274,8 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
 @media (prefers-reduced-motion: reduce) {
 	.monaco-workbench .studio-mode-switcher button,
 	.monaco-workbench .studio-steam-tools-action,
+	.monaco-workbench .studio-steam-toggle-tools,
+	.monaco-workbench .studio-steam-tab,
 	.monaco-workbench .studio-steam-tool { transition: none; }
 	.monaco-workbench .studio-steam-tool:hover { transform: none; }
 	.monaco-workbench .studio-mode-loading .codicon-modifier-spin,

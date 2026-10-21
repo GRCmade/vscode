@@ -30,7 +30,7 @@ import { IContextKey, IContextKeyService } from '../../../../platform/contextkey
 import { IHostService } from '../../../services/host/browser/host.js';
 import { WindowTitle } from './windowTitle.js';
 import { CommandCenterControl } from './commandCenterControl.js';
-import { StudioModeSwitcher } from '../studioMode.js';
+import { StudioModeSwitcher, studioModeState } from '../studioMode.js';
 import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
 import { HiddenItemStrategy, MenuWorkbenchToolBar, WorkbenchToolBar } from '../../../../platform/actions/browser/toolbar.js';
 import { IActionViewItemService } from '../../../../platform/actions/browser/actionViewItemService.js';
@@ -367,6 +367,12 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		}));
 		this._register(this.configurationService.onDidChangeConfiguration(e => this.onConfigurationChanged(e)));
 		this._register(this.editorGroupsContainer.onDidChangeEditorPartOptions(e => this.onEditorPartConfigurationChange(e)));
+		this._register(studioModeState.onDidChangeMode(() => {
+			if (!this.isAuxiliary && this.actionToolBar) {
+				this.createActionToolBarMenus({ layoutActions: true });
+				this._onDidChange.fire(undefined);
+			}
+		}));
 	}
 
 	private onEditorPartConfigurationChange({ oldPartOptions, newPartOptions }: IEditorPartOptionsChangeEvent): void {
@@ -750,9 +756,8 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 			}
 
 			// --- Editor Actions
+			this.editorActionsChangeDisposable.clear();
 			if (this.editorActionsEnabled) {
-				this.editorActionsChangeDisposable.clear();
-
 				const activeGroup = this.editorGroupsContainer.activeGroup;
 				if (activeGroup) {
 					const editorActions = activeGroup.createEditorActions(this.editorActionsChangeDisposable, this.isAuxiliary && this.isCompact ? MenuId.CompactWindowEditorTitle : MenuId.EditorTitle);
@@ -914,7 +919,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 	}
 
 	private get layoutControlEnabled(): boolean {
-		return this.configurationService.getValue<boolean>(LayoutSettings.LAYOUT_ACTIONS) !== false;
+		return (this.isAuxiliary || !studioModeState.steam) && this.configurationService.getValue<boolean>(LayoutSettings.LAYOUT_ACTIONS) !== false;
 	}
 
 	protected get isCommandCenterVisible() {

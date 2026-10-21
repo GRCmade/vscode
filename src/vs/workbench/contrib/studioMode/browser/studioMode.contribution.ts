@@ -16,7 +16,7 @@ import { IInstantiationService } from '../../../../platform/instantiation/common
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
-import { StudioModeLoading, StudioSteamTools, studioModeState } from '../../../browser/parts/studioMode.js';
+import { StudioModeLoading, StudioSteamTools, studioModeState, studioSteamToolDefinitions } from '../../../browser/parts/studioMode.js';
 import { ViewPane } from '../../../browser/parts/views/viewPane.js';
 import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
 import { WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
@@ -35,12 +35,9 @@ const SNAPSHOT_KEY = 'studio.ideLayout';
 const STEAM_WIDTH_KEY = 'studio.steamToolsWidth';
 const toolsTitle = localize2('studioSteamTools', "Open Tools");
 const sideParts = [Parts.ACTIVITYBAR_PART, Parts.SIDEBAR_PART, Parts.PANEL_PART, Parts.AUXILIARYBAR_PART] as const;
-const toolViews: Record<string, string> = {
-	kv: 'studio.kv', knowledge: 'studio.knowledge', info: 'studio.projectInfo',
-	assistant: 'studio.developerAssistant', versions: 'studio.versions', trace: 'studio.trace',
-};
 
 interface IdeLayout {
+	projectUri?: string;
 	visible: boolean[];
 	sizes: { width: number; height: number }[];
 	containers: (string | undefined)[];
@@ -119,7 +116,7 @@ export class StudioModeContribution extends Disposable {
 		this._register(CommandsRegistry.registerCommand('studio.internalEnterIdeMode', () => this.request(false)));
 		this._register(CommandsRegistry.registerCommand('studio.internalEnterSteamMode', () => this.request(true)));
 		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTools', () => this.sequencer.queue(() => this.openTools())));
-		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTool', (_accessor, id: string) => this.sequencer.queue(() => this.openTool(id))));
+		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTool', (_accessor, id: string) => this.openTool(id)));
 		this._register(CommandsRegistry.registerCommand('studio.internalSelectSteamTab', (_accessor, id: string) => this.workspace.select(id)));
 		this._register(CommandsRegistry.registerCommand('studio.internalCloseSteamTab', (_accessor, id: string) => this.workspace.close(id)));
 		this._register(studioModeState.onDidChangeState(state => {
@@ -144,7 +141,7 @@ export class StudioModeContribution extends Disposable {
 		return this.sequencer.queue(async () => {
 			if (revision !== this.revision || this._store.isDisposed) { return; }
 			const next = this.requested;
-			const projectUri = studioModeState.state.projectUri;
+			const projectUri = this.snapshot?.projectUri ?? studioModeState.state.projectUri;
 			if (next === this.steam && (next ? this.projectReady && this.workspace.hasProject : !this.snapshot)) {
 				if (!next) { await this.workspace.deactivate(this.groups.mainPart.activeGroup); }
 				return;
@@ -165,7 +162,7 @@ export class StudioModeContribution extends Disposable {
 					};
 					if (!this.steam) {
 						await this.transition(true, async () => {
-							await this.enterSteam();
+							await this.enterSteam(projectUri);
 							this.loading.show();
 							studioModeState.setMode(true, true, true);
 							// A retained frame can be revealed in the snapshot without a loading flash.
@@ -218,6 +215,7 @@ export class StudioModeContribution extends Disposable {
 	private captureIde(): void {
 		if (!this.snapshot) {
 			this.snapshot = {
+				projectUri: studioModeState.state.projectUri,
 				visible: sideParts.map(part => this.layout.isVisible(part)),
 				sizes: sideParts.map(part => this.layout.getSize(part)),
 				containers: [ViewContainerLocation.Sidebar, ViewContainerLocation.Panel, ViewContainerLocation.AuxiliaryBar].map(location => this.views.getVisibleViewContainer(location)?.id),
@@ -232,7 +230,7 @@ export class StudioModeContribution extends Disposable {
 		}
 	}
 
-	private async enterSteam(): Promise<void> {
+	private async enterSteam(projectUri: string | undefined): Promise<void> {
 		// The secondary sidebar is opposite the primary sidebar. Override only memory,
 		// so Steam tools stay on the right even when the user's IDE sidebar is on the right.
 		await this.configuration.updateValue('workbench.sideBar.location', 'left', ConfigurationTarget.MEMORY);
@@ -240,8 +238,8 @@ export class StudioModeContribution extends Disposable {
 		this.contextKeys.createKey<boolean>('studio.steamMode', false).set(true);
 		this.layout.mainContainer.classList.add('studio-steam-mode');
 		this.layout.setAuxiliaryBarMaximized(false);
-		this.editorOptions.value = this.groups.mainPart.enforcePartOptions({ showTabs: 'none' });
-		const containers = new Set([toolsContainer, ...Object.values(toolViews).map(id => this.descriptors.getViewContainerByViewId(id))]);
+		this.editorOptions.value = this.groups.mainPart.enforcePartOptions({ showTabs: 'none', editorActionsLocation: 'hidden' });
+		const containers = new Set([toolsContainer, ...studioSteamToolDefinitions.flatMap(tool => 'view' in tool ? [this.descriptors.getViewContainerByViewId(tool.view)] : [])]);
 		for (const container of containers) {
 			if (container) { this.toolLocations.add(this.descriptors.overrideViewContainerLocation(container, ViewContainerLocation.AuxiliaryBar)); }
 		}
@@ -250,7 +248,7 @@ export class StudioModeContribution extends Disposable {
 		this.groups.mainPart.arrangeGroups(GroupsArrangement.MAXIMIZE, this.groups.mainPart.getGroups(GroupsOrder.GRID_APPEARANCE)[0]);
 		for (const part of [Parts.ACTIVITYBAR_PART, Parts.SIDEBAR_PART, Parts.PANEL_PART]) { this.layout.setPartHidden(true, part); }
 		this.layout.setPartHidden(false, Parts.EDITOR_PART);
-		await this.workspace.activate();
+		await this.workspace.activate(projectUri);
 		const width = this.storage.getNumber(STEAM_WIDTH_KEY, StorageScope.WORKSPACE, Math.round(this.layout.mainContainerDimension.width * .45));
 		this.layout.setSize(Parts.AUXILIARYBAR_PART, { width: Math.min(Math.max(280, width), Math.max(170, this.layout.mainContainerDimension.width - 320)), height: this.layout.getSize(Parts.AUXILIARYBAR_PART).height });
 	}
@@ -261,8 +259,10 @@ export class StudioModeContribution extends Disposable {
 	}
 
 	private async openTool(id: string): Promise<void> {
-		if (!this.steam || !Object.hasOwn(toolViews, id)) { return; }
-		await this.workspace.openTool(id);
+		const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
+		if (!this.steam || !tool) { return; }
+		if ('command' in tool) { await this.commands.executeCommand(tool.command); }
+		else { await this.sequencer.queue(async () => { if (this.steam) { await this.workspace.openTool(id); } }); }
 	}
 
 	private async restoreIde(): Promise<void> {

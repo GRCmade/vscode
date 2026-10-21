@@ -23,7 +23,8 @@ import { WebviewInput } from '../../webviewPanel/browser/webviewEditorInput.js';
 const TABS_KEY = 'studio.steamWorkspaceTabs';
 const HOME_VIEW = 'studio.steamTools';
 interface SavedTabs { tools: string[]; active?: string }
-interface WorkspaceTab { id: string; tool?: typeof studioSteamToolDefinitions[number]; editor?: EditorInput; group?: IEditorGroup }
+type ViewTool = Extract<typeof studioSteamToolDefinitions[number], { view: string }>;
+interface WorkspaceTab { id: string; tool?: ViewTool; editor?: EditorInput; group?: IEditorGroup }
 
 /**
  * The run surface belongs to the main editor part. All other editor inputs use a
@@ -41,6 +42,7 @@ export class StudioSteamWorkspace extends Disposable {
 	private enabled = false;
 	private projectGroup: IEditorGroup | undefined;
 	private project: EditorInput | undefined;
+	private projectUri: string | undefined;
 	private readonly projectLifetime = this._register(new MutableDisposable());
 	private readonly ideGroups = new Map<EditorInput, IEditorGroup>();
 	private readonly editorIds = new WeakMap<EditorInput, string>();
@@ -63,7 +65,7 @@ export class StudioSteamWorkspace extends Disposable {
 		const saved = storage.getObject<SavedTabs>(TABS_KEY, StorageScope.WORKSPACE);
 		this.tabs = [...new Set(saved?.tools ?? [])].flatMap(id => {
 			const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
-			return tool ? [{ id, tool }] : [];
+			return tool && 'view' in tool ? [{ id, tool }] : [];
 		});
 		this.savedActive = saved?.active;
 		this.host = append(parent, $('.part.editor.studio-steam-editors'));
@@ -71,8 +73,8 @@ export class StudioSteamWorkspace extends Disposable {
 		this._register(studioModeState.onDidChangeState(() => this.publish()));
 		this._register(this.views.onDidChangeViewVisibility(event => {
 			if (!this.enabled || !event.visible) { return; }
-			const tool = studioSteamToolDefinitions.find(tool => tool.view === event.id);
-			if (tool) {
+			const tool = studioSteamToolDefinitions.find(tool => 'view' in tool && tool.view === event.id);
+			if (tool && 'view' in tool) {
 				if (!this.tabs.some(tab => tab.id === tool.id)) { this.tabs.push({ id: tool.id, tool }); }
 				++this.visibilityRevision; this.active = tool.id; this.publish();
 			}
@@ -111,11 +113,14 @@ export class StudioSteamWorkspace extends Disposable {
 		return part;
 	}
 
-	async activate(): Promise<void> {
+	async activate(projectUri = studioModeState.state.projectUri): Promise<void> {
 		if (this.enabled) { return; }
+		this.projectUri = projectUri;
 		const part = this.ensurePart();
 		await part.whenReady;
 		const restoreActive = this.savedActive;
+		const restoredEditor = part.activeGroup.activeEditor;
+		const restoredGroup = part.activeGroup;
 		const projectGroup = this.projectGroup = this.groups.mainPart.getGroups(GroupsOrder.GRID_APPEARANCE)[0];
 		this.modeLifetime.add(this.groups.mainPart.enforceSingleGroup(projectGroup));
 		this.setProject([...this.groups.mainPart.groups, ...part.groups].flatMap(group => group.editors).find(editor => this.matchesProject(editor)));
@@ -137,8 +142,9 @@ export class StudioSteamWorkspace extends Disposable {
 		}
 		this.enabled = true;
 		this.syncEditors();
-		if (restoreActive === 'editor' && part.activeGroup.activeEditor) {
-			this.revealEditor(part.activeGroup.activeEditor, part.activeGroup);
+		if (restoreActive === 'editor' && restoredEditor && restoredGroup.contains(restoredEditor)) {
+			// Moving an IDE source into this group can change its active input.
+			await this.select(this.id(restoredEditor, restoredGroup));
 		} else if (restoreActive && this.tabs.some(tab => tab.tool && tab.id === restoreActive)) {
 			await this.select(restoreActive);
 		} else { await this.home(); }
@@ -172,6 +178,7 @@ export class StudioSteamWorkspace extends Disposable {
 		this.partLifetime.clear();
 		clearNode(this.host);
 		this.projectGroup = undefined;
+		this.projectUri = undefined;
 		this.setProject(undefined);
 		this.ideGroups.clear();
 		this.syncEditors();
@@ -186,7 +193,7 @@ export class StudioSteamWorkspace extends Disposable {
 	async openTool(id: string): Promise<void> {
 		if (!this.enabled) { return; }
 		const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
-		if (!tool || !this.descriptors.getViewContainerByViewId(tool.view)) { return; }
+		if (!tool || !('view' in tool) || !this.descriptors.getViewContainerByViewId(tool.view)) { return; }
 		if (!this.tabs.some(tab => tab.id === id)) { this.tabs.push({ id, tool }); }
 		await this.select(id);
 	}
@@ -226,13 +233,13 @@ export class StudioSteamWorkspace extends Disposable {
 	}
 
 	private matchesProject(editor: EditorInput): boolean {
-		if (editor.isDisposed() || !(editor instanceof WebviewInput) || editor.webview.providedViewType !== 'studio.project') { return false; }
+		if (editor.isDisposed() || !(editor instanceof WebviewInput) || editor.webview.providedViewType !== 'studio.project' && editor.webview.providedViewType !== 'studio.projectTool') { return false; }
 		if (this.project && !this.project.isDisposed()) { return editor === this.project; }
 		// New panels open before their frame can publish serialized state. Their
 		// placement cannot depend on whether a previously closed input was cached.
 		try {
 			const uri = JSON.parse(editor.webview.state ?? '{}').projectUri;
-			return !uri || uri === studioModeState.state.projectUri;
+			return uri ? uri === this.projectUri : editor.webview.providedViewType === 'studio.project';
 		} catch { return false; }
 	}
 

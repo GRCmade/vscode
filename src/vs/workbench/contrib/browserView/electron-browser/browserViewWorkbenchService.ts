@@ -32,6 +32,7 @@ import { buttonForeground, buttonBackground, inputPlaceholderForeground } from '
 import { editorWidgetBackground, editorWidgetBorder, editorWidgetForeground, toolbarHoverBackground, widgetShadow } from '../../../../platform/theme/common/colors/editorColors.js';
 import { DEFAULT_FONT_FAMILY } from '../../../../base/browser/fonts.js';
 import { findGroup } from '../../../services/editor/common/editorGroupFinder.js';
+import { getEditorOpenTarget } from '../../../services/editor/common/editorOpenTarget.js';
 import { ChatEditorInput } from '../../chat/browser/widgetHosts/editor/chatEditorInput.js';
 import { IChatWidgetService } from '../../chat/browser/chat.js';
 import { IAccessibilityService } from '../../../../platform/accessibility/common/accessibility.js';
@@ -266,6 +267,9 @@ export class BrowserViewWorkbenchService extends Disposable implements IBrowserV
 	}
 
 	async getPreferredGroup(preferredGroup?: PreferredGroup): Promise<PreferredGroup | undefined> {
+		const target = getEditorOpenTarget({ resource: URI.from({ scheme: Schemas.vscodeBrowser }) }, preferredGroup);
+		if (target) { return target; }
+
 		// "Open to side" requests are routed into the dedicated side group.
 		if (preferredGroup === SIDE_GROUP) {
 			return this._getOrCreateDedicatedGroup('sideGroup');

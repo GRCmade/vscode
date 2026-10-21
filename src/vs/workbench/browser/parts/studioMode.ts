@@ -15,6 +15,7 @@ import { getDefaultHoverDelegate } from '../../../base/browser/ui/hover/hoverDel
 import { IHoverService } from '../../../platform/hover/browser/hover.js';
 import { IWorkbenchLayoutService, Parts } from '../../services/layout/browser/layoutService.js';
 import { onDidChangeFullscreen, onDidChangeZoomLevel } from '../../../base/browser/browser.js';
+import { getIconRegistry } from '../../../platform/theme/common/iconRegistry.js';
 
 /** Space reserved by the embedded project for the retained native workbench controls. */
 export const studioWindowChrome = { active: false, projectUri: undefined as string | undefined, height: 52, left: 0, right: 0, revision: 0 };
@@ -217,13 +218,13 @@ export class StudioSteamTabs extends Disposable {
 	) {
 		super();
 		this.element = append(parent, $('.studio-steam-tabs'));
-		this.add = append(this.element, $('button.studio-steam-add-tab.codicon.codicon-add', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
 		this.list = append(this.element, $('.studio-steam-tab-list', { role: 'tablist' }));
+		this.add = append(this.element, $('button.studio-steam-add-tab.codicon.codicon-add-compact', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
 		this.instances = append(parent, $('.studio-steam-instances'));
-		this.newInstance = append(this.instances, $('button.studio-steam-new-instance.codicon.codicon-add', { type: 'button' })) as HTMLButtonElement;
 		this.instanceList = append(this.instances, $('.studio-steam-instance-list', { role: 'tablist' }));
+		this.newInstance = append(this.instances, $('button.studio-steam-new-instance.codicon.codicon-add-compact', { type: 'button' })) as HTMLButtonElement;
 		this._register(addDisposableListener(this.newInstance, 'click', () => { void this.run('studio.internalNewSteamInstance', studioSteamWorkspaceState.tool); }));
-		this.instanceActions = append(this.instances, $('button.studio-steam-instance-actions.codicon.codicon-chevron-down', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
+		this.instanceActions = append(this.instances, $('button.studio-steam-instance-actions.codicon.codicon-chevron-down-compact', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
 		this._register(addDisposableListener(this.instanceActions, 'click', () => this.contextMenu.showContextMenu({
 			getAnchor: () => this.instanceActions,
 			getActions: () => (studioSteamWorkspaceState.tool === 'terminal' ? [
@@ -285,7 +286,8 @@ export class StudioSteamTabs extends Disposable {
 			item.classList.toggle('active', tab.id === active); item.classList.toggle('dirty', !!tab.dirty);
 			const button = append(item, $('button.studio-steam-tab-select', { type: 'button', role: 'tab', 'aria-selected': String(tab.id === active), title: tab.label })) as HTMLButtonElement;
 			button.tabIndex = tab.id === (active ?? tabs[0]?.id) ? 0 : -1;
-			append(button, $(`span.codicon.codicon-${tab.icon}`, { 'aria-hidden': 'true' }));
+			const icon = getIconRegistry().getIcon(`${tab.icon}-compact`)?.id ?? tab.icon;
+			append(button, $(`span.codicon.codicon-${icon}`, { 'aria-hidden': 'true' }));
 			append(button, $('span.studio-steam-tab-label', undefined, tab.label));
 			const closeLabel = (labels.closeTab ?? 'Close {0}').replace('{0}', tab.label);
 			const close = append(item, $('button.studio-steam-tab-close.codicon.codicon-close-compact', { type: 'button', 'aria-label': closeLabel, title: closeLabel })) as HTMLButtonElement;

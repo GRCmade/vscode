@@ -524,6 +524,12 @@ export interface IWorkbenchLayoutService extends ILayoutService {
 	readonly onDidChangePartVisibility: Event<IPartVisibilityChangeEvent>;
 
 	/**
+	 * Emits after the user resizes workbench parts with a sash or resize command.
+	 * Window resizing and programmatic layout restoration do not emit this event.
+	 */
+	readonly onDidResizeParts: Event<void>;
+
+	/**
 	 * Emit when notifications (toasts or center) visibility changes.
 	 */
 	readonly onDidChangeNotificationsVisibility: Event<boolean>;

@@ -113,6 +113,16 @@ export class StudioModeContribution extends Disposable {
 		toolsTitle.value = studioModeState.state.labels.tools ?? toolsTitle.original;
 		this.snapshot = storage.getObject<IdeLayout>(SNAPSHOT_KEY, StorageScope.WORKSPACE);
 		this.requested = storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
+		this._register(layout.onDidResizeParts(() => {
+			if (this.steam && layout.isVisible(Parts.AUXILIARYBAR_PART) && !layout.isAuxiliaryBarMaximized()) {
+				const width = layout.getSize(Parts.AUXILIARYBAR_PART).width;
+				if (Number.isFinite(width) && width > 0) { storage.store(STEAM_WIDTH_KEY, width, StorageScope.WORKSPACE, StorageTarget.MACHINE); }
+			}
+		}));
+		this._register(layout.onDidChangePartVisibility(({ partId, visible }) => {
+			if (partId === Parts.AUXILIARYBAR_PART && visible) { this.restoreToolsWidth(); }
+		}));
+		this._register(layout.onDidLayoutMainContainer(() => this.restoreToolsWidth()));
 		this._register(CommandsRegistry.registerCommand('studio.internalToggleMode', () => this.request(!this.requested)));
 		this._register(CommandsRegistry.registerCommand('studio.internalEnterIdeMode', () => this.request(false)));
 		this._register(CommandsRegistry.registerCommand('studio.internalEnterSteamMode', () => this.request(true)));
@@ -264,7 +274,15 @@ export class StudioModeContribution extends Disposable {
 		for (const part of [Parts.ACTIVITYBAR_PART, Parts.SIDEBAR_PART, Parts.PANEL_PART]) { this.layout.setPartHidden(true, part); }
 		this.layout.setPartHidden(false, Parts.EDITOR_PART);
 		await this.workspace.activate(projectUri);
-		const width = this.storage.getNumber(STEAM_WIDTH_KEY, StorageScope.WORKSPACE, Math.round(this.layout.mainContainerDimension.width * .45));
+		this.restoreToolsWidth();
+	}
+
+	private restoreToolsWidth(): void {
+		if (!this.steam || !this.layout.isVisible(Parts.AUXILIARYBAR_PART) || this.layout.isAuxiliaryBarMaximized()) { return; }
+		const defaultWidth = Math.round(this.layout.mainContainerDimension.width / 3);
+		const savedWidth = this.storage.getNumber(STEAM_WIDTH_KEY, StorageScope.WORKSPACE);
+		const width = savedWidth !== undefined && Number.isFinite(savedWidth) && savedWidth > 0 ? savedWidth : defaultWidth;
+		// Constrain the live layout without replacing the user's preferred width.
 		this.layout.setSize(Parts.AUXILIARYBAR_PART, { width: Math.min(Math.max(280, width), Math.max(170, this.layout.mainContainerDimension.width - 320)), height: this.layout.getSize(Parts.AUXILIARYBAR_PART).height });
 	}
 
@@ -283,7 +301,6 @@ export class StudioModeContribution extends Disposable {
 	private async restoreIde(): Promise<void> {
 		const snapshot = this.snapshot;
 		if (!snapshot) { return; }
-		if (this.steam) { this.storage.store(STEAM_WIDTH_KEY, this.layout.getSize(Parts.AUXILIARYBAR_PART).width, StorageScope.WORKSPACE, StorageTarget.MACHINE); }
 		await this.workspace.deactivate(this.groups.mainPart.getGroup(snapshot.activeGroup) ?? this.groups.mainPart.activeGroup);
 		this.steam = false;
 		this.projectReady = false;

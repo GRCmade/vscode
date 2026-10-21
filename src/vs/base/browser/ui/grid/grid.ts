@@ -273,6 +273,11 @@ export class Grid<T extends IView = IView> extends Disposable {
 	readonly onDidScroll: Event<void>;
 
 	/**
+	 * Fires after the user resizes views by dragging or resetting a sash.
+	 */
+	readonly onDidSashChange: Event<void>;
+
+	/**
 	 * A collection of sashes perpendicular to each edge of the grid.
 	 * Corner sashes will be created for each intersection.
 	 */
@@ -317,6 +322,7 @@ export class Grid<T extends IView = IView> extends Disposable {
 
 		this.onDidChange = this.gridview.onDidChange;
 		this.onDidScroll = this.gridview.onDidScroll;
+		this.onDidSashChange = Event.any(this.gridview.onDidSashChange, Event.signal(this.gridview.onDidSashReset));
 		this.onDidChangeViewMaximized = this.gridview.onDidChangeViewMaximized;
 	}
 

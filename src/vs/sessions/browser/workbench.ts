@@ -299,6 +299,7 @@ export abstract class Workbench extends Disposable implements IAgentWorkbenchLay
 
 	private readonly _onDidChangePartVisibility = this._register(new Emitter<IPartVisibilityChangeEvent>());
 	readonly onDidChangePartVisibility = this._onDidChangePartVisibility.event;
+	readonly onDidResizeParts: Event<void> = Event.None;
 
 	private readonly _onWillToggleSidePane = this._register(new Emitter<void>());
 	readonly onWillToggleSidePane = this._onWillToggleSidePane.event;

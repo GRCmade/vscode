@@ -180,6 +180,9 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 	private readonly _onDidChangePartVisibility = this._register(new Emitter<IPartVisibilityChangeEvent>());
 	readonly onDidChangePartVisibility = this._onDidChangePartVisibility.event;
 
+	private readonly _onDidResizeParts = this._register(new Emitter<void>());
+	readonly onDidResizeParts = this._onDidResizeParts.event;
+
 	private readonly _onDidChangeNotificationsVisibility = this._register(new Emitter<boolean>());
 	readonly onDidChangeNotificationsVisibility = this._onDidChangeNotificationsVisibility.event;
 
@@ -1690,6 +1693,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 		this.mainContainer.prepend(workbenchGrid.element);
 		this.mainContainer.setAttribute('role', 'application');
 		this.workbenchGrid = workbenchGrid;
+		this._register(workbenchGrid.onDidSashChange(() => this._onDidResizeParts.fire()));
 		this.workbenchGrid.edgeSnapping = this.state.runtime.mainWindowFullscreen;
 
 		for (const part of [titleBar, editorPart, activityBar, panelPart, sideBar, statusBar, auxiliaryBarPart, bannerPart]) {
@@ -1896,6 +1900,8 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 			default:
 				return; // Cannot resize other parts
 		}
+
+		this._onDidResizeParts.fire();
 	}
 
 	private setActivityBarHidden(hidden: boolean): void {

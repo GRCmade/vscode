@@ -360,6 +360,8 @@ class BranchNode implements ISplitView<ILayoutContext>, IDisposable {
 	readonly onDidSashReset: Event<GridLocation> = this._onDidSashReset.event;
 	private splitviewSashResetDisposable: IDisposable = Disposable.None;
 	private childrenSashResetDisposable: IDisposable = Disposable.None;
+	private readonly _onDidSashChange = new Relay<void>();
+	readonly onDidSashChange = this._onDidSashChange.event;
 
 	private _boundarySashes: IRelativeBoundarySashes = {};
 	get boundarySashes(): IRelativeBoundarySashes { return this._boundarySashes; }
@@ -656,6 +658,8 @@ class BranchNode implements ISplitView<ILayoutContext>, IDisposable {
 	}
 
 	private updateChildrenEvents(): void {
+		this._onDidSashChange.input = Event.any(Event.signal(this.splitview.onDidSashChange), ...this.children.map(c => c.onDidSashChange));
+
 		const onDidChildrenChange = Event.map(Event.any(...this.children.map(c => c.onDidChange)), () => undefined);
 		this.childrenChangeDisposable.dispose();
 		this.childrenChangeDisposable = onDidChildrenChange(this._onDidChange.fire, this._onDidChange);
@@ -740,6 +744,7 @@ class BranchNode implements ISplitView<ILayoutContext>, IDisposable {
 		this._onDidChange.dispose();
 		this._onDidScroll.dispose();
 		this._onDidSashReset.dispose();
+		this._onDidSashChange.dispose();
 		this._onDidVisibilityChange.dispose();
 
 		this.childrenVisibilityChangeDisposable.dispose();
@@ -783,6 +788,7 @@ class LeafNode implements ISplitView<ILayoutContext>, IDisposable {
 
 	readonly onDidScroll: Event<void> = Event.None;
 	readonly onDidSashReset: Event<GridLocation> = Event.None;
+	readonly onDidSashChange: Event<void> = Event.None;
 
 	private _onDidLinkedWidthNodeChange = new Relay<number | undefined>();
 	private _linkedWidthNode: LeafNode | undefined = undefined;
@@ -1049,6 +1055,7 @@ export class GridView implements IDisposable {
 	private proportionalLayout: boolean;
 	private _root!: BranchNode;
 	private onDidSashResetRelay = new Relay<GridLocation>();
+	private readonly onDidSashChangeRelay = new Relay<void>();
 	private _onDidScroll = new Relay<void>();
 	private _onDidChange = new Relay<IViewSize | undefined>();
 	private _boundarySashes: IBoundarySashes = {};
@@ -1073,6 +1080,7 @@ export class GridView implements IDisposable {
 		this._root = root;
 		this.element.appendChild(root.element);
 		this.onDidSashResetRelay.input = root.onDidSashReset;
+		this.onDidSashChangeRelay.input = root.onDidSashChange;
 		this._onDidChange.input = Event.map(root.onDidChange, () => undefined); // TODO
 		this._onDidScroll.input = root.onDidScroll;
 	}
@@ -1081,6 +1089,11 @@ export class GridView implements IDisposable {
 	 * Fires whenever the user double clicks a {@link Sash sash}.
 	 */
 	readonly onDidSashReset = this.onDidSashResetRelay.event;
+
+	/**
+	 * Fires after the user finishes dragging a sash within the grid.
+	 */
+	readonly onDidSashChange = this.onDidSashChangeRelay.event;
 
 	/**
 	 * Fires whenever the user scrolls a {@link SplitView} within
@@ -1836,6 +1849,7 @@ export class GridView implements IDisposable {
 	dispose(): void {
 		this._onDidChangeViewMaximized.dispose();
 		this.onDidSashResetRelay.dispose();
+		this.onDidSashChangeRelay.dispose();
 		this.root.dispose();
 		this.element.remove();
 	}

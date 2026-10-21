@@ -1384,7 +1384,26 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 
 	//#region moveEditor()
 
+	private getMoveCopyTargets(editors: { editor: EditorInput; options?: IEditorOptions }[], preferred: EditorGroupView): Map<EditorGroupView, typeof editors> {
+		const targets = new Map<EditorGroupView, typeof editors>();
+		for (const entry of editors) {
+			const target = getEditorOpenTarget(entry.editor, preferred) as EditorGroupView | undefined ?? preferred;
+			const entries = targets.get(target) ?? [];
+			entries.push(entry);
+			targets.set(target, entries);
+		}
+		return targets;
+	}
+
 	moveEditors(editors: { editor: EditorInput; options?: IEditorOptions }[], target: EditorGroupView): boolean {
+		const targets = this.getMoveCopyTargets(editors, target);
+		if ([...targets.keys()].some(group => group !== target)) {
+			let result = true;
+			for (const [group, entries] of targets) {
+				if (!this.moveEditors(entries, group)) { result = false; }
+			}
+			return result;
+		}
 
 		// Optimization: knowing that we move many editors, we
 		// delay the title update to a later point for this group
@@ -1417,6 +1436,9 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 	}
 
 	moveEditor(editor: EditorInput, target: EditorGroupView, options?: IEditorOptions, internalOptions?: IInternalMoveCopyOptions): boolean {
+		// Resolve before deciding whether to close the source. Routing only the open
+		// could send a singleton back here and then immediately close it as a move.
+		target = getEditorOpenTarget(editor, target) as EditorGroupView | undefined ?? target;
 
 		// Move within same group
 		if (this === target) {
@@ -1514,6 +1536,11 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 	//#region copyEditor()
 
 	copyEditors(editors: { editor: EditorInput; options?: IEditorOptions }[], target: EditorGroupView): void {
+		const targets = this.getMoveCopyTargets(editors, target);
+		if ([...targets.keys()].some(group => group !== target)) {
+			for (const [group, entries] of targets) { this.copyEditors(entries, group); }
+			return;
+		}
 
 		// Optimization: knowing that we move many editors, we
 		// delay the title update to a later point for this group
@@ -1537,6 +1564,7 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 	}
 
 	copyEditor(editor: EditorInput, target: EditorGroupView, options?: IEditorOptions, internalOptions?: IInternalEditorTitleControlOptions): void {
+		target = getEditorOpenTarget(editor, target) as EditorGroupView | undefined ?? target;
 
 		// Move within same group because we do not support to show the same editor
 		// multiple times in the same group
@@ -2045,6 +2073,17 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 	//#region replaceEditors()
 
 	async replaceEditors(editors: EditorReplacement[]): Promise<void> {
+		const local: EditorReplacement[] = [];
+		for (const entry of editors) {
+			const target = getEditorOpenTarget(entry.replacement, this);
+			if (target && target !== this && this.contains(entry.editor) && getEditorOpenTarget(entry.editor, this) === this) {
+				// A replacement routed to another surface must not close its reserved input.
+				await target.openEditor(entry.replacement, entry.options);
+			} else {
+				local.push(entry);
+			}
+		}
+		editors = local;
 
 		// Extract active vs. inactive replacements
 		let activeReplacement: EditorReplacement | undefined;

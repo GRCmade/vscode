@@ -8,7 +8,7 @@ import { Part } from '../../part.js';
 import { Dimension, $, EventHelper, addDisposableGenericMouseDownListener, getWindow, isAncestorOfActiveElement, getActiveElement, isHTMLElement, computeScreenAwareSize } from '../../../../base/browser/dom.js';
 import { Event, Emitter, Relay, PauseableEmitter } from '../../../../base/common/event.js';
 import { contrastBorder, editorBackground } from '../../../../platform/theme/common/colorRegistry.js';
-import { GroupDirection, GroupsArrangement, GroupOrientation, IMergeGroupOptions, MergeGroupMode, GroupsOrder, GroupLocation, IFindGroupScope, EditorGroupLayout, GroupLayoutArgument, IEditorSideGroup, IEditorDropTargetDelegate, IEditorPart, GroupActivationReason, IEditorGroupActivationEvent } from '../../../services/editor/common/editorGroupsService.js';
+import { GroupDirection, GroupsArrangement, GroupOrientation, IMergeGroupOptions, MergeGroupMode, GroupsOrder, GroupLocation, IFindGroupScope, EditorGroupLayout, GroupLayoutArgument, IEditorSideGroup, IEditorDropTargetDelegate, IEditorPart, IEditorGroup, GroupActivationReason, IEditorGroupActivationEvent } from '../../../services/editor/common/editorGroupsService.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { IView, orthogonal, LayoutPriority, IViewSize, Direction, SerializableGrid, Sizing, ISerializedGrid, ISerializedNode, Orientation, GridBranchNode, isGridBranchNode, GridNode, createSerializedGrid, Grid } from '../../../../base/browser/ui/grid/grid.js';
 import { GroupIdentifier, EditorInputWithOptions, IEditorPartOptions, IEditorPartOptionsChangeEvent, GroupModelChangeKind } from '../../../common/editor.js';
@@ -411,8 +411,19 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 		}
 	}
 
+	private singleGroup: IEditorGroupView | undefined;
+	get isGroupLayoutLocked(): boolean { return !!this.singleGroup; }
+
+	enforceSingleGroup(group: IEditorGroup): IDisposable {
+		const groupView = this.assertGroupView(group.id);
+		this.arrangeGroups(GroupsArrangement.MAXIMIZE, groupView);
+		this.singleGroup = groupView;
+		this.doSetGroupActive(groupView);
+		return toDisposable(() => { if (this.singleGroup === groupView) { this.singleGroup = undefined; } });
+	}
+
 	activateGroup(group: IEditorGroupView | GroupIdentifier, preserveWindowOrder?: boolean, reason?: GroupActivationReason): IEditorGroupView {
-		const groupView = this.assertGroupView(group);
+		const groupView = this.singleGroup ?? this.assertGroupView(group);
 		this.doSetGroupActive(groupView, reason);
 
 		// Ensure window on top unless disabled
@@ -424,7 +435,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 	}
 
 	restoreGroup(group: IEditorGroupView | GroupIdentifier): IEditorGroupView {
-		const groupView = this.assertGroupView(group);
+		const groupView = this.singleGroup ?? this.assertGroupView(group);
 		this.doRestoreGroup(groupView);
 
 		return groupView;
@@ -437,12 +448,14 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 	}
 
 	setSize(group: IEditorGroupView | GroupIdentifier, size: { width: number; height: number }): void {
+		if (this.singleGroup) { return; }
 		const groupView = this.assertGroupView(group);
 
 		this.gridWidget.resizeView(groupView, size);
 	}
 
 	arrangeGroups(arrangement: GroupsArrangement, target: IEditorGroupView | GroupIdentifier = this.activeGroup): void {
+		if (this.singleGroup) { return; }
 		if (this.count < 2) {
 			return; // require at least 2 groups to show
 		}
@@ -471,6 +484,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 	}
 
 	toggleMaximizeGroup(target: IEditorGroupView | GroupIdentifier = this.activeGroup): void {
+		if (this.singleGroup) { return; }
 		if (this.hasMaximizedGroup()) {
 			this.unmaximizeGroup();
 		} else {
@@ -504,6 +518,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 	}
 
 	setGroupOrientation(orientation: GroupOrientation): void {
+		if (this.singleGroup) { return; }
 		if (!this.gridWidget) {
 			return; // we have not been created yet
 		}
@@ -515,6 +530,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 	}
 
 	applyLayout(layout: EditorGroupLayout): void {
+		if (this.singleGroup) { return; }
 		const restoreFocus = this.shouldRestoreFocus(this.container);
 
 		// Determine how many groups we need overall
@@ -618,6 +634,8 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 
 	addGroup(location: IEditorGroupView | GroupIdentifier, direction: GroupDirection, groupToCopy?: IEditorGroupView): IEditorGroupView {
 		const locationView = this.assertGroupView(location);
+		if (locationView.groupsView.isGroupLayoutLocked) { return locationView.groupsView.activeGroup; }
+		if (groupToCopy?.groupsView.isGroupLayoutLocked) { return groupToCopy; }
 
 		let newGroupView: IEditorGroupView;
 
@@ -741,6 +759,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 	}
 
 	private doSetGroupActive(group: IEditorGroupView, reason = GroupActivationReason.DEFAULT): void {
+		group = this.singleGroup ?? group;
 		if (this._activeGroup !== group) {
 			const previousActiveGroup = this._activeGroup;
 			this._activeGroup = group;
@@ -770,6 +789,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 	}
 
 	private doRestoreGroup(group: IEditorGroupView): void {
+		if (this.singleGroup) { return; }
 		if (!this.gridWidget) {
 			return; // method is called as part of state restore very early
 		}
@@ -821,6 +841,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 
 	removeGroup(group: IEditorGroupView | GroupIdentifier, preserveFocus?: boolean): void {
 		const groupView = this.assertGroupView(group);
+		if (groupView.groupsView.isGroupLayoutLocked) { return; }
 		if (this.count === 1) {
 			return; // Cannot remove the last root group
 		}
@@ -885,6 +906,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 	moveGroup(group: IEditorGroupView | GroupIdentifier, location: IEditorGroupView | GroupIdentifier, direction: GroupDirection): IEditorGroupView {
 		const sourceView = this.assertGroupView(group);
 		const targetView = this.assertGroupView(location);
+		if (sourceView.groupsView.isGroupLayoutLocked || targetView.groupsView.isGroupLayoutLocked) { return sourceView; }
 
 		if (sourceView.id === targetView.id) {
 			throw new Error('Cannot move group into its own');
@@ -925,6 +947,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 	copyGroup(group: IEditorGroupView | GroupIdentifier, location: IEditorGroupView | GroupIdentifier, direction: GroupDirection): IEditorGroupView {
 		const groupView = this.assertGroupView(group);
 		const locationView = this.assertGroupView(location);
+		if (groupView.groupsView.isGroupLayoutLocked || locationView.groupsView.isGroupLayoutLocked) { return groupView; }
 
 		const restoreFocus = this.shouldRestoreFocus(groupView.element);
 
@@ -942,6 +965,8 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 	mergeGroup(group: IEditorGroupView | GroupIdentifier, target: IEditorGroupView | GroupIdentifier, options?: IMergeGroupOptions): boolean {
 		const sourceView = this.assertGroupView(group);
 		const targetView = this.assertGroupView(target);
+		if (sourceView === targetView) { return true; }
+		if (sourceView.groupsView.isGroupLayoutLocked || targetView.groupsView.isGroupLayoutLocked) { return false; }
 
 		// Collect editors to move/copy
 		const editors: EditorInputWithOptions[] = [];
@@ -1519,6 +1544,7 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
 	}
 
 	applyState(state: IEditorPartUIState | 'empty', options?: IEditorGroupViewOptions): Promise<void> {
+		if (this.singleGroup) { return Promise.resolve(); }
 		if (state === 'empty') {
 			return this.doApplyEmptyState();
 		} else {

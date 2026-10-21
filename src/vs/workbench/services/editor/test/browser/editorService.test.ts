@@ -112,6 +112,38 @@ suite('EditorService', () => {
 		assert.strictEqual(right.count, 5);
 	});
 
+	test('reserved surfaces resolve moves and copies before closing singleton source inputs', async () => {
+		const [part] = await createEditorService();
+		const left = part.activeGroup;
+		const project = createTestFileEditorInput(URI.parse('test://move-project'), TEST_EDITOR_INPUT_ID);
+		project.capabilities = EditorInputCapabilities.Singleton;
+		const file = createTestFileEditorInput(URI.parse('test://move-file'), TEST_EDITOR_INPUT_ID);
+		await left.openEditors([{ editor: project }, { editor: file }]);
+		const right = part.addGroup(left, GroupDirection.RIGHT);
+		disposables.add(registerEditorOpenTarget(editor => editor === project ? left : right));
+		assert.strictEqual(left.moveEditors([{ editor: project }, { editor: file }], right), true);
+		left.copyEditors([{ editor: project }], right);
+		right.moveEditor(file, left);
+		right.copyEditors([{ editor: file }], left);
+		assert.deepStrictEqual([left.editors, right.editors], [[project], [file]]);
+		assert.strictEqual(project.isDisposed(), false);
+	});
+
+	test('replacements opening on another surface retain the reserved source editor', async () => {
+		const [part] = await createEditorService();
+		const left = part.activeGroup;
+		const project = createTestFileEditorInput(URI.parse('test://replace-project'), TEST_EDITOR_INPUT_ID);
+		await left.openEditor(project, { pinned: true });
+		const right = part.addGroup(left, GroupDirection.RIGHT);
+		disposables.add(registerEditorOpenTarget(editor => editor === project ? left : right));
+		const file = createTestFileEditorInput(URI.parse('test://replace-file'), TEST_EDITOR_INPUT_ID);
+		await left.replaceEditors([{ editor: project, replacement: file }]);
+		assert.deepStrictEqual([left.editors, right.editors], [[project], [file]]);
+		const replacement = createTestFileEditorInput(URI.parse('test://replace-file-again'), TEST_EDITOR_INPUT_ID);
+		await right.replaceEditors([{ editor: file, replacement }]);
+		assert.deepStrictEqual([left.editors, right.editors], [[project], [replacement]]);
+	});
+
 	test('openEditor() - basics', async () => {
 		const [, service, accessor] = await createEditorService();
 

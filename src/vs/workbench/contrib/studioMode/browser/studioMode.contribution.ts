@@ -145,7 +145,7 @@ export class StudioModeContribution extends Disposable {
 			if (revision !== this.revision || this._store.isDisposed) { return; }
 			const next = this.requested;
 			const projectUri = studioModeState.state.projectUri;
-			if (next === this.steam && (next ? this.projectReady : !this.snapshot)) {
+			if (next === this.steam && (next ? this.projectReady && this.workspace.hasProject : !this.snapshot)) {
 				if (!next) { await this.workspace.deactivate(this.groups.mainPart.activeGroup); }
 				return;
 			}

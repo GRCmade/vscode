@@ -479,6 +479,9 @@ export interface IEditorGroupsContainer {
  */
 export interface IEditorPart extends IEditorGroupsContainer {
 
+	/** Reserve one visible group without changing the retained editor grid. */
+	enforceSingleGroup(group: IEditorGroup): IDisposable;
+
 	/**
 	 * An event for when the editor part is layed out.
 	 */

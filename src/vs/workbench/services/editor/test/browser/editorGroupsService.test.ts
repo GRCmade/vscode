@@ -96,6 +96,45 @@ suite('EditorGroupsService', () => {
 		assert.strictEqual(parts.parts.some(part => part === embedded), false);
 	});
 
+	test('single-group surfaces guard split, grid, cross-part moves and merges while retaining the IDE layout', async () => {
+		const [parts, instantiation] = await createParts();
+		const service = disposables.add(instantiation.createInstance(EditorService, undefined));
+		instantiation.stub(IEditorService, service);
+		const main = parts.mainPart, root = main.activeGroup;
+		const hidden = main.addGroup(root, GroupDirection.RIGHT);
+		const project = createTestFileEditorInput(URI.parse('test://fixed-project'), TEST_EDITOR_INPUT_ID);
+		const source = createTestFileEditorInput(URI.parse('test://retained-source'), TEST_EDITOR_INPUT_ID);
+		await root.openEditor(project, { pinned: true });
+		await hidden.openEditor(source, { pinned: true });
+		const originalLayout = main.getLayout();
+		const embedded = disposables.add(parts.createEmbeddedEditorPart($('.part.editor'), 'test.fixedTools', 'Tools'));
+		await embedded.whenReady;
+		const tools = embedded.activeGroup;
+		const lock = disposables.add(main.enforceSingleGroup(root));
+		for (const direction of [GroupDirection.LEFT, GroupDirection.RIGHT, GroupDirection.UP, GroupDirection.DOWN]) {
+			assert.strictEqual(main.addGroup(root, direction), root);
+			assert.strictEqual(parts.copyGroup(root.id, tools.id, direction), root);
+			assert.strictEqual(parts.copyGroup(tools.id, root.id, direction), tools);
+			assert.strictEqual(parts.moveGroup(root.id, tools.id, direction), root);
+			assert.strictEqual(parts.moveGroup(tools.id, root.id, direction), tools);
+		}
+		assert.strictEqual(parts.mergeGroup(root.id, tools.id), false);
+		assert.strictEqual(parts.mergeGroup(tools.id, root.id), false);
+		main.removeGroup(root); main.removeGroup(hidden);
+		main.applyLayout({ orientation: GroupOrientation.VERTICAL, groups: [{}, {}, {}] });
+		main.arrangeGroups(GroupsArrangement.EVEN);
+		main.toggleMaximizeGroup();
+		assert.strictEqual(main.activateGroup(hidden), root);
+		assert.strictEqual(main.restoreGroup(hidden), root);
+		assert.deepStrictEqual(main.groups.map(group => group.editors), [[project], [source]]);
+		assert.strictEqual(main.hasMaximizedGroup(), true);
+		assert.strictEqual(embedded.groups.length, 1);
+		lock.dispose();
+		main.applyLayout(originalLayout);
+		assert.strictEqual(main.hasMaximizedGroup(), false);
+		assert.strictEqual(main.addGroup(root, GroupDirection.RIGHT).isEmpty, true);
+	});
+
 	test('groups basics', async function () {
 		const instantiationService = workbenchInstantiationService({ contextKeyService: instantiationService => instantiationService.createInstance(MockScopableContextKeyService) }, disposables);
 		const [part] = await createPart(instantiationService);

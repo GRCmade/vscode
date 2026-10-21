@@ -214,6 +214,7 @@ export interface IEditorPartsView {
 export interface IEditorGroupsView {
 
 	readonly windowId: number;
+	readonly isGroupLayoutLocked?: boolean;
 
 	readonly groups: IEditorGroupView[];
 	readonly activeGroup: IEditorGroupView;

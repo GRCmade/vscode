@@ -939,6 +939,7 @@ export class TestEditorGroupsService implements IEditorGroupsService {
 
 	partOptions!: IEditorPartOptions;
 	enforcePartOptions(options: IEditorPartOptions): IDisposable { return Disposable.None; }
+	enforceSingleGroup(group: IEditorGroup): IDisposable { return Disposable.None; }
 
 	readonly mainPart = this;
 	readonly activeModalEditorPart: IModalEditorPart | undefined = undefined;

@@ -88,7 +88,7 @@
 	box-sizing: border-box;
 	/* Steam navigation keeps its insets across the native density presets. */
 	padding: 0 var(--vscode-spacing-size120) !important;
-	background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-editor-background));
+	background: color-mix(in srgb, var(--vscode-foreground) 8%, var(--vscode-sideBar-background, var(--vscode-editor-background)));
 	-webkit-app-region: drag;
 }
 .monaco-workbench.studio-steam-mode .studio-steam-tabs {

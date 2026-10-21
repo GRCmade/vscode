@@ -2186,6 +2186,8 @@ export abstract class Workbench extends Disposable implements IAgentWorkbenchLay
 		}
 	}
 
+	setWindowChromeHidden(_hidden: boolean): void { /* This window has no embeddable chrome. */ }
+
 	setPartHidden(hidden: boolean, part: Parts): void {
 		switch (part) {
 			case Parts.SIDEBAR_PART:

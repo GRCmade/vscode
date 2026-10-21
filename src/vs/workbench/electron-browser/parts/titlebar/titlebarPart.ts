@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Event } from '../../../../base/common/event.js';
-import { getZoomFactor } from '../../../../base/browser/browser.js';
+import { getZoomFactor, onDidChangeZoomLevel, onDidChangeFullscreen } from '../../../../base/browser/browser.js';
 import { $, addDisposableListener, append, EventType, getWindow, getWindowId, hide, show } from '../../../../base/browser/dom.js';
 import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
 import { IConfigurationService, IConfigurationChangeEvent } from '../../../../platform/configuration/common/configuration.js';
@@ -30,6 +30,8 @@ import { IEditorService } from '../../../services/editor/common/editorService.js
 import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
 import { CodeWindow, mainWindow } from '../../../../base/browser/window.js';
 import { IsWindowAlwaysOnTopContext } from '../../../common/contextkeys.js';
+
+import { studioModeState, studioWindowChrome } from '../../../browser/parts/studioMode.js';
 
 export class NativeTitlebarPart extends BrowserTitlebarPart {
 
@@ -87,6 +89,12 @@ export class NativeTitlebarPart extends BrowserTitlebarPart {
 		this.tahoeOrNewer = isTahoeOrNewer(environmentService.os.release);
 
 		this.handleWindowsAlwaysOnTop(targetWindow.vscodeWindowId);
+		if (this.hasStudioModeSwitcher) {
+			const update = () => this.updateSteamWindowControls();
+			this._register(studioModeState.onDidChangeMode(update));
+			this._register(onDidChangeZoomLevel(update));
+			this._register(onDidChangeFullscreen(update));
+		}
 	}
 
 	private async handleWindowsAlwaysOnTop(targetWindowId: number): Promise<void> {
@@ -272,11 +280,25 @@ export class NativeTitlebarPart extends BrowserTitlebarPart {
 		}
 	}
 
+	private updateSteamWindowControls(): void {
+		if (!this.element) { return; }
+		const active = studioModeState.steam;
+		// Preserve custom Linux/Windows controls too when their title bar is removed.
+		if (!isMacintosh && this.windowControlsContainer) {
+			const target = active ? this.layoutService.mainContainer.querySelector('.studio-steam-tools-chrome') : this.element.querySelector('.titlebar-right');
+			if (target && this.windowControlsContainer.parentElement !== target) { target.append(this.windowControlsContainer); }
+		}
+		if (useWindowControlsOverlay(this.configurationService)) {
+			this.cachedWindowControlHeight = undefined;
+			this.layout(this.element.offsetWidth, active ? studioWindowChrome.height : this.minimumHeight);
+		}
+	}
+
 	override layout(width: number, height: number): void {
 		super.layout(width, height);
 
 		if (useWindowControlsOverlay(this.configurationService)) {
-			const newHeight = Math.round(height * getZoomFactor(getWindow(this.element)));
+			const newHeight = Math.round((this.hasStudioModeSwitcher && studioModeState.steam ? studioWindowChrome.height : height) * getZoomFactor(getWindow(this.element)));
 			if (newHeight !== this.cachedWindowControlHeight) {
 				this.cachedWindowControlHeight = newHeight;
 				this.nativeHostService.updateWindowControls({

@@ -283,3 +283,40 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
 	html.studio-mode-transition::view-transition-old(root),
 	html.studio-mode-transition::view-transition-new(root) { animation: none; }
 }
+
+/* Retain the actual controls above the root webview overlay while the window chrome is hidden. */
+.monaco-workbench .studio-steam-window-chrome,
+.monaco-workbench .studio-steam-tools-chrome {
+	position: absolute;
+	top: 0;
+	z-index: 2500;
+	display: flex;
+	align-items: center;
+	height: 52px;
+	-webkit-app-region: drag;
+}
+.monaco-workbench .studio-steam-window-chrome { left: 0; }
+.monaco-workbench .studio-steam-tools-chrome { right: 0; height: 35px; }
+.monaco-workbench .studio-steam-tools-chrome.tools-hidden { height: 52px; }
+.monaco-workbench .studio-steam-window-chrome[hidden],
+.monaco-workbench .studio-steam-tools-chrome[hidden] { display: none; }
+.monaco-workbench .studio-steam-window-chrome .studio-mode-switcher { margin-top: 0; margin-bottom: 0; }
+.monaco-workbench .part.auxiliarybar > .title > .studio-steam-tools-chrome { position: static; order: 3; flex-shrink: 0; }
+.monaco-workbench .studio-steam-tools-chrome .studio-steam-toggle-tools { margin-right: var(--vscode-spacing-size80); }
+.monaco-workbench .studio-steam-tools-chrome .studio-steam-tools-action { font-size: var(--vscode-fontSize-label2); }
+.monaco-workbench .studio-steam-tools-chrome > .window-controls-container {
+	display: flex;
+	order: 2;
+	flex-shrink: 0;
+	width: calc(138px / var(--zoom-factor, 1));
+	height: 100%;
+	-webkit-app-region: no-drag;
+}
+.monaco-workbench .studio-steam-tools-chrome > .window-controls-container.wco-enabled { width: calc(100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px)); }
+.monaco-workbench .studio-steam-tools-chrome .window-icon { display: flex; align-items: center; justify-content: center; flex: 1; height: 100%; font-size: var(--vscode-codiconFontSize); }
+.monaco-workbench .studio-steam-tools-chrome .window-icon:hover { background: var(--vscode-toolbar-hoverBackground); }
+.monaco-workbench .studio-steam-tools-chrome .window-close:hover { background: var(--vscode-statusBarItem-errorBackground); color: var(--vscode-statusBarItem-errorForeground); }
+.monaco-workbench.fullscreen .studio-steam-tools-chrome > .window-controls-container { display: none; }
+.monaco-workbench.studio-steam-mode > .monaco-grid-view .part.editor:not(.modal-editor-part) { border: 0; border-radius: 0; }
+/* Non-floating PartLayout allocates the classic 35px header metric. */
+.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title { height: 35px; }

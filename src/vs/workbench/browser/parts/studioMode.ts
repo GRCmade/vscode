@@ -14,6 +14,11 @@ import { IContextMenuService } from '../../../platform/contextview/browser/conte
 import { getDefaultHoverDelegate } from '../../../base/browser/ui/hover/hoverDelegateFactory.js';
 import { IHoverService } from '../../../platform/hover/browser/hover.js';
 import { IWorkbenchLayoutService, Parts } from '../../services/layout/browser/layoutService.js';
+import { onDidChangeFullscreen, onDidChangeZoomLevel } from '../../../base/browser/browser.js';
+
+/** Space reserved by the embedded project for the retained native workbench controls. */
+export const studioWindowChrome = { active: false, projectUri: undefined as string | undefined, height: 52, left: 0, right: 0, revision: 0 };
+CommandsRegistry.registerCommand('studio.internalGetWindowChrome', () => ({ ...studioWindowChrome }));
 
 export const studioSteamToolDefinitions = [
 	{ id: 'kv', icon: 'database', view: 'studio.kv' },
@@ -88,8 +93,42 @@ export class StudioModeSwitcher extends Disposable {
 		const toggle = append(right, $('button.studio-steam-toggle-tools', { type: 'button', 'aria-controls': Parts.AUXILIARYBAR_PART })) as HTMLButtonElement;
 		const toggleIcon = append(toggle, $('span.codicon', { 'aria-hidden': 'true' }));
 		const toggleHover = this._register(hoverService.setupManagedHover(getDefaultHoverDelegate('mouse'), toggle, ''));
+		const dock = append(layout.mainContainer, $('.studio-steam-window-chrome'));
+		const toolsDock = append(layout.mainContainer, $('.studio-steam-tools-chrome'));
+		dock.hidden = toolsDock.hidden = true;
+		let lastChrome = '', timer: number | undefined;
+		const publishChrome = () => {
+			const visible = layout.isVisible(Parts.AUXILIARYBAR_PART);
+			studioWindowChrome.active = studioModeState.steam;
+			studioWindowChrome.left = dock.offsetWidth;
+			studioWindowChrome.right = visible ? 0 : toolsDock.offsetWidth;
+			const { revision, ...geometry } = studioWindowChrome;
+			const serialized = JSON.stringify(geometry);
+			if (serialized !== lastChrome) {
+				lastChrome = serialized;
+				studioWindowChrome.revision = revision + 1;
+				void this.commands.executeCommand('studio.internalUpdateWindowChrome', { ...studioWindowChrome }).catch(() => undefined);
+			}
+		};
+		const scheduleChrome = () => {
+			getWindow(dock).clearTimeout(timer);
+			timer = getWindow(dock).setTimeout(publishChrome, 0);
+		};
+		const observer = new (getWindow(dock).ResizeObserver)(scheduleChrome);
+		observer.observe(dock); observer.observe(toolsDock);
+		this._register(toDisposable(() => { observer.disconnect(); getWindow(dock).clearTimeout(timer); dock.remove(); toolsDock.remove(); }));
 		const update = () => {
 			const { state, steam: active, busy, targetSteam } = studioModeState;
+			dock.hidden = toolsDock.hidden = !active;
+			const modeParent = active ? dock : left;
+			const toolsParent = active ? toolsDock : right;
+			if (element.parentElement !== modeParent) { modeParent.append(element); }
+			if (tools.parentElement !== toolsParent) { toolsParent.append(tools, toggle); }
+			const toolsVisible = layout.isVisible(Parts.AUXILIARYBAR_PART);
+			const title = active && toolsVisible ? layout.getContainer(getWindow(dock), Parts.AUXILIARYBAR_PART)?.querySelector(':scope > .title') : undefined;
+			const dockParent = title ?? layout.mainContainer;
+			if (toolsDock.parentElement !== dockParent) { dockParent.append(toolsDock); }
+			toolsDock.classList.toggle('tools-hidden', !toolsVisible);
 			element.setAttribute('aria-label', state.labels.mode ?? 'Workspace Mode');
 			element.setAttribute('aria-busy', String(busy));
 			ide.title = state.labels.switchToIde ?? 'Switch to IDE Mode';
@@ -111,6 +150,7 @@ export class StudioModeSwitcher extends Disposable {
 			toggle.setAttribute('aria-label', toggleLabel);
 			toggleHover.update(toggleLabel);
 			toggleIcon.className = `codicon codicon-layout-sidebar-right${visible ? '' : '-off'}`;
+			scheduleChrome();
 		};
 		for (const [button, command] of [[ide, 'studio.internalEnterIdeMode'], [steam, 'studio.internalEnterSteamMode'], [tools, 'studio.internalOpenSteamTools'], [toggle, 'workbench.action.toggleAuxiliaryBar']] as const) {
 			this._register(addDisposableListener(button, 'click', () => {
@@ -120,6 +160,9 @@ export class StudioModeSwitcher extends Disposable {
 		this._register(studioModeState.onDidChangeState(update));
 		this._register(studioModeState.onDidChangeMode(update));
 		this._register(layout.onDidChangePartVisibility(event => { if (event.partId === Parts.AUXILIARYBAR_PART) { update(); } }));
+		this._register(layout.onDidLayoutMainContainer(scheduleChrome));
+		this._register(onDidChangeFullscreen(scheduleChrome));
+		this._register(onDidChangeZoomLevel(scheduleChrome));
 		update();
 	}
 }

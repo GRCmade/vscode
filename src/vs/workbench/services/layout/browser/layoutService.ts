@@ -598,6 +598,9 @@ export interface IWorkbenchLayoutService extends ILayoutService {
 	 */
 	setPartHidden(hidden: boolean, part: Parts): void;
 
+	/** Temporarily hide the main window's title and status bars without changing saved UI state. */
+	setWindowChromeHidden(hidden: boolean): void;
+
 	/**
 	 * Returns whether the layout surface that represents the secondary sidebar is visible.
 	 */

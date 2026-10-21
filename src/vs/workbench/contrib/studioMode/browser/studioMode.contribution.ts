@@ -16,7 +16,7 @@ import { IInstantiationService } from '../../../../platform/instantiation/common
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
-import { StudioModeLoading, StudioSteamTools, studioModeState, studioSteamToolDefinitions } from '../../../browser/parts/studioMode.js';
+import { StudioModeLoading, StudioSteamTools, studioModeState, studioWindowChrome, studioSteamToolDefinitions } from '../../../browser/parts/studioMode.js';
 import { ViewPane } from '../../../browser/parts/views/viewPane.js';
 import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
 import { WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
@@ -47,6 +47,7 @@ interface IdeLayout {
 	activeGroup: number;
 	sideBarMemoryLocation?: string;
 	editorLayout: EditorGroupLayout;
+	editorLayoutUnmaximized?: boolean;
 	groups: number[];
 }
 
@@ -231,12 +232,23 @@ export class StudioModeContribution extends Disposable {
 	}
 
 	private async enterSteam(projectUri: string | undefined): Promise<void> {
+		const mainPart = this.groups.mainPart;
+		if (this.snapshot?.editorMaximized && !this.snapshot.editorLayoutUnmaximized && mainPart.hasMaximizedGroup()) {
+			// Capture the cached proportions before changing the outer window geometry.
+			// Do this inside the transition callback so the expanded IDE does not flash.
+			mainPart.toggleMaximizeGroup();
+			this.snapshot.editorLayout = mainPart.getLayout();
+			this.snapshot.editorLayoutUnmaximized = true;
+			this.saveSnapshot();
+		}
 		// The secondary sidebar is opposite the primary sidebar. Override only memory,
 		// so Steam tools stay on the right even when the user's IDE sidebar is on the right.
 		await this.configuration.updateValue('workbench.sideBar.location', 'left', ConfigurationTarget.MEMORY);
 		this.steam = true;
+		studioWindowChrome.projectUri = projectUri;
 		this.contextKeys.createKey<boolean>('studio.steamMode', false).set(true);
 		this.layout.mainContainer.classList.add('studio-steam-mode');
+		this.layout.setWindowChromeHidden(true);
 		this.layout.setAuxiliaryBarMaximized(false);
 		this.editorOptions.value = this.groups.mainPart.enforcePartOptions({ showTabs: 'none', editorActionsLocation: 'hidden' });
 		const containers = new Set([toolsContainer, ...studioSteamToolDefinitions.flatMap(tool => 'view' in tool ? [this.descriptors.getViewContainerByViewId(tool.view)] : [])]);
@@ -274,6 +286,7 @@ export class StudioModeContribution extends Disposable {
 		this.projectReady = false;
 		this.contextKeys.createKey('studio.steamMode', false).set(false);
 		this.layout.mainContainer.classList.remove('studio-steam-mode');
+		this.layout.setWindowChromeHidden(false);
 		this.editorOptions.clear();
 		this.toolLocations.clear();
 		await this.configuration.updateValue('workbench.sideBar.location', snapshot.sideBarMemoryLocation, ConfigurationTarget.MEMORY);
@@ -284,9 +297,9 @@ export class StudioModeContribution extends Disposable {
 			if (snapshot.visible[index]) { this.layout.setSize(part, snapshot.sizes[index]); }
 		}
 		const mainPart = this.groups.mainPart;
-		// A maximized grid serializes its expanded size alongside cached hidden sizes.
-		// Reapplying that layout would shrink the hidden groups on every switch.
-		if (!snapshot.editorMaximized && snapshot.groups.length === mainPart.groups.length && snapshot.groups.every(id => mainPart.getGroup(id))) {
+		// Only apply proportions captured from an unmaximized grid. A maximized grid
+		// mixes expanded and cached sizes, which would shrink hidden groups each time.
+		if ((!snapshot.editorMaximized || snapshot.editorLayoutUnmaximized) && snapshot.groups.length === mainPart.groups.length && snapshot.groups.every(id => mainPart.getGroup(id))) {
 			mainPart.applyLayout(snapshot.editorLayout);
 		}
 		const previous = this.ideEditor;

@@ -159,6 +159,8 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 
 	//#region Events
 
+	private windowChromeHidden = false;
+
 	private readonly _onDidChangeZenMode = this._register(new Emitter<boolean>());
 	readonly onDidChangeZenMode = this._onDidChangeZenMode.event;
 
@@ -520,12 +522,12 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 
 			// The menu bar toggles the title bar in web because it does not need to be shown for window controls only
 			if (isWeb && menuBarVisibility === 'toggle') {
-				this.workbenchGrid.setViewVisible(this.titleBarPartView, shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled));
+				this.workbenchGrid.setViewVisible(this.titleBarPartView, this.shouldShowTitleBar());
 			}
 
 			// The menu bar toggles the title bar in full screen for toggle and classic settings
 			else if (this.state.runtime.mainWindowFullscreen && (menuBarVisibility === 'toggle' || menuBarVisibility === 'classic')) {
-				this.workbenchGrid.setViewVisible(this.titleBarPartView, shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled));
+				this.workbenchGrid.setViewVisible(this.titleBarPartView, this.shouldShowTitleBar());
 			}
 
 			// Move layout call to any time the menubar
@@ -574,7 +576,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 		if (hasCustomTitlebar(this.configurationService)) {
 
 			// Propagate to grid
-			this.workbenchGrid.setViewVisible(this.titleBarPartView, shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled));
+			this.workbenchGrid.setViewVisible(this.titleBarPartView, this.shouldShowTitleBar());
 
 			// Indicate active window border
 			this.updateWindowBorder(true);
@@ -633,7 +635,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 	}
 
 	isFloatingPanelsEnabled(): boolean {
-		return this.configurationService.getValue<boolean>(LayoutSettings.MODERN_UI) === true;
+		return !this.windowChromeHidden && this.configurationService.getValue<boolean>(LayoutSettings.MODERN_UI) === true;
 	}
 
 	isModernUICompact(): boolean {
@@ -686,7 +688,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 	private updateWindowBorder(skipLayout = false) {
 		const theme = this.themeService.getColorTheme();
 		const didHaveMainWindowBorder = this.hasMainWindowBorder();
-		const suppressMainWindowBorder = this.isFloatingPanelsEnabled() && !isHighContrast(theme.type);
+		const suppressMainWindowBorder = this.windowChromeHidden || this.isFloatingPanelsEnabled() && !isHighContrast(theme.type);
 
 		if (
 			isWeb ||
@@ -1371,7 +1373,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 			case Parts.TITLEBAR_PART:
 				return this.initialized ?
 					this.workbenchGrid.isViewVisible(this.titleBarPartView) :
-					shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled);
+					this.shouldShowTitleBar();
 			case Parts.SIDEBAR_PART:
 				return !this.stateModel.getRuntimeValue(LayoutStateKeys.SIDEBAR_HIDDEN);
 			case Parts.PANEL_PART:
@@ -1379,7 +1381,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 			case Parts.AUXILIARYBAR_PART:
 				return !this.stateModel.getRuntimeValue(LayoutStateKeys.AUXILIARYBAR_HIDDEN);
 			case Parts.STATUSBAR_PART:
-				return !this.stateModel.getRuntimeValue(LayoutStateKeys.STATUSBAR_HIDDEN);
+				return !this.windowChromeHidden && !this.stateModel.getRuntimeValue(LayoutStateKeys.STATUSBAR_HIDDEN);
 			case Parts.ACTIVITYBAR_PART:
 				return !this.stateModel.getRuntimeValue(LayoutStateKeys.ACTIVITYBAR_HIDDEN);
 			case Parts.EDITOR_PART:
@@ -1631,14 +1633,14 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 		this.stateModel.setRuntimeValue(LayoutStateKeys.STATUSBAR_HIDDEN, hidden);
 
 		// Adjust CSS
-		if (hidden) {
+		if (hidden || this.windowChromeHidden) {
 			this.mainContainer.classList.add(LayoutClasses.STATUSBAR_HIDDEN);
 		} else {
 			this.mainContainer.classList.remove(LayoutClasses.STATUSBAR_HIDDEN);
 		}
 
 		// Propagate to grid
-		this.workbenchGrid.setViewVisible(this.statusBarPartView, !hidden);
+		this.workbenchGrid.setViewVisible(this.statusBarPartView, !hidden && !this.windowChromeHidden);
 	}
 
 	protected createWorkbenchLayout(): void {
@@ -2328,6 +2330,20 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 		}
 	}
 
+	private shouldShowTitleBar(): boolean {
+		return !this.windowChromeHidden && shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled);
+	}
+
+	setWindowChromeHidden(hidden: boolean): void {
+		if (this.windowChromeHidden === hidden) { return; }
+		this.windowChromeHidden = hidden;
+		this.updateFloatingPanels();
+		this.workbenchGrid.setViewVisible(this.titleBarPartView, this.shouldShowTitleBar());
+		const statusVisible = this.isVisible(Parts.STATUSBAR_PART);
+		this.mainContainer.classList.toggle(LayoutClasses.STATUSBAR_HIDDEN, !statusVisible);
+		this.workbenchGrid.setViewVisible(this.statusBarPartView, statusVisible);
+	}
+
 	setPartHidden(hidden: boolean, part: Parts): void {
 		switch (part) {
 			case Parts.ACTIVITYBAR_PART:
@@ -2374,14 +2390,14 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 	}
 
 	updateMenubarVisibility(skipLayout: boolean): void {
-		const shouldShowTitleBar = shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled);
+		const shouldShowTitleBar = this.shouldShowTitleBar();
 		if (!skipLayout && this.workbenchGrid && shouldShowTitleBar !== this.isVisible(Parts.TITLEBAR_PART, mainWindow)) {
 			this.workbenchGrid.setViewVisible(this.titleBarPartView, shouldShowTitleBar);
 		}
 	}
 
 	updateCustomTitleBarVisibility(): void {
-		const shouldShowTitleBar = shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled);
+		const shouldShowTitleBar = this.shouldShowTitleBar();
 		const titlebarVisible = this.isVisible(Parts.TITLEBAR_PART);
 		if (shouldShowTitleBar !== titlebarVisible) {
 			this.workbenchGrid.setViewVisible(this.titleBarPartView, shouldShowTitleBar);
@@ -2553,7 +2569,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 			this.workbenchGrid.moveView(this.bannerPartView, Sizing.Distribute, this.titleBarPartView, shouldBannerBeFirst ? Direction.Up : Direction.Down);
 		}
 
-		this.workbenchGrid.setViewVisible(this.titleBarPartView, shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled));
+		this.workbenchGrid.setViewVisible(this.titleBarPartView, this.shouldShowTitleBar());
 	}
 
 	private arrangeEditorNodes(nodes: { editor: ISerializedNode; sideBar?: ISerializedNode; auxiliaryBar?: ISerializedNode }, availableHeight: number, availableWidth: number): ISerializedNode {
@@ -2752,7 +2768,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 						type: 'leaf',
 						data: { type: Parts.STATUSBAR_PART },
 						size: statusBarHeight,
-						visible: !this.stateModel.getRuntimeValue(LayoutStateKeys.STATUSBAR_HIDDEN)
+						visible: this.isVisible(Parts.STATUSBAR_PART)
 					}
 				]
 			},

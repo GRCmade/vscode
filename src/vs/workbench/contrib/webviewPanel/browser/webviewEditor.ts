@@ -174,7 +174,9 @@ export class WebviewEditor extends EditorPane {
 		// Check if this editor is inside a modal editor
 		const modalEditorContainer = this._editorGroupsService.activeModalEditorPart?.modalElement;
 		const isModal = isHTMLElement(modalEditorContainer) && this._element && modalEditorContainer.contains(this._element);
-		this._clippingContainer = isModal ? undefined : this._workbenchLayoutService.getContainer(this.window, Parts.EDITOR_PART);
+		// Embedded editor parts own their own clipping bounds, just like the main editor.
+		this._clippingContainer = isModal ? undefined : this._element?.closest<HTMLElement>('.part.editor')
+			?? this._workbenchLayoutService.getContainer(this.window, Parts.EDITOR_PART);
 
 		this._webviewVisibleDisposables.clear();
 

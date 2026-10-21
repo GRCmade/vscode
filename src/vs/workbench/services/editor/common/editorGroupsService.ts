@@ -532,6 +532,12 @@ export interface IAuxiliaryEditorPart extends IEditorPart {
 	close(): boolean;
 }
 
+/** An editor surface hosted by another workbench part in the same window. */
+export interface IEmbeddedEditorPart extends IEditorPart, IDisposable {
+	layout(width: number, height: number, top: number, left: number): void;
+	setVisible(visible: boolean): void;
+}
+
 export interface IModalEditorPart extends IEditorPart {
 
 	/**
@@ -679,6 +685,9 @@ export interface IEditorGroupsService extends IEditorGroupsContainer {
 	 * in there at the optional position and size on screen.
 	 */
 	createAuxiliaryEditorPart(options?: { bounds?: Partial<IRectangle>; compact?: boolean; alwaysOnTop?: boolean }): Promise<IAuxiliaryEditorPart>;
+
+	/** Creates a registered editor surface with its own scoped services and persisted editor state. */
+	createEmbeddedEditorPart(container: unknown /* HTMLElement */, id: string, label: string): IEmbeddedEditorPart;
 
 	/**
 	 * Creates a modal editor part that shows in a modal overlay

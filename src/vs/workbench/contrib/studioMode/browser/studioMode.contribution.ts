@@ -12,6 +12,7 @@ import { CommandsRegistry, ICommandService } from '../../../../platform/commands
 import { ConfigurationTarget, IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { ContextKeyExpr, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
+import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
@@ -25,6 +26,7 @@ import { EditorGroupLayout, GroupsArrangement, GroupsOrder, IEditorGroup, IEdito
 import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { IWorkbenchLayoutService, Parts } from '../../../services/layout/browser/layoutService.js';
 import { IViewsService } from '../../../services/views/common/viewsService.js';
+import { StudioSteamWorkspace } from './studioSteamWorkspace.js';
 
 const TOOLS_CONTAINER = 'studio-steam-tools';
 const TOOLS_VIEW = 'studio.steamTools';
@@ -85,6 +87,7 @@ export class StudioModeContribution extends Disposable {
 	private readonly editorOptions = this._register(new MutableDisposable<IDisposable>());
 	private readonly toolLocations = this._register(new DisposableStore());
 	private readonly loading: StudioModeLoading;
+	private readonly workspace: StudioSteamWorkspace;
 	private snapshot: IdeLayout | undefined;
 	private ideEditor: { group: IEditorGroup; editor: EditorInput } | undefined;
 	private steam = false;
@@ -104,9 +107,11 @@ export class StudioModeContribution extends Disposable {
 		@IStorageService private readonly storage: IStorageService,
 		@ICommandService private readonly commands: ICommandService,
 		@INotificationService notifications: INotificationService,
+		@IInstantiationService instantiation: IInstantiationService,
 	) {
 		super();
 		this.loading = this._register(new StudioModeLoading(layout.mainContainer, layout.getContainer(getWindow(layout.mainContainer), Parts.EDITOR_PART)));
+		this.workspace = this._register(instantiation.createInstance(StudioSteamWorkspace, layout.getContainer(getWindow(layout.mainContainer), Parts.AUXILIARYBAR_PART)!));
 		toolsTitle.value = studioModeState.state.labels.tools ?? toolsTitle.original;
 		this.snapshot = storage.getObject<IdeLayout>(SNAPSHOT_KEY, StorageScope.WORKSPACE);
 		this.requested = storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
@@ -115,6 +120,8 @@ export class StudioModeContribution extends Disposable {
 		this._register(CommandsRegistry.registerCommand('studio.internalEnterSteamMode', () => this.request(true)));
 		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTools', () => this.sequencer.queue(() => this.openTools())));
 		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTool', (_accessor, id: string) => this.sequencer.queue(() => this.openTool(id))));
+		this._register(CommandsRegistry.registerCommand('studio.internalSelectSteamTab', (_accessor, id: string) => this.workspace.select(id)));
+		this._register(CommandsRegistry.registerCommand('studio.internalCloseSteamTab', (_accessor, id: string) => this.workspace.close(id)));
 		this._register(studioModeState.onDidChangeState(state => {
 			toolsTitle.value = state.labels.tools ?? toolsTitle.original;
 			if (!this.initialized || !state.available) {
@@ -138,7 +145,10 @@ export class StudioModeContribution extends Disposable {
 			if (revision !== this.revision || this._store.isDisposed) { return; }
 			const next = this.requested;
 			const projectUri = studioModeState.state.projectUri;
-			if (next === this.steam && (next ? this.projectReady : !this.snapshot)) { return; }
+			if (next === this.steam && (next ? this.projectReady : !this.snapshot)) {
+				if (!next) { await this.workspace.deactivate(this.groups.mainPart.activeGroup); }
+				return;
+			}
 			studioModeState.setMode(this.steam, true, next);
 			try {
 				if (next) {
@@ -230,7 +240,7 @@ export class StudioModeContribution extends Disposable {
 		this.contextKeys.createKey<boolean>('studio.steamMode', false).set(true);
 		this.layout.mainContainer.classList.add('studio-steam-mode');
 		this.layout.setAuxiliaryBarMaximized(false);
-		this.editorOptions.value = this.groups.enforcePartOptions({ showTabs: 'none' });
+		this.editorOptions.value = this.groups.mainPart.enforcePartOptions({ showTabs: 'none' });
 		const containers = new Set([toolsContainer, ...Object.values(toolViews).map(id => this.descriptors.getViewContainerByViewId(id))]);
 		for (const container of containers) {
 			if (container) { this.toolLocations.add(this.descriptors.overrideViewContainerLocation(container, ViewContainerLocation.AuxiliaryBar)); }
@@ -240,28 +250,26 @@ export class StudioModeContribution extends Disposable {
 		this.groups.mainPart.arrangeGroups(GroupsArrangement.MAXIMIZE, this.groups.mainPart.getGroups(GroupsOrder.GRID_APPEARANCE)[0]);
 		for (const part of [Parts.ACTIVITYBAR_PART, Parts.SIDEBAR_PART, Parts.PANEL_PART]) { this.layout.setPartHidden(true, part); }
 		this.layout.setPartHidden(false, Parts.EDITOR_PART);
-		await this.openTools();
+		await this.workspace.activate();
 		const width = this.storage.getNumber(STEAM_WIDTH_KEY, StorageScope.WORKSPACE, Math.round(this.layout.mainContainerDimension.width * .45));
 		this.layout.setSize(Parts.AUXILIARYBAR_PART, { width: Math.min(Math.max(280, width), Math.max(170, this.layout.mainContainerDimension.width - 320)), height: this.layout.getSize(Parts.AUXILIARYBAR_PART).height });
 	}
 
 	private async openTools(): Promise<void> {
 		if (!this.steam) { return; }
-		await this.views.openView(TOOLS_VIEW, true);
+		await this.workspace.home();
 	}
 
 	private async openTool(id: string): Promise<void> {
 		if (!this.steam || !Object.hasOwn(toolViews, id)) { return; }
-		const view = toolViews[id];
-		const container = this.descriptors.getViewContainerByViewId(view);
-		if (!container || !this.snapshot) { return; }
-		await this.views.openView(view, true);
+		await this.workspace.openTool(id);
 	}
 
 	private async restoreIde(): Promise<void> {
 		const snapshot = this.snapshot;
 		if (!snapshot) { return; }
 		if (this.steam) { this.storage.store(STEAM_WIDTH_KEY, this.layout.getSize(Parts.AUXILIARYBAR_PART).width, StorageScope.WORKSPACE, StorageTarget.MACHINE); }
+		await this.workspace.deactivate(this.groups.mainPart.getGroup(snapshot.activeGroup) ?? this.groups.mainPart.activeGroup);
 		this.steam = false;
 		this.projectReady = false;
 		this.contextKeys.createKey('studio.steamMode', false).set(false);

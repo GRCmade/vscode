@@ -9,6 +9,27 @@ import { Emitter } from '../../../base/common/event.js';
 import { Disposable, DisposableStore, toDisposable } from '../../../base/common/lifecycle.js';
 import { CommandsRegistry, ICommandService } from '../../../platform/commands/common/commands.js';
 import { INotificationService } from '../../../platform/notification/common/notification.js';
+import { toAction } from '../../../base/common/actions.js';
+import { IContextMenuService } from '../../../platform/contextview/browser/contextView.js';
+
+export const studioSteamToolDefinitions = [
+	{ id: 'kv', icon: 'database', view: 'studio.kv' },
+	{ id: 'knowledge', icon: 'book', view: 'studio.knowledge' },
+	{ id: 'info', icon: 'package', view: 'studio.projectInfo' },
+	{ id: 'assistant', icon: 'hubot', view: 'studio.developerAssistant' },
+	{ id: 'versions', icon: 'versions', view: 'studio.versions' },
+	{ id: 'trace', icon: 'history', view: 'studio.trace' },
+] as const;
+
+export interface StudioSteamTab { id: string; label: string; icon: string; dirty?: boolean }
+const workspaceChange = new Emitter<void>();
+export const studioSteamWorkspaceState = {
+	tabs: [] as StudioSteamTab[], active: undefined as string | undefined,
+	onDidChange: workspaceChange.event,
+	update(tabs: StudioSteamTab[], active: string | undefined): void {
+		this.tabs = tabs; this.active = active; workspaceChange.fire();
+	},
+};
 
 export interface StudioModeState {
 	available: boolean;
@@ -119,6 +140,80 @@ export class StudioModeLoading extends Disposable {
 	}
 }
 
+/** One tab strip for retained project tools and native editors in the Steam workspace. */
+export class StudioSteamTabs extends Disposable {
+	private readonly element: HTMLElement;
+	private readonly list: HTMLElement;
+	private readonly add: HTMLButtonElement;
+	private readonly tabListeners = this._register(new DisposableStore());
+
+	constructor(parent: HTMLElement,
+		@ICommandService private readonly commands: ICommandService,
+		@INotificationService private readonly notifications: INotificationService,
+		@IContextMenuService private readonly contextMenu: IContextMenuService,
+	) {
+		super();
+		this.element = append(parent, $('.studio-steam-tabs'));
+		this.list = append(this.element, $('.studio-steam-tab-list', { role: 'tablist' }));
+		this.add = append(this.element, $('button.studio-steam-add-tab.codicon.codicon-add', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
+		this._register(addDisposableListener(this.add, 'click', () => this.contextMenu.showContextMenu({
+			getAnchor: () => this.add,
+			getActions: () => studioSteamToolDefinitions.map(tool => toAction({
+				id: tool.id, label: studioModeState.state.labels[tool.id] ?? tool.id,
+				class: `codicon codicon-${tool.icon}`,
+				checked: studioSteamWorkspaceState.tabs.some(tab => tab.id === tool.id),
+				run: () => this.run('studio.internalOpenSteamTool', tool.id),
+			})),
+		})));
+		this._register(studioSteamWorkspaceState.onDidChange(() => this.render()));
+		this._register(studioModeState.onDidChangeState(() => this.render()));
+		this.render();
+	}
+
+	private async run(command: string, id?: string, focusTab = false): Promise<void> {
+		try { await this.commands.executeCommand(command, id); } catch (error) { this.notifications.error(error); }
+		if (focusTab) {
+			(this.list.querySelector<HTMLButtonElement>('.active .studio-steam-tab-select') ?? this.add).focus();
+		}
+	}
+
+	private render(): void {
+		const focused = this.list.contains(getWindow(this.list).document.activeElement)
+			? (getWindow(this.list).document.activeElement as HTMLElement).closest<HTMLElement>('[data-tab]')?.dataset.tab : undefined;
+		this.tabListeners.clear(); clearNode(this.list);
+		const { tabs, active } = studioSteamWorkspaceState;
+		const labels = studioModeState.state.labels;
+		this.list.setAttribute('aria-label', labels.workspace ?? 'Tool Workspace');
+		this.add.title = labels.addTool ?? 'Open Tool'; this.add.setAttribute('aria-label', this.add.title);
+		if (!tabs.length) { append(this.list, $('span.studio-steam-empty-tabs', undefined, labels.tools ?? 'Open Tools')); }
+		for (const [index, tab] of tabs.entries()) {
+			const item = append(this.list, $('.studio-steam-tab', { 'data-tab': tab.id }));
+			item.classList.toggle('active', tab.id === active); item.classList.toggle('dirty', !!tab.dirty);
+			const button = append(item, $('button.studio-steam-tab-select', { type: 'button', role: 'tab', 'aria-selected': String(tab.id === active), title: tab.label })) as HTMLButtonElement;
+			button.tabIndex = tab.id === (active ?? tabs[0]?.id) ? 0 : -1;
+			append(button, $(`span.codicon.codicon-${tab.icon}`, { 'aria-hidden': 'true' }));
+			append(button, $('span.studio-steam-tab-label', undefined, tab.label));
+			const closeLabel = (labels.closeTab ?? 'Close {0}').replace('{0}', tab.label);
+			const close = append(item, $('button.studio-steam-tab-close.codicon.codicon-close', { type: 'button', 'aria-label': closeLabel, title: closeLabel })) as HTMLButtonElement;
+			this.tabListeners.add(addDisposableListener(button, 'click', () => { void this.run('studio.internalSelectSteamTab', tab.id); }));
+			this.tabListeners.add(addDisposableListener(close, 'click', () => { void this.run('studio.internalCloseSteamTab', tab.id); }));
+			this.tabListeners.add(addDisposableListener(item, 'auxclick', event => {
+				if (event.button === 1) { event.preventDefault(); void this.run('studio.internalCloseSteamTab', tab.id); }
+			}));
+			this.tabListeners.add(addDisposableListener(button, 'keydown', event => {
+				let next: number | undefined;
+				if (event.key === 'ArrowRight') { next = (index + 1) % tabs.length; }
+				else if (event.key === 'ArrowLeft') { next = (index + tabs.length - 1) % tabs.length; }
+				else if (event.key === 'Home') { next = 0; } else if (event.key === 'End') { next = tabs.length - 1; }
+				else if (event.key === 'Delete') { event.preventDefault(); void this.run('studio.internalCloseSteamTab', tab.id, true); }
+				if (next !== undefined) { event.preventDefault(); void this.run('studio.internalSelectSteamTab', tabs[next].id, true); }
+			}));
+			if (tab.id === focused) { button.focus(); }
+		}
+		this.list.querySelector('.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+	}
+}
+
 /** Native tool launcher; opening a card reveals the existing retained project view. */
 export class StudioSteamTools extends Disposable {
 	readonly element: HTMLElement;
@@ -143,7 +238,7 @@ export class StudioSteamTools extends Disposable {
 		append(content, $('h2', undefined, labels.tools ?? 'Open Tools'));
 		append(content, $('p', undefined, labels.toolsHint ?? ''));
 		const grid = append(content, $('.studio-steam-tools-grid'));
-		for (const [id, icon] of [['kv', 'database'], ['knowledge', 'book'], ['info', 'package'], ['assistant', 'hubot'], ['versions', 'versions'], ['trace', 'history']] as const) {
+		for (const { id, icon } of studioSteamToolDefinitions) {
 			const button = append(grid, $('button.studio-steam-tool', { type: 'button', 'data-tool': id, title: labels[`${id}Hint`] ?? '' }));
 			append(button, $(`span.codicon.codicon-${icon}`, { 'aria-hidden': 'true' }));
 			append(button, $('span.studio-steam-tool-label', undefined, labels[id] ?? id));

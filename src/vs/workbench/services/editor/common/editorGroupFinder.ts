@@ -10,6 +10,7 @@ import { EditorInputWithOptions, isEditorInputWithOptions, IUntypedEditorInput, 
 import { EditorInput } from '../../../common/editor/editorInput.js';
 import { IEditorGroup, GroupsOrder, preferredSideBySideGroupDirection, IEditorGroupsService, IModalEditorPart } from './editorGroupsService.js';
 import { AUX_WINDOW_GROUP, AUX_WINDOW_GROUP_TYPE, MODAL_GROUP, MODAL_GROUP_TYPE, PreferredGroup, SIDE_GROUP, USE_MODAL_EDITOR_SETTING, UseModalEditorMode } from './editorService.js';
+import { getEditorOpenTarget } from './editorOpenTarget.js';
 
 type FindGroupResult = Promise<[IEditorGroup, EditorActivation | undefined]> | [IEditorGroup, EditorActivation | undefined];
 
@@ -28,6 +29,8 @@ export function findGroup(accessor: ServicesAccessor, editor: EditorInputWithOpt
 export function findGroup(accessor: ServicesAccessor, editor: EditorInputWithOptions | IUntypedEditorInput, preferredGroup: PreferredGroup | undefined): FindGroupResult {
 	const editorGroupService = accessor.get(IEditorGroupsService);
 	const configurationService = accessor.get(IConfigurationService);
+	const target = getEditorOpenTarget(isEditorInputWithOptions(editor) ? editor.editor : editor, preferredGroup);
+	if (target) { return handleGroupActivation(target, editor, preferredGroup, editorGroupService); }
 
 	const group = doFindGroup(editor, preferredGroup, editorGroupService, configurationService);
 	if (group instanceof Promise) {

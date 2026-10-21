@@ -71,6 +71,83 @@
 .monaco-workbench .studio-steam-tools-action[hidden] { display: none; }
 .monaco-workbench .studio-steam-tools-action:hover { background: var(--vscode-toolbar-hoverBackground); }
 
+.monaco-workbench .studio-steam-tabs { display: none; }
+.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .title-label,
+.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .global-actions { display: none; }
+.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .title-actions { order: 2; }
+.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title { padding-left: 0; }
+.monaco-workbench.studio-steam-mode .studio-steam-tabs {
+	display: flex;
+	align-items: center;
+	flex: 1;
+	min-width: 0;
+	height: 100%;
+	gap: var(--vscode-spacing-size40);
+	user-select: text;
+	-webkit-user-select: text;
+}
+.monaco-workbench .studio-steam-tab-list {
+	display: flex;
+	align-items: stretch;
+	min-width: 0;
+	height: 100%;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+.monaco-workbench .studio-steam-tab-list:hover { scrollbar-width: thin; }
+.monaco-workbench .studio-steam-tab {
+	display: flex;
+	align-items: center;
+	flex-shrink: 0;
+	gap: var(--vscode-spacing-size40);
+	padding: 0 var(--vscode-spacing-size60);
+	border-bottom: 2px solid transparent;
+	color: var(--vscode-tab-inactiveForeground);
+}
+.monaco-workbench .studio-steam-tab.active {
+	color: var(--vscode-tab-activeForeground);
+	background: var(--vscode-tab-activeBackground);
+	border-bottom-color: var(--vscode-tab-activeBorderTop, var(--vscode-focusBorder));
+}
+.monaco-workbench .studio-steam-tab:hover { background: var(--vscode-tab-hoverBackground); }
+.monaco-workbench .studio-steam-tabs button {
+	border: 0;
+	border-radius: var(--vscode-cornerRadius-small);
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+	user-select: text;
+	-webkit-user-select: text;
+}
+.monaco-workbench .studio-steam-tabs button.codicon { font-family: codicon; font-size: 16px; }
+.monaco-workbench .studio-steam-tab-select { display: flex; align-items: center; gap: var(--vscode-spacing-size60); height: 100%; min-width: 0; }
+.monaco-workbench .studio-steam-tab-label { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.monaco-workbench .studio-steam-tabs .studio-steam-tab-close { opacity: 0; width: 20px; height: 20px; padding: 2px; }
+.monaco-workbench .studio-steam-tab:is(.active, :hover, :focus-within) .studio-steam-tab-close { opacity: 1; }
+.monaco-workbench .studio-steam-tab.dirty .studio-steam-tab-close { opacity: 1; }
+.monaco-workbench .studio-steam-tab.dirty:not(:hover):not(:focus-within) .studio-steam-tab-close::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.monaco-workbench .studio-steam-tabs .studio-steam-add-tab { width: 24px; height: 24px; flex-shrink: 0; padding: 4px; }
+.monaco-workbench .studio-steam-tabs :is(.studio-steam-add-tab, .studio-steam-tab-close):hover { background: var(--vscode-toolbar-hoverBackground); }
+.monaco-workbench .studio-steam-tabs button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.monaco-workbench .studio-steam-empty-tabs { padding: 0 var(--vscode-spacing-size120); align-self: center; color: var(--vscode-descriptionForeground); }
+.monaco-workbench.studio-steam-mode .part.auxiliarybar { position: relative; }
+/* This part shares the auxiliary card; it must not inherit main-editor floating margins. */
+.monaco-workbench .part.auxiliarybar > .part.editor.studio-steam-editors {
+	position: absolute;
+	inset: 35px 0 0;
+	margin: 0;
+	border: 0;
+	border-radius: 0;
+	/* Webview overlays are mounted at the workbench root. */
+	z-index: auto;
+	background: var(--vscode-editor-background);
+}
+.monaco-workbench .part.auxiliarybar > .studio-steam-editors > .content { border-radius: 0; }
+.monaco-workbench .studio-steam-editor-active > .content { visibility: hidden; }
+.monaco-workbench .studio-steam-editors[hidden] { display: none; }
+.monaco-workbench .studio-steam-editor-active > .title > .title-actions { display: none; }
+
 .monaco-workbench .studio-mode-loading {
 	position: absolute;
 	z-index: 2490;

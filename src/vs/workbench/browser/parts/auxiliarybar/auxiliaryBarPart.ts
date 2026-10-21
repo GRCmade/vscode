@@ -35,6 +35,7 @@ import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 import { VisibleViewContainersTracker } from '../visibleViewContainersTracker.js';
 import { Extensions } from '../../panecomposite.js';
 import { IToolBarResponsiveBehaviorOptions } from '../../../../base/browser/ui/toolbar/toolbar.js';
+import { StudioSteamTabs, studioModeState } from '../studioMode.js';
 
 interface IAuxiliaryBarPartConfiguration {
 	position: ActivityBarPosition;
@@ -135,6 +136,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 		this._register(this.visibleViewContainersTracker.onDidChange((e) => this.onDidChangeAutoHideViewContainers(e)));
 
 		this.configuration = this.resolveConfiguration();
+		this._register(studioModeState.onDidChangeMode(() => this.updateCompositeBar()));
 
 		this._register(configurationService.onDidChangeConfiguration(e => {
 			if (e.affectsConfiguration(LayoutSettings.ACTIVITY_BAR_LOCATION)) {
@@ -272,7 +274,14 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 		]);
 	}
 
+	protected override createTitleArea(parent: HTMLElement): HTMLElement | undefined {
+		const title = super.createTitleArea(parent);
+		if (title) { this._register(this.instantiationService.createInstance(StudioSteamTabs, title)); }
+		return title;
+	}
+
 	protected shouldShowCompositeBar(): boolean {
+		if (studioModeState.steam) { return false; }
 		if (this.configuration.position === ActivityBarPosition.HIDDEN) {
 			return false;
 		}

@@ -18,7 +18,8 @@ import { ProgressBar } from '../../../../base/browser/ui/progressbar/progressbar
 import { IThemeService, Themable } from '../../../../platform/theme/common/themeService.js';
 import { editorBackground, contrastBorder } from '../../../../platform/theme/common/colorRegistry.js';
 import { EDITOR_GROUP_HEADER_TABS_BACKGROUND, EDITOR_GROUP_HEADER_NO_TABS_BACKGROUND, EDITOR_GROUP_EMPTY_BACKGROUND, EDITOR_GROUP_HEADER_BORDER } from '../../../common/theme.js';
-import { ICloseEditorsFilter, GroupsOrder, ICloseEditorOptions, ICloseAllEditorsOptions, IEditorReplacement, IActiveEditorActions } from '../../../services/editor/common/editorGroupsService.js';
+import { ICloseEditorsFilter, GroupsOrder, ICloseEditorOptions, ICloseAllEditorsOptions, IEditorReplacement, IActiveEditorActions, IEditorGroup } from '../../../services/editor/common/editorGroupsService.js';
+import { getEditorOpenTarget } from '../../../services/editor/common/editorOpenTarget.js';
 import { EditorPanes } from './editorPanes.js';
 import { IEditorProgressService } from '../../../../platform/progress/common/progress.js';
 import { EditorProgressIndicator } from '../../../services/progress/browser/progressIndicator.js';
@@ -1173,6 +1174,8 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 	}
 
 	private async doOpenEditor(editor: EditorInput, options?: IEditorOptions, internalOptions?: IInternalEditorOpenOptions): Promise<IEditorPane | undefined> {
+		const target = getEditorOpenTarget(editor, this);
+		if (target && target.id !== this.id) { return target.openEditor(editor, options); }
 
 		// Guard against invalid editors. Disposed editors
 		// should never open because they emit no events
@@ -1319,6 +1322,17 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
 	//#region openEditors()
 
 	async openEditors(editors: { editor: EditorInput; options?: IEditorOptions }[]): Promise<IEditorPane | undefined> {
+		// Redirect a whole batch before computing indices or updating this group's title control.
+		const targets = new Map<IEditorGroup, typeof editors>();
+		for (const entry of editors) {
+			const target = getEditorOpenTarget(entry.editor, this) ?? this;
+			const entries = targets.get(target) ?? [];
+			entries.push(entry); targets.set(target, entries);
+		}
+		if ([...targets.keys()].some(target => target.id !== this.id)) {
+			const results = await Promises.settled([...targets].map(([target, entries]) => target.openEditors(entries)));
+			return results.find(result => !!result);
+		}
 
 		// Guard against invalid editors. Disposed editors
 		// should never open because they emit no events

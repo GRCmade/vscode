@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { localize } from '../../../../nls.js';
-import { EditorGroupLayout, GroupActivationReason, GroupDirection, GroupLocation, GroupOrientation, GroupsArrangement, GroupsOrder, IAuxiliaryEditorPart, IEditorGroupContextKeyProvider, IEditorDropTargetDelegate, IEditorGroupsService, IEditorSideGroup, IEditorWorkingSet, IFindGroupScope, IMergeGroupOptions, IEditorWorkingSetOptions, IEditorPart, IModalEditorPart, IEditorGroupActivationEvent } from '../../../services/editor/common/editorGroupsService.js';
+import { EditorGroupLayout, GroupActivationReason, GroupDirection, GroupLocation, GroupOrientation, GroupsArrangement, GroupsOrder, IAuxiliaryEditorPart, IEditorGroupContextKeyProvider, IEditorDropTargetDelegate, IEditorGroupsService, IEditorSideGroup, IEditorWorkingSet, IFindGroupScope, IMergeGroupOptions, IEditorWorkingSetOptions, IEditorPart, IModalEditorPart, IEditorGroupActivationEvent, IEmbeddedEditorPart } from '../../../services/editor/common/editorGroupsService.js';
 import { Emitter } from '../../../../base/common/event.js';
 import { DisposableMap, DisposableStore, IDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { GroupIdentifier, IEditorPartOptions } from '../../../common/editor.js';
@@ -22,7 +22,7 @@ import { IThemeService } from '../../../../platform/theme/common/themeService.js
 import { IAuxiliaryWindowOpenOptions, IAuxiliaryWindowService } from '../../../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
 import { ContextKeyValue, IContextKey, IContextKeyService, RawContextKey } from '../../../../platform/contextkey/common/contextkey.js';
-import { getActiveElement, IDimension, isAncestor, isHTMLElement } from '../../../../base/browser/dom.js';
+import { getActiveElement, getWindow, IDimension, isAncestor, isHTMLElement } from '../../../../base/browser/dom.js';
 import { ServiceCollection } from '../../../../platform/instantiation/common/serviceCollection.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
 import { DeepPartial } from '../../../../base/common/types.js';
@@ -30,6 +30,7 @@ import { IStatusbarService } from '../../../services/statusbar/browser/statusbar
 import { mainWindow } from '../../../../base/browser/window.js';
 import { IModalEditorPartOptions } from '../../../../platform/editor/common/editor.js';
 import { EditorPartModalVisibleContext } from '../../../common/contextkeys.js';
+import { Memento } from '../../../common/memento.js';
 
 interface IEditorPartsUIState {
 	readonly auxiliary: IAuxiliaryEditorPartState[];
@@ -122,8 +123,11 @@ export class EditorParts extends MultiWindowParts<EditorPart, IEditorPartsMement
 
 	private readonly mapPartToInstantiationService = new Map<number /* window ID */, IInstantiationService>();
 	private modalPartInstantiationService: IInstantiationService | undefined;
+	private readonly embeddedParts = new Map<EditorPart, IInstantiationService>();
 
 	getScopedInstantiationService(part: IEditorPart): IInstantiationService {
+		const embeddedService = this.embeddedParts.get(part as EditorPart);
+		if (embeddedService) { return embeddedService; }
 
 		// Main Part
 		if (part === this.mainPart) {
@@ -157,6 +161,26 @@ export class EditorParts extends MultiWindowParts<EditorPart, IEditorPartsMement
 	//#endregion
 
 	//#region Auxiliary Editor Parts
+
+	createEmbeddedEditorPart(container: unknown, id: string, label: string): IEmbeddedEditorPart {
+		if (!isHTMLElement(container)) { throw new Error('An embedded editor part requires an HTML container.'); }
+		const disposables = new DisposableStore();
+		const part = this.instantiationService.createInstance(EmbeddedEditorPart, this, id, label, getWindow(container).vscodeWindowId);
+		disposables.add(this.registerPart(part));
+		part.create(container);
+		const service = this.instantiationService.invokeFunction(accessor => disposables.add(part.scopedInstantiationService.createChild(new ServiceCollection(
+			[IEditorService, accessor.get(IEditorService).createScoped(part, disposables)]
+		))));
+		this.embeddedParts.set(part, service);
+		disposables.add(part.onWillDispose(() => {
+			new Memento(id, this.storageService).saveMemento();
+			this.embeddedParts.delete(part);
+			disposables.dispose();
+			for (const group of part.groups) { this._onDidRemoveGroup.fire(group); }
+		}));
+		for (const group of part.groups) { this._onDidAddGroup.fire(group); }
+		return part;
+	}
 
 	private readonly _onDidCreateAuxiliaryEditorPart = this._register(new Emitter<IAuxiliaryEditorPart>());
 	readonly onDidCreateAuxiliaryEditorPart = this._onDidCreateAuxiliaryEditorPart.event;
@@ -389,6 +413,9 @@ export class EditorParts extends MultiWindowParts<EditorPart, IEditorPartsMement
 		if (this._parts.size > 1) {
 			if (isHTMLElement(groupOrElement)) {
 				const element = groupOrElement;
+				for (const part of this.parts) {
+					if (part.element?.contains(element)) { return part; }
+				}
 
 				return this.getPartByDocument(element.ownerDocument);
 			} else {
@@ -566,7 +593,7 @@ export class EditorParts extends MultiWindowParts<EditorPart, IEditorPartsMement
 		// them merge into the main part.
 
 		for (const part of this.parts) {
-			if (part === this.mainPart) {
+			if (part === this.mainPart || this.embeddedParts.has(part)) {
 				continue; // main part takes care on its own
 			}
 
@@ -1037,6 +1064,15 @@ export class EditorParts extends MultiWindowParts<EditorPart, IEditorPartsMement
 	}
 
 	//#endregion
+}
+
+/** Save the final model before a temporary embedded surface is removed. */
+class EmbeddedEditorPart extends EditorPart {
+	override dispose(): void {
+		if (this._store.isDisposed) { return; }
+		this.saveState();
+		super.dispose();
+	}
 }
 
 registerSingleton(IEditorGroupsService, EditorParts, InstantiationType.Eager);

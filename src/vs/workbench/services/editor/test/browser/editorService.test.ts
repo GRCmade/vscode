@@ -29,6 +29,7 @@ import { IConfigurationService } from '../../../../../platform/configuration/com
 import { PLAINTEXT_LANGUAGE_ID } from '../../../../../editor/common/languages/modesRegistry.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
 import { IEditorPaneService } from '../../common/editorPaneService.js';
+import { registerEditorOpenTarget } from '../../common/editorOpenTarget.js';
 
 suite('EditorService', () => {
 
@@ -69,6 +70,47 @@ suite('EditorService', () => {
 	function createTestFileEditorInput(resource: URI, typeId: string): TestFileEditorInput {
 		return disposables.add(new TestFileEditorInput(resource, typeId));
 	}
+
+	test('reserved editor surfaces route default, explicit and side opens before group mutation', async () => {
+		const [part, service] = await createEditorService();
+		const left = part.activeGroup;
+		const project = createTestFileEditorInput(URI.parse('test://reserved-project'), TEST_EDITOR_INPUT_ID);
+		await left.openEditor(project, { pinned: true });
+		const right = part.addGroup(left, GroupDirection.RIGHT);
+		disposables.add(registerEditorOpenTarget(editor => editor === project ? left : right));
+		for (const [index, preferred] of [undefined, left.id, left, SIDE_GROUP].entries()) {
+			const input = createTestFileEditorInput(URI.parse(`test://routed-${index}`), TEST_EDITOR_INPUT_ID);
+			assert.strictEqual((await service.openEditor(input, { pinned: true }, preferred))?.group, right);
+		}
+		assert.strictEqual(left.activeEditor, project);
+		assert.strictEqual(left.count, 1);
+		assert.strictEqual(right.count, 4);
+		assert.strictEqual(part.count, 2);
+	});
+
+	test('reserved editor surfaces route resolved and direct batches without mutating the reserved title or model', async () => {
+		const [part, service] = await createEditorService();
+		const left = part.activeGroup;
+		const project = createTestFileEditorInput(URI.parse('test://batch-project'), TEST_EDITOR_INPUT_ID);
+		await left.openEditor(project, { pinned: true });
+		const right = part.addGroup(left, GroupDirection.RIGHT);
+		disposables.add(registerEditorOpenTarget(editor => editor === project ? left : right));
+		const first = createTestFileEditorInput(URI.parse('test://batch-first'), TEST_EDITOR_INPUT_ID);
+		const second = createTestFileEditorInput(URI.parse('test://batch-second'), TEST_EDITOR_INPUT_ID);
+		await service.openEditors([{ editor: first, options: { pinned: true } }, { editor: second, options: { pinned: true } }], left);
+		assert.strictEqual(right.getEditors(EditorsOrder.SEQUENTIAL)[0], first);
+		assert.strictEqual(right.getEditors(EditorsOrder.SEQUENTIAL)[1], second);
+		const third = createTestFileEditorInput(URI.parse('test://batch-third'), TEST_EDITOR_INPUT_ID);
+		const fourth = createTestFileEditorInput(URI.parse('test://batch-fourth'), TEST_EDITOR_INPUT_ID);
+		await left.openEditors([{ editor: third, options: { pinned: true } }, { editor: fourth, options: { pinned: true } }]);
+		assert.strictEqual(right.getIndexOfEditor(fourth), right.getIndexOfEditor(third) + 1);
+		const resolved = await service.openEditor({ resource: URI.parse('test://resolved-batch'), options: { pinned: true } }, left);
+		assert.strictEqual(resolved?.group, right);
+		assert.strictEqual(left.activeEditor, project);
+		assert.strictEqual(left.count, 1);
+		assert.ok([first, second, third, fourth].every(editor => right.contains(editor)));
+		assert.strictEqual(right.count, 5);
+	});
 
 	test('openEditor() - basics', async () => {
 		const [, service, accessor] = await createEditorService();

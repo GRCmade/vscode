@@ -23,6 +23,9 @@ import { IContextKeyService, RawContextKey } from '../../../../../platform/conte
 import { Emitter } from '../../../../../base/common/event.js';
 import { isEqual } from '../../../../../base/common/resources.js';
 import { CloseAllEditorGroupsAction } from '../../../../browser/parts/editor/editorActions.js';
+import { $ } from '../../../../../base/browser/dom.js';
+import { IEditorService } from '../../common/editorService.js';
+import { EditorService } from '../../browser/editorService.js';
 
 suite('EditorGroupsService', () => {
 
@@ -71,6 +74,27 @@ suite('EditorGroupsService', () => {
 
 		return input;
 	}
+
+	test('embedded editor parts register groups and services independently in the main window', async () => {
+		const [parts, instantiation] = await createParts();
+		const editorService = disposables.add(instantiation.createInstance(EditorService, undefined));
+		instantiation.stub(IEditorService, editorService);
+		const container = $('.part.editor');
+		const embedded = disposables.add(parts.createEmbeddedEditorPart(container, 'test.embeddedEditors', 'Tools'));
+		await embedded.whenReady;
+		assert.strictEqual(embedded.windowId, parts.mainPart.windowId);
+		assert.strictEqual(parts.getPart(embedded.activeGroup.id), embedded);
+		assert.strictEqual(parts.getPart(container), embedded);
+		const scoped = parts.getScopedInstantiationService(embedded).invokeFunction(accessor => accessor.get(IEditorService));
+		assert.notStrictEqual(scoped, editorService);
+		const input = createTestFileEditorInput(URI.parse('test://embedded-editor'), TEST_EDITOR_INPUT_ID);
+		await scoped.openEditor(input, { pinned: true }, embedded.activeGroup);
+		assert.strictEqual(embedded.activeGroup.activeEditor, input);
+		assert.strictEqual(parts.mainPart.activeGroup.count, 0);
+		assert.ok(parts.getGroup(embedded.activeGroup.id));
+		embedded.dispose();
+		assert.strictEqual(parts.parts.some(part => part === embedded), false);
+	});
 
 	test('groups basics', async function () {
 		const instantiationService = workbenchInstantiationService({ contextKeyService: instantiationService => instantiationService.createInstance(MockScopableContextKeyService) }, disposables);

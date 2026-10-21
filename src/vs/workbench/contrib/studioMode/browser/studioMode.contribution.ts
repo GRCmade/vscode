@@ -120,6 +120,9 @@ export class StudioModeContribution extends Disposable {
 		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTool', (_accessor, id: string) => this.openTool(id)));
 		this._register(CommandsRegistry.registerCommand('studio.internalSelectSteamTab', (_accessor, id: string) => this.workspace.select(id)));
 		this._register(CommandsRegistry.registerCommand('studio.internalCloseSteamTab', (_accessor, id: string) => this.workspace.close(id)));
+		this._register(CommandsRegistry.registerCommand('studio.internalNewSteamInstance', (_accessor, id?: string) => this.workspace.newInstance(id)));
+		this._register(CommandsRegistry.registerCommand('studio.internalSelectSteamInstance', (_accessor, id: string) => this.workspace.select(id, true)));
+		this._register(CommandsRegistry.registerCommand('studio.internalCloseSteamInstance', (_accessor, id: string) => this.workspace.close(id, true)));
 		this._register(studioModeState.onDidChangeState(state => {
 			toolsTitle.value = state.labels.tools ?? toolsTitle.original;
 			if (!this.initialized || !state.available) {
@@ -273,7 +276,7 @@ export class StudioModeContribution extends Disposable {
 	private async openTool(id: string): Promise<void> {
 		const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
 		if (!this.steam || !tool) { return; }
-		if ('command' in tool) { await this.commands.executeCommand(tool.command); }
+		if ('command' in tool) { await this.workspace.openTool(id); }
 		else { await this.sequencer.queue(async () => { if (this.steam) { await this.workspace.openTool(id); } }); }
 	}
 

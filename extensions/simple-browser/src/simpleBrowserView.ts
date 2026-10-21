@@ -36,6 +36,8 @@ export class SimpleBrowserView extends Disposable {
 
 	private readonly _onDidDispose = this._register(new vscode.EventEmitter<void>());
 	public readonly onDispose = this._onDidDispose.event;
+	public get active(): boolean { return this._webviewPanel.active; }
+	public get onDidChangeViewState(): vscode.Event<vscode.WebviewPanelOnDidChangeViewStateEvent> { return this._webviewPanel.onDidChangeViewState; }
 
 	public static create(
 		extensionUri: vscode.Uri,
@@ -72,6 +74,9 @@ export class SimpleBrowserView extends Disposable {
 
 		this._register(this._webviewPanel.webview.onDidReceiveMessage(e => {
 			switch (e.type) {
+				case 'navigate':
+					if (typeof e.url === 'string') { this._webviewPanel.title = e.url; }
+					break;
 				case 'openExternal':
 					try {
 						const url = vscode.Uri.parse(e.url);
@@ -106,6 +111,7 @@ export class SimpleBrowserView extends Disposable {
 	}
 
 	public show(url: string, options?: ShowOptions) {
+		this._webviewPanel.title = url || SimpleBrowserView.title;
 		this._webviewPanel.webview.html = this.getHtml(url);
 		this._webviewPanel.reveal(options?.viewColumn, options?.preserveFocus);
 	}

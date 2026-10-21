@@ -28,6 +28,7 @@ import { containsDragType } from '../../../../platform/dnd/browser/dnd.js';
 import { getTerminalResourcesFromDragEvent, parseTerminalUri } from './terminalUri.js';
 import type { IProcessDetails } from '../../../../platform/terminal/common/terminalProcess.js';
 import { TerminalContribContextKeyStrings } from '../terminalContribExports.js';
+import { studioModeState } from '../../../browser/parts/studioMode.js';
 
 const $ = dom.$;
 
@@ -133,6 +134,7 @@ export class TerminalTabbedView extends Disposable {
 				}
 			}
 		}));
+		this._register(studioModeState.onDidChangeMode(() => this._refreshShowTabs()));
 		this._register(Event.any(this._terminalGroupService.onDidChangeInstances, this._terminalGroupService.onDidChangeGroups)(() => {
 			this._refreshShowTabs();
 			this._updateChatTerminalsEntry();
@@ -166,6 +168,7 @@ export class TerminalTabbedView extends Disposable {
 	}
 
 	private _shouldShowTabs(): boolean {
+		if (studioModeState.steam) { return false; }
 		const enabled = this._terminalConfigurationService.config.tabs.enabled;
 		const hide = this._terminalConfigurationService.config.tabs.hideCondition;
 		const hiddenChatTerminals = this._terminalChatService.getToolSessionTerminalInstances(true);

@@ -35,7 +35,7 @@ import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 import { VisibleViewContainersTracker } from '../visibleViewContainersTracker.js';
 import { Extensions } from '../../panecomposite.js';
 import { IToolBarResponsiveBehaviorOptions } from '../../../../base/browser/ui/toolbar/toolbar.js';
-import { StudioSteamTabs, studioModeState } from '../studioMode.js';
+import { StudioSteamTabs, studioModeState, studioSteamWorkspaceState } from '../studioMode.js';
 
 interface IAuxiliaryBarPartConfiguration {
 	position: ActivityBarPosition;
@@ -103,6 +103,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 			Parts.AUXILIARYBAR_PART,
 			{
 				hasTitle: true,
+				titleHeight: () => studioModeState.steam && studioSteamWorkspaceState.instances.length ? 70 : undefined,
 				trailingSeparator: true,
 				borderWidth: () => (this.getColor(SIDE_BAR_BORDER) || this.getColor(contrastBorder)) ? 1 : 0,
 			},
@@ -137,6 +138,11 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 
 		this.configuration = this.resolveConfiguration();
 		this._register(studioModeState.onDidChangeMode(() => this.updateCompositeBar()));
+		let hasInstances = false;
+		this._register(studioSteamWorkspaceState.onDidChange(() => {
+			const visible = studioSteamWorkspaceState.instances.length > 0;
+			if (visible !== hasInstances) { hasInstances = visible; layoutService.layout(); }
+		}));
 
 		this._register(configurationService.onDidChangeConfiguration(e => {
 			if (e.affectsConfiguration(LayoutSettings.ACTIVITY_BAR_LOCATION)) {

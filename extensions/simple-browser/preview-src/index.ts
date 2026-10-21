@@ -28,7 +28,7 @@ interface VsCodeApi<State, Message> {
 	postMessage(message: Message): void;
 }
 
-declare function acquireVsCodeApi(): VsCodeApi<SimpleBrowserState, OpenExternalMessage>;
+declare function acquireVsCodeApi(): VsCodeApi<SimpleBrowserState, OpenExternalMessage | { type: 'navigate'; url: string }>;
 
 const vscode = acquireVsCodeApi();
 
@@ -157,6 +157,7 @@ onceDocumentLoaded(() => {
 		}
 
 		vscode.setState({ url: rawUrl });
+		vscode.postMessage({ type: 'navigate', url: rawUrl });
 	}
 });
 

@@ -320,3 +320,64 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
 .monaco-workbench.studio-steam-mode > .monaco-grid-view .part.editor:not(.modal-editor-part) { border: 0; border-radius: 0; }
 /* Non-floating PartLayout allocates the classic 35px header metric. */
 .monaco-workbench.studio-steam-mode .part.auxiliarybar > .title { height: 35px; }
+
+/* Tool categories lead; instance tabs sit directly underneath at the content tier. */
+.monaco-workbench .studio-steam-instances { display: none; }
+.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title {
+	position: relative;
+	align-items: flex-start;
+}
+.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title.studio-steam-has-instances { height: 70px; }
+.monaco-workbench.studio-steam-mode .part.auxiliarybar > .title > .title-actions { display: none; }
+.monaco-workbench.studio-steam-mode .studio-steam-tabs { height: 35px; }
+.monaco-workbench.studio-steam-mode .studio-steam-instances {
+	position: absolute;
+	inset: 35px 0 auto;
+	display: flex;
+	align-items: center;
+	height: 35px;
+	background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-sideBar-background));
+	user-select: text;
+	-webkit-user-select: text;
+}
+.monaco-workbench .studio-steam-instances[hidden],
+.monaco-workbench .studio-steam-instances button[hidden] { display: none; }
+.monaco-workbench .studio-steam-instance-list {
+	display: flex;
+	align-items: stretch;
+	min-width: 0;
+	max-width: calc(100% - 72px);
+	height: 100%;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+.monaco-workbench .studio-steam-instance-list:hover { scrollbar-width: thin; }
+.monaco-workbench .studio-steam-instance {
+	display: flex;
+	align-items: center;
+	flex: 0 0 auto;
+	min-width: 80px;
+	max-width: 240px;
+	gap: var(--vscode-spacing-size80);
+	padding: 0 var(--vscode-spacing-size120);
+	color: var(--vscode-tab-inactiveForeground);
+	border-right: var(--vscode-strokeThickness) solid var(--vscode-tab-border, transparent);
+}
+.monaco-workbench .studio-steam-instance.active { color: var(--vscode-tab-activeForeground); background: var(--vscode-tab-activeBackground); }
+.monaco-workbench .studio-steam-instance:hover { background: var(--vscode-tab-hoverBackground); }
+.monaco-workbench .studio-steam-instances button {
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+	user-select: text;
+	-webkit-user-select: text;
+}
+.monaco-workbench .studio-steam-instances button.codicon { font-family: codicon; font-size: var(--vscode-codiconFontSize); }
+.monaco-workbench .studio-steam-instance .studio-steam-tab-select { justify-content: flex-start; }
+.monaco-workbench .studio-steam-instance .studio-steam-tab-close { flex-shrink: 0; width: var(--vscode-spacing-size160); padding: 0; opacity: 0; font-size: var(--vscode-codiconFontSize-compact); }
+.monaco-workbench .studio-steam-instance:is(.active, :hover, :focus-within) .studio-steam-tab-close { opacity: 1; }
+.monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions) { flex-shrink: 0; width: var(--vscode-spacing-size280); height: var(--vscode-spacing-size280); border-radius: var(--vscode-cornerRadius-small); }
+.monaco-workbench .studio-steam-instances :is(.studio-steam-new-instance, .studio-steam-instance-actions, .studio-steam-tab-close):hover { background: var(--vscode-toolbar-hoverBackground); }
+.monaco-workbench .studio-steam-instances button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }

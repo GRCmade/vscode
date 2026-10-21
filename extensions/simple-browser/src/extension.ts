@@ -58,7 +58,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 	}));
 
-	context.subscriptions.push(vscode.commands.registerCommand(showCommand, async (url?: string) => {
+	context.subscriptions.push(vscode.commands.registerCommand(showCommand, async (url?: string, options?: { forceNew?: boolean }) => {
 		if (await shouldUseIntegratedBrowser()) {
 			return openInIntegratedBrowser(url);
 		}
@@ -71,7 +71,7 @@ export function activate(context: vscode.ExtensionContext) {
 		}
 
 		if (url) {
-			manager.show(url);
+			manager.show(url, options);
 		}
 	}));
 

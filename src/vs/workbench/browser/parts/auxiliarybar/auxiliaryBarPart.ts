@@ -137,7 +137,10 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 		this._register(this.visibleViewContainersTracker.onDidChange((e) => this.onDidChangeAutoHideViewContainers(e)));
 
 		this.configuration = this.resolveConfiguration();
-		this._register(studioModeState.onDidChangeMode(() => this.updateCompositeBar()));
+		this._register(studioModeState.onDidChangeMode(() => {
+			this.updateCompositeBar();
+			layoutService.layout();
+		}));
 		let hasInstances = false;
 		this._register(studioSteamWorkspaceState.onDidChange(() => {
 			const visible = studioSteamWorkspaceState.instances.length > 0;

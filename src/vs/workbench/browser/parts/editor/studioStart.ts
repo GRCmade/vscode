@@ -17,6 +17,7 @@ import './media/studioStart.css';
 export interface StudioStartState {
 	version: 1;
 	labels: Record<string, string>;
+	badge?: string;
 	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
 	projects: { uri: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: { status: string; serverVersion?: string; canDownload: boolean; busy?: boolean } }[];
 	recent: { uri: string; label: string; kind: string; lastOpened: number; projectType?: string; version?: string; avatarUrl?: string }[];
@@ -73,6 +74,7 @@ export class StudioStartView extends Disposable {
 	private readonly id = generateUuid();
 	private readonly lists = new Map<string, { element: HTMLElement; key: string; disposables: DisposableStore }>();
 	private readonly labels = new Map<string, HTMLElement>();
+	private readonly badge: HTMLElement;
 	private readonly stats = new Map<string, HTMLElement>();
 	private readonly actions: { button: HTMLButtonElement; label: string; creation: boolean; iconOnly: boolean }[] = [];
 	private readonly error: HTMLElement;
@@ -94,6 +96,8 @@ export class StudioStartView extends Disposable {
 		append(header, $('h1', undefined, 'SteamHarness Studio'));
 		append(header, $('span.codicon.codicon-loading.codicon-modifier-spin.studio-start-loading-indicator')).setAttribute('aria-hidden', 'true');
 		const top = append(header, $('.studio-start-toolbar'));
+		this.badge = append(top, $('span.studio-start-badge'));
+		this.badge.hidden = true;
 		this.button(top, 'create', 'add', 'studio.createProject', undefined, true).classList.add('studio-start-primary');
 		this.button(top, 'refresh', 'refresh', 'studio.refreshStart', undefined, false, true);
 		this.createLoadingPlaceholder(inner);
@@ -206,6 +210,9 @@ export class StudioStartView extends Disposable {
 			for (const action of this.actions) { action.button.disabled = true; }
 			return;
 		}
+		const badge = state.badge?.trim();
+		this.badge.textContent = badge ?? '';
+		this.badge.hidden = !badge;
 		const text = (key: string): string => state.labels[key] ?? key;
 		for (const [key, element] of this.labels) { if (element.textContent !== text(key)) { element.textContent = text(key); } }
 		for (const action of this.actions) {

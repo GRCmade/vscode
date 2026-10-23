@@ -84,21 +84,42 @@ export class StudioModeSwitcher extends Disposable {
 		@IHoverService hoverService: IHoverService,
 	) {
 		super();
-		const element = append(left, $('.studio-mode-switcher', { role: 'group' }));
-		const ide = append(element, $('button.studio-mode-ide', { type: 'button' })) as HTMLButtonElement;
-		const ideIcon = append(ide, $('span.codicon.codicon-code', { 'aria-hidden': 'true' }));
-		append(ide, $('span', undefined, 'IDE'));
-		const steam = append(element, $('button.studio-mode-steam', { type: 'button' })) as HTMLButtonElement;
-		const steamIcon = append(steam, $('span.codicon.codicon-rocket', { 'aria-hidden': 'true' }));
-		append(steam, $('span', undefined, 'Steam'));
+		// Reserve title-bar space while the actual control stays in one live overlay.
+		const slot = append(left, $('.studio-mode-slot', { 'aria-hidden': 'true' }));
+		const dock = append(layout.mainContainer, $('.studio-steam-window-chrome'));
+		const element = append(dock, $('.studio-mode-switcher', { role: 'group' }));
+		const mode = append(element, $('button.studio-mode-toggle', { type: 'button' })) as HTMLButtonElement;
+		append(mode, $('span.studio-mode-label.studio-mode-label-ide', { 'aria-hidden': 'true' }, 'IDE'));
+		append(mode, $('span.studio-mode-label.studio-mode-label-steam', { 'aria-hidden': 'true' }, 'Steam'));
+		const thumb = append(mode, $('span.studio-mode-thumb', { 'aria-hidden': 'true' }));
+		append(thumb, $('span.codicon.codicon-code'));
+		const modeHover = this._register(hoverService.setupManagedHover(getDefaultHoverDelegate('mouse'), mode, ''));
 		const toggle = append(right, $('button.studio-steam-toggle-tools', { type: 'button', 'aria-controls': Parts.AUXILIARYBAR_PART })) as HTMLButtonElement;
 		const toggleIcon = append(toggle, $('span.codicon', { 'aria-hidden': 'true' }));
 		const toggleHover = this._register(hoverService.setupManagedHover(getDefaultHoverDelegate('mouse'), toggle, ''));
-		const dock = append(layout.mainContainer, $('.studio-steam-window-chrome'));
 		const toolsDock = append(layout.mainContainer, $('.studio-steam-tools-chrome'));
-		dock.hidden = toolsDock.hidden = true;
+		toolsDock.hidden = true;
 		let lastChrome = '', timer: number | undefined;
+		const positionMode = () => {
+			const active = studioModeState.steam;
+			dock.classList.toggle('studio-mode-in-ide', !active);
+			if (active) {
+				dock.style.left = dock.style.top = '0px';
+				dock.style.height = `${studioWindowChrome.height}px`;
+				dock.style.zoom = '';
+			} else {
+				const rect = slot.getBoundingClientRect();
+				if (!rect.width || !rect.height) { return; }
+				const parent = layout.mainContainer.getBoundingClientRect();
+				const scale = rect.width / slot.offsetWidth;
+				dock.style.zoom = String(scale);
+				dock.style.left = `${(rect.left - parent.left) / scale}px`;
+				dock.style.top = `${(rect.top - parent.top) / scale}px`;
+				dock.style.height = `${rect.height / scale}px`;
+			}
+		};
 		const publishChrome = () => {
+			positionMode();
 			const visible = layout.isVisible(Parts.AUXILIARYBAR_PART);
 			studioWindowChrome.active = studioModeState.steam;
 			studioWindowChrome.left = dock.offsetWidth;
@@ -116,14 +137,12 @@ export class StudioModeSwitcher extends Disposable {
 			timer = getWindow(dock).setTimeout(publishChrome, 0);
 		};
 		const observer = new (getWindow(dock).ResizeObserver)(scheduleChrome);
-		observer.observe(dock); observer.observe(toolsDock);
-		this._register(toDisposable(() => { observer.disconnect(); getWindow(dock).clearTimeout(timer); dock.remove(); toolsDock.remove(); }));
+		observer.observe(dock); observer.observe(toolsDock); observer.observe(slot); observer.observe(left);
+		this._register(toDisposable(() => { observer.disconnect(); getWindow(dock).clearTimeout(timer); slot.remove(); dock.remove(); toolsDock.remove(); }));
 		const update = () => {
 			const { state, steam: active, busy, targetSteam } = studioModeState;
-			dock.hidden = toolsDock.hidden = !active;
-			const modeParent = active ? dock : left;
+			toolsDock.hidden = !active;
 			const toolsParent = active ? toolsDock : right;
-			if (element.parentElement !== modeParent) { modeParent.append(element); }
 			if (toggle.parentElement !== toolsParent) { toolsParent.append(toggle); }
 			const toolsVisible = layout.isVisible(Parts.AUXILIARYBAR_PART);
 			const title = active && toolsVisible ? layout.getContainer(getWindow(dock), Parts.AUXILIARYBAR_PART)?.querySelector(':scope > .title') : undefined;
@@ -132,14 +151,14 @@ export class StudioModeSwitcher extends Disposable {
 			toolsDock.classList.toggle('tools-hidden', !toolsVisible);
 			element.setAttribute('aria-label', state.labels.mode ?? 'Workspace Mode');
 			element.setAttribute('aria-busy', String(busy));
-			ide.title = state.labels.switchToIde ?? 'Switch to IDE Mode';
-			steam.title = state.labels[state.available ? 'switchToSteam' : 'unavailable'] ?? 'Steam Mode';
-			ide.setAttribute('aria-pressed', String(!active));
-			steam.setAttribute('aria-pressed', String(active));
-			ideIcon.className = busy && !targetSteam ? 'codicon codicon-loading codicon-modifier-spin' : 'codicon codicon-code';
-			steamIcon.className = busy && targetSteam ? 'codicon codicon-loading codicon-modifier-spin' : 'codicon codicon-rocket';
-			ide.disabled = busy && !targetSteam;
-			steam.disabled = !state.available || busy && targetSteam;
+			element.classList.toggle('steam', active);
+			const leavingSteam = busy ? targetSteam : active;
+			const modeLabel = leavingSteam ? state.labels.switchToIde ?? 'Switch to IDE Mode'
+				: state.labels[state.available ? 'switchToSteam' : 'unavailable'] ?? 'Steam Mode';
+			mode.setAttribute('aria-label', modeLabel);
+			mode.setAttribute('aria-pressed', String(active));
+			modeHover.update(modeLabel);
+			mode.disabled = !state.available && !active && !busy;
 			const visible = layout.isVisible(Parts.AUXILIARYBAR_PART);
 			toggle.hidden = !active;
 			toggle.disabled = busy;
@@ -148,9 +167,10 @@ export class StudioModeSwitcher extends Disposable {
 			toggle.setAttribute('aria-label', toggleLabel);
 			toggleHover.update(toggleLabel);
 			toggleIcon.className = `codicon codicon-layout-sidebar-right${visible ? '' : '-off'}`;
+			positionMode();
 			scheduleChrome();
 		};
-		for (const [button, command] of [[ide, 'studio.internalEnterIdeMode'], [steam, 'studio.internalEnterSteamMode'], [toggle, 'workbench.action.toggleAuxiliaryBar']] as const) {
+		for (const [button, command] of [[mode, 'studio.internalToggleMode'], [toggle, 'workbench.action.toggleAuxiliaryBar']] as const) {
 			this._register(addDisposableListener(button, 'click', () => {
 				void this.commands.executeCommand(command).catch(error => this.notifications.error(error));
 			}));
@@ -165,7 +185,7 @@ export class StudioModeSwitcher extends Disposable {
 	}
 }
 
-/** Keep project startup visible without holding a frozen view-transition snapshot. */
+/** Keep project startup visible while asynchronous preparation is pending. */
 export class StudioModeLoading extends Disposable {
 	private readonly element: HTMLElement;
 	private readonly label: HTMLElement;

@@ -93,6 +93,7 @@ export class StudioModeContribution extends Disposable {
 	private requested: boolean;
 	private initialized = false;
 	private revision = 0;
+	private readonly animations = new Set<Animation>();
 
 	constructor(
 		@IWorkbenchLayoutService private readonly layout: IWorkbenchLayoutService,
@@ -149,6 +150,7 @@ export class StudioModeContribution extends Disposable {
 	private request(steam: boolean): Promise<void> {
 		this.requested = steam && studioModeState.state.available;
 		const revision = ++this.revision;
+		for (const animation of this.animations) { animation.cancel(); }
 		if (!this.requested && studioModeState.busy) {
 			void this.commands.executeCommand('studio.internalCancelSteamPreparation').catch(() => undefined);
 		}
@@ -176,10 +178,9 @@ export class StudioModeContribution extends Disposable {
 					};
 					if (!this.steam) {
 						await this.transition(true, async () => {
-							await this.enterSteam(projectUri);
 							this.loading.show();
-							studioModeState.setMode(true, true, true);
-							// A retained frame can be revealed in the snapshot without a loading flash.
+							await this.enterSteam(projectUri);
+							// Reveal retained content before the incoming animation, without a loading flash.
 							if (studioModeState.state.ready && revision === this.revision) {
 								prepared = await prepare();
 								if (prepared) { this.loading.hide(); }
@@ -189,7 +190,7 @@ export class StudioModeContribution extends Disposable {
 						this.loading.show();
 					}
 					if (revision !== this.revision || this._store.isDisposed) { return; }
-					// Cold startup runs after the live loading layout, outside the frozen snapshot.
+					// Cold startup runs after the live loading layout has entered.
 					prepared ??= await prepare();
 					if (revision !== this.revision || !studioModeState.state.available || this._store.isDisposed) { return; }
 					if (!prepared) {
@@ -259,6 +260,7 @@ export class StudioModeContribution extends Disposable {
 		await this.configuration.updateValue('workbench.sideBar.location', 'left', ConfigurationTarget.MEMORY);
 		this.steam = true;
 		studioWindowChrome.projectUri = projectUri;
+		studioModeState.setMode(true, true, true);
 		this.contextKeys.createKey<boolean>('studio.steamMode', false).set(true);
 		this.layout.mainContainer.classList.add('studio-steam-mode');
 		this.layout.setWindowChromeHidden(true);
@@ -303,6 +305,7 @@ export class StudioModeContribution extends Disposable {
 		if (!snapshot) { return; }
 		await this.workspace.deactivate(this.groups.mainPart.getGroup(snapshot.activeGroup) ?? this.groups.mainPart.activeGroup);
 		this.steam = false;
+		studioModeState.setMode(false, true, false);
 		this.projectReady = false;
 		this.contextKeys.createKey('studio.steamMode', false).set(false);
 		this.layout.mainContainer.classList.remove('studio-steam-mode');
@@ -337,32 +340,46 @@ export class StudioModeContribution extends Disposable {
 
 	private async transition(steam: boolean, change: () => Promise<void>): Promise<void> {
 		const win = getWindow(this.layout.mainContainer);
-		const document = win.document;
-		if (win.matchMedia('(prefers-reduced-motion: reduce)').matches) { await change(); return; }
-		if (document.startViewTransition) {
-			const direction = steam ? 'studio-mode-enter-steam' : 'studio-mode-enter-ide';
-			document.documentElement.classList.add('studio-mode-transition', direction);
-			try {
-				const transition = document.startViewTransition(async () => {
-					// Slow view restoration must not freeze the workbench behind a captured image.
-					const timeout = win.setTimeout(() => transition.skipTransition(), 120);
-					try { await change(); } finally { win.clearTimeout(timeout); }
-				});
-				// A background tab or skipped animation can reject ready even when the layout succeeds.
-				void transition.ready.catch(() => undefined);
-				const finished = transition.finished.catch(() => undefined);
-				await transition.updateCallbackDone;
-				await finished;
-			} finally { document.documentElement.classList.remove('studio-mode-transition', direction); }
-		} else {
-			await change();
-			const animations: Animation[] = [];
-			for (const part of [Parts.EDITOR_PART, Parts.AUXILIARYBAR_PART]) {
-				const animation = this.layout.getContainer(win, part)?.animate([{ opacity: .7, transform: `translateX(${steam ? 48 : -48}px)` }, { opacity: 1, transform: 'translateX(0)' }], { duration: 300, easing: 'cubic-bezier(.22,1,.36,1)' });
-				if (animation) { animations.push(animation); }
+		if (win.matchMedia('(prefers-reduced-motion: reduce)').matches || this.layout.mainContainer.classList.contains('monaco-reduce-motion')) { await change(); return; }
+		const effects: Animation[] = [];
+		const animate = async (leaving: boolean) => {
+			const parts = [Parts.TITLEBAR_PART, Parts.STATUSBAR_PART, ...sideParts, Parts.EDITOR_PART] as const;
+			const elements = parts.filter(part => this.layout.isVisible(part, win)).flatMap(part => this.layout.getContainer(win, part) ?? []);
+			const titlebar = this.layout.getContainer(win, Parts.TITLEBAR_PART);
+			const statusbar = this.layout.getContainer(win, Parts.STATUSBAR_PART);
+			// Webviews live outside the grid so their iframes survive layout changes.
+			for (const overlay of this.layout.mainContainer.querySelectorAll<HTMLElement>('.webview-overlay-content, .studio-steam-tools-chrome')) {
+				if (overlay.checkVisibility({ visibilityProperty: true }) && !elements.some(element => element.contains(overlay))) { elements.push(overlay); }
 			}
-			await Promise.all(animations.map(animation => animation.finished.catch(() => undefined)));
+			for (const element of elements) {
+				// Fade window chrome in place so its reserved control geometry stays stable.
+				const distance = element === titlebar || element === statusbar ? 0 : (steam ? 1 : -1) * (leaving ? -24 : 32);
+				const resting = { opacity: 1, transform: 'translateX(0)' };
+				const shifted = { opacity: 0, transform: `translateX(${distance}px)` };
+				const animation = element.animate(leaving ? [resting, shifted] : [shifted, resting], {
+					duration: leaving ? 140 : 220, easing: 'cubic-bezier(.22, 1, .36, 1)', fill: 'both',
+				});
+				effects.push(animation); this.animations.add(animation);
+			}
+			await Promise.all(effects.map(animation => animation.finished.catch(() => undefined)));
+		};
+		try {
+			// Finish the outgoing chrome before the grid hides it. Animate the live
+			// incoming parts after async restoration, including cold project startup.
+			await animate(true);
+			if (this._store.isDisposed) { return; }
+			await change();
+			for (const animation of effects.splice(0)) { this.animations.delete(animation); animation.cancel(); }
+			if (this._store.isDisposed) { return; }
+			await animate(false);
+		} finally {
+			for (const animation of effects) { this.animations.delete(animation); animation.cancel(); }
 		}
+	}
+
+	override dispose(): void {
+		for (const animation of this.animations) { animation.cancel(); }
+		super.dispose();
 	}
 }
 

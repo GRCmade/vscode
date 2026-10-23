@@ -277,7 +277,7 @@ export class WebviewViewPane extends ViewPane {
 			return;
 		}
 
-		if (!this._rootContainer || !this._rootContainer.isConnected) {
+		if (!this._rootContainer || !this._rootContainer.isConnected || !this._rootContainer.contains(this._container)) {
 			this._rootContainer = this.findRootContainer(this._container);
 		}
 

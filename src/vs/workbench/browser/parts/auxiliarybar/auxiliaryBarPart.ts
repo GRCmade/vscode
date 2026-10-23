@@ -35,7 +35,7 @@ import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 import { VisibleViewContainersTracker } from '../visibleViewContainersTracker.js';
 import { Extensions } from '../../panecomposite.js';
 import { IToolBarResponsiveBehaviorOptions } from '../../../../base/browser/ui/toolbar/toolbar.js';
-import { StudioSteamTabs, studioModeState, studioSteamWorkspaceState } from '../studioMode.js';
+import { StudioSteamTabs, studioModeState } from '../studioMode.js';
 
 interface IAuxiliaryBarPartConfiguration {
 	position: ActivityBarPosition;
@@ -103,7 +103,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 			Parts.AUXILIARYBAR_PART,
 			{
 				hasTitle: true,
-				titleHeight: () => studioModeState.steam ? (studioSteamWorkspaceState.instances.length || studioSteamWorkspaceState.tool === 'editor' ? 80 : 40) : undefined,
+				titleHeight: () => studioModeState.steam ? 40 : undefined,
 				trailingSeparator: true,
 				borderWidth: () => (this.getColor(SIDE_BAR_BORDER) || this.getColor(contrastBorder)) ? 1 : 0,
 			},
@@ -145,11 +145,6 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 		this._register(studioModeState.onDidChangeMode(() => {
 			this.updateCompositeBar();
 			relayoutSteamNavigation();
-		}));
-		let hasInstances = false;
-		this._register(studioSteamWorkspaceState.onDidChange(() => {
-			const visible = studioSteamWorkspaceState.instances.length > 0 || studioSteamWorkspaceState.tool === 'editor';
-			if (visible !== hasInstances) { hasInstances = visible; relayoutSteamNavigation(); }
 		}));
 
 		this._register(configurationService.onDidChangeConfiguration(e => {

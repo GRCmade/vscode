@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { $, addDisposableListener, append, clearNode, getWindow } from '../../../../base/browser/dom.js';
+import { $, addDisposableListener, append, getWindow } from '../../../../base/browser/dom.js';
 import { SplitView, Orientation } from '../../../../base/browser/ui/splitview/splitview.js';
 import { Event } from '../../../../base/common/event.js';
 import { RunOnceScheduler } from '../../../../base/common/async.js';
@@ -11,7 +11,6 @@ import { onUnexpectedError } from '../../../../base/common/errors.js';
 import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
-import { TerminalLocation } from '../../../../platform/terminal/common/terminal.js';
 import { studioModeState, studioSteamToolDefinitions, studioSteamWorkspaceState, StudioSteamTab } from '../../../browser/parts/studioMode.js';
 import { EditorResourceAccessor, EditorsOrder, IUntypedEditorInput, SideBySideEditor } from '../../../common/editor.js';
 import { EditorInput } from '../../../common/editor/editorInput.js';
@@ -25,24 +24,23 @@ import { IViewsService } from '../../../services/views/common/viewsService.js';
 import { WebviewInput } from '../../webviewPanel/browser/webviewEditorInput.js';
 import { CustomEditorInput } from '../../customEditor/browser/customEditorInput.js';
 import { ITerminalGroupService, ITerminalService } from '../../terminal/browser/terminal.js';
+import { TerminalEditorInput } from '../../terminal/browser/terminalEditorInput.js';
+import { StudioToolViewInput } from './studioToolView.js';
 
 const TABS_KEY = 'studio.steamWorkspaceTabs';
 const HOME_VIEW = 'studio.steamTools';
-interface SavedTabs { tools: string[]; active?: string; emptyEditor?: boolean }
-type NativeTool = Exclude<typeof studioSteamToolDefinitions[number], { command: string }>;
-interface WorkspaceTab { id: string; tool?: NativeTool; editor?: EditorInput; group?: IEditorGroup }
+interface SavedTabs { tools: string[]; active?: string; emptyEditor?: boolean; parts?: string[]; defaultViews?: string[] }
+type Tool = typeof studioSteamToolDefinitions[number];
+interface WorkspaceTab { id: string; editor: EditorInput; group: IEditorGroup }
+interface ToolPart { part: IEmbeddedEditorPart; host: HTMLElement }
 
-/**
- * The run surface belongs to the main editor part. All other editor inputs use a
- * separate, registered editor part inside the tool area, alongside retained views.
- * Routing happens before opening, including explicit groups and batched requests.
- */
+/** Each category owns a real editor part, so native tab actions stay inside that category. */
 export class StudioSteamWorkspace extends Disposable {
-	private part: IEmbeddedEditorPart | undefined;
+	private readonly parts = new Map<string, ToolPart>();
 	private readonly partLifetime = this._register(new DisposableStore());
 	private readonly modeLifetime = this._register(new DisposableStore());
-	private readonly host: HTMLElement;
 	private readonly surface: HTMLElement;
+	private readonly editorPane: HTMLElement;
 	private readonly empty: HTMLElement;
 	private readonly emptyLabel: HTMLElement;
 	private readonly openFile: HTMLButtonElement;
@@ -54,6 +52,8 @@ export class StudioSteamWorkspace extends Disposable {
 	private sidebarWidth: number;
 	private readonly refresh = this._register(new RunOnceScheduler(() => this.syncEditors(), 0));
 	private tabs: WorkspaceTab[] = [];
+	private readonly tools = new Set<string>();
+	private readonly defaultViews = new Set<string>();
 	private active: string | undefined;
 	private enabled = false;
 	private projectGroup: IEditorGroup | undefined;
@@ -67,6 +67,9 @@ export class StudioSteamWorkspace extends Disposable {
 	private savedEmptyEditor = false;
 	private visibilityRevision = 0;
 	private readonly selectedInstances = new Map<string, string>();
+	private readonly selectedEditors = new Map<string, EditorInput>();
+	private readonly pendingViews = new Map<string, Promise<void>>();
+	private movingTerminals = 0;
 
 	get hasProject(): boolean {
 		return !!this.project && !this.project.isDisposed() && !!this.projectGroup?.contains(this.project);
@@ -85,17 +88,14 @@ export class StudioSteamWorkspace extends Disposable {
 	) {
 		super();
 		const saved = storage.getObject<SavedTabs>(TABS_KEY, StorageScope.WORKSPACE);
-		this.tabs = [...new Set(saved?.tools ?? [])].flatMap(id => {
-			const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
-			return tool && !('command' in tool) ? [{ id, tool }] : [];
-		});
+		for (const id of saved?.tools ?? []) { if (studioSteamToolDefinitions.some(tool => tool.id === id)) { this.tools.add(id); } }
+		for (const id of saved?.defaultViews ?? saved?.tools ?? []) { this.defaultViews.add(id); }
 		this.savedActive = saved?.active;
 		this.savedEmptyEditor = saved?.emptyEditor ?? false;
 		this.surface = append(parent, $('.studio-steam-editor-workspace'));
 		this.surface.hidden = true;
-		const editorPane = $('.studio-steam-code-pane');
-		this.host = append(editorPane, $('.part.editor.studio-steam-editors'));
-		this.empty = append(editorPane, $('.studio-steam-code-empty'));
+		this.editorPane = $('.studio-steam-code-pane');
+		this.empty = append(this.editorPane, $('.studio-steam-code-empty'));
 		append(this.empty, $('span.codicon.codicon-code', { 'aria-hidden': 'true' }));
 		this.emptyLabel = append(this.empty, $('p'));
 		this.openFile = append(this.empty, $('button', { type: 'button' })) as HTMLButtonElement;
@@ -103,8 +103,8 @@ export class StudioSteamWorkspace extends Disposable {
 		this.sidebarHost = $('.studio-steam-code-sidebar');
 		this.sidebarWidth = storage.getNumber('studio.steamEditorSidebarWidth', StorageScope.WORKSPACE, 240);
 		this.split = this._register(new SplitView(this.surface, { orientation: Orientation.HORIZONTAL, proportionalLayout: false }));
-		this.split.addView({ element: editorPane, minimumSize: 120, maximumSize: Number.POSITIVE_INFINITY, onDidChange: Event.None,
-			layout: width => { if (!this.host.hidden) { this.part?.layout(width, this.surface.clientHeight, 0, 0); } } }, 400);
+		this.split.addView({ element: this.editorPane, minimumSize: 120, maximumSize: Number.POSITIVE_INFINITY, onDidChange: Event.None,
+			layout: width => { for (const { part, host } of this.parts.values()) { if (!host.hidden) { part.layout(width, this.surface.clientHeight, 0, 0); } } } }, 400);
 		this.split.addView({ element: this.sidebarHost, minimumSize: 140, maximumSize: 600, onDidChange: Event.None,
 			layout: width => this.sidebar.value?.layout(width, this.surface.clientHeight) }, this.sidebarWidth);
 		this._register(this.split.onDidSashChange(() => {
@@ -115,31 +115,38 @@ export class StudioSteamWorkspace extends Disposable {
 		}));
 		this._register(studioModeState.onDidChangeState(() => this.publish()));
 		this._register(this.views.onDidChangeViewVisibility(event => {
-			if (!this.enabled || !event.visible) { return; }
+			if (!this.enabled || !event.visible || this.movingTerminals) { return; }
 			const tool = studioSteamToolDefinitions.find(tool => 'view' in tool && tool.view === event.id);
-			if (tool && 'view' in tool) {
-				if (!this.tabs.some(tab => tab.id === tool.id)) { this.tabs.push({ id: tool.id, tool }); }
-				++this.visibilityRevision; this.active = tool.id; this.publish();
-			}
+			if (!tool) { return; }
+			const input = this.parts.get(tool.id)?.part.activeGroup.activeEditor;
+			if (input instanceof StudioToolViewInput && input.viewId === event.id) { return; }
+			void this.openTool(tool.id).catch(onUnexpectedError);
 		}));
 		this._register(registerEditorOpenTarget((editor, preferred) => this.target(editor, preferred)));
-		this._register(this.terminalGroups.onDidChangeInstances(() => this.publish()));
-		this._register(this.terminalGroups.onDidChangeActiveInstance(() => this.publish()));
-		this._register(this.terminals.onAnyInstanceTitleChange(() => this.refresh.schedule()));
+		this._register(this.terminalGroups.onDidChangeInstances(() => {
+			if (this.enabled && !this.movingTerminals && this.tools.has('terminal') && this.terminalGroups.instances.length) { this.retainTerminals(); }
+		}));
 		const observer = new (getWindow(parent).ResizeObserver)(() => this.layoutEditors());
 		observer.observe(parent);
 		this._register(this.layout.onDidChangePartVisibility(() => this.layoutEditors()));
 		this._register(toDisposable(() => { observer.disconnect(); this.surface.remove(); studioSteamWorkspaceState.update([], undefined); }));
-		// Restore saved inputs even if a removed project forces the next mode back to IDE.
-		if (storage.get('studio.workbenchMode', StorageScope.WORKSPACE) === 'steam') { this.ensurePart(); }
+		// Restore every native part even if a removed project forces the next mode back to IDE.
+		if (storage.get('studio.workbenchMode', StorageScope.WORKSPACE) === 'steam') {
+			for (const id of saved?.parts ?? ['editor']) { this.ensurePart(id); }
+		}
 	}
 
-	private ensurePart(): IEmbeddedEditorPart {
-		if (this.part) { return this.part; }
-		clearNode(this.host);
-		const part = this.part = this.partLifetime.add(this.groups.createEmbeddedEditorPart(this.host, 'workbench.parts.studioSteamEditors', studioModeState.state.labels.workspace ?? 'Tool Workspace'));
-		this.partLifetime.add(part.enforcePartOptions({ showTabs: 'none', enablePreview: false, closeEmptyGroups: true, editorActionsLocation: 'hidden' }));
+	private ensurePart(id = 'editor'): IEmbeddedEditorPart {
+		const existing = this.parts.get(id);
+		if (existing) { return existing.part; }
+		const host = append(this.editorPane, $('.part.editor.studio-steam-editors', { 'data-tool': id }));
+		host.hidden = true;
+		const key = `workbench.parts.studioSteamEditors${id === 'editor' ? '' : `.${id}`}`;
+		const part = this.partLifetime.add(this.groups.createEmbeddedEditorPart(host, key, studioModeState.state.labels[id] ?? studioModeState.state.labels.workspace ?? 'Tool Workspace'));
+		this.parts.set(id, { part, host });
+		this.partLifetime.add(part.enforcePartOptions({ showTabs: 'multiple', tabHeight: 'compact', enablePreview: true, closeEmptyGroups: true, editorActionsLocation: 'default' }));
 		const registerGroup = (group: IEditorGroup) => {
+			group.scopedContextKeyService.createKey('studio.steamTool', studioSteamToolDefinitions.some(tool => tool.id === id) ? id : '');
 			let opening: { editor: EditorInput; revision: number } | undefined;
 			this.partLifetime.add((group as IEditorGroupView).onWillOpenEditor(event => {
 				if (this.enabled && group.activeEditor === event.editor) { this.revealEditor(event.editor, group); }
@@ -148,11 +155,7 @@ export class StudioSteamWorkspace extends Disposable {
 			this.partLifetime.add(group.onDidModelChange(() => this.refresh.schedule()));
 			this.partLifetime.add(group.onDidActiveEditorChange(() => {
 				this.syncEditors();
-				const codePreview = this.toolFor(this.tabs.find(tab => tab.id === this.active))?.id === 'editor'
-					&& this.toolFor(this.tabs.find(tab => tab.editor === group.activeEditor))?.id === 'editor';
-				// Closing an input starts an asynchronous native fallback. A later tool
-				// selection owns the surface and must not be replaced when it finishes.
-				// Explorer and Search also open previews without taking focus from their sidebar.
+				const codePreview = (this.active === 'editor' || this.category(this.tabs.find(tab => tab.id === this.active)) === 'editor') && id === 'editor';
 				if (this.enabled && (this.groups.activeGroup === group || codePreview) && group.activeEditor
 					&& opening?.editor === group.activeEditor && opening.revision === this.visibilityRevision) { this.revealEditor(group.activeEditor, group); }
 			}));
@@ -163,88 +166,90 @@ export class StudioSteamWorkspace extends Disposable {
 		this.partLifetime.add(part.onDidActivateGroup(({ group }) => {
 			if (this.enabled && group.activeEditor) { this.revealEditor(group.activeEditor, group); }
 		}));
-		void part.whenReady.then(() => { if (this.part === part) { this.syncEditors(); } });
+		void part.whenReady.then(() => { if (this.parts.get(id)?.part === part) { this.syncEditors(); } }, onUnexpectedError);
 		return part;
 	}
+
+	private get nativeGroups(): IEditorGroup[] { return [...this.parts.values()].flatMap(({ part }) => part.groups); }
 
 	async activate(projectUri = studioModeState.state.projectUri): Promise<void> {
 		if (this.enabled) { return; }
 		this.projectUri = projectUri;
 		const part = this.ensurePart();
-		await part.whenReady;
+		await Promise.all([...this.parts.values()].map(({ part }) => part.whenReady));
 		const restoreActive = this.savedActive;
 		const restoreEmptyEditor = this.savedEmptyEditor;
+		const restoreDefaultViews = [...this.defaultViews];
 		const restoredEditor = part.activeGroup.activeEditor;
 		const restoredGroup = part.activeGroup;
 		const projectGroup = this.projectGroup = this.groups.mainPart.getGroups(GroupsOrder.GRID_APPEARANCE)[0];
 		this.modeLifetime.add(this.groups.mainPart.enforceSingleGroup(projectGroup));
-		this.setProject([...this.groups.mainPart.groups, ...part.groups].flatMap(group => group.editors).find(editor => this.matchesProject(editor)));
-		this.modeLifetime.add(projectGroup.onDidCloseEditor(({ editor }) => {
-			if (editor === this.project) { this.setProject(undefined); }
-		}));
-		// Retain IDE ownership for the return trip, but leave no source document
-		// behind the runtime that native close/navigation could reveal on the left.
-		const sourceEditors = projectGroup.getEditors(EditorsOrder.SEQUENTIAL).filter(editor => !this.matchesProject(editor));
-		for (const editor of sourceEditors) { this.ideGroups.set(editor, projectGroup); }
-		if (!projectGroup.moveEditors(sourceEditors.map(editor => ({ editor, options: { preserveFocus: true } })), part.activeGroup)) {
-			throw new Error(studioModeState.state.labels.moveEditorsError ?? 'Unable to move tool workspace editors back to the IDE.');
+		this.setProject([...this.groups.mainPart.groups, ...this.nativeGroups].flatMap(group => group.editors).find(editor => this.matchesProject(editor)));
+		this.modeLifetime.add(projectGroup.onDidCloseEditor(({ editor }) => { if (editor === this.project) { this.setProject(undefined); } }));
+		for (const editor of projectGroup.getEditors(EditorsOrder.SEQUENTIAL).filter(editor => !this.matchesProject(editor))) {
+			this.ideGroups.set(editor, projectGroup);
+			const target = this.ensurePart(this.editorCategory(editor));
+			await target.whenReady;
+			if (!projectGroup.moveEditors([{ editor, options: { preserveFocus: true } }], target.activeGroup)) { throw this.moveError(); }
 		}
-		// Repair restored sessions and projects that were previously opened in another group.
-		for (const group of [...this.groups.mainPart.groups, ...part.groups]) {
-			if (group === projectGroup) { continue; }
-			group.moveEditors(group.getEditors(EditorsOrder.SEQUENTIAL).filter(editor => this.matchesProject(editor))
-				.map(editor => ({ editor, options: { preserveFocus: true } })), projectGroup);
+		// Split the old mixed tool part on first entry, retaining the actual input objects.
+		for (const [id, { part }] of this.parts) {
+			for (const group of [...part.groups]) {
+				for (const editor of group.getEditors(EditorsOrder.SEQUENTIAL)) {
+					if (this.matchesProject(editor)) { group.moveEditors([{ editor, options: { preserveFocus: true } }], projectGroup); }
+					else if (this.editorCategory(editor) !== id) {
+						const destination = this.ensurePart(this.editorCategory(editor));
+						await destination.whenReady;
+						if (!group.moveEditors([{ editor, options: { preserveFocus: true } }], destination.activeGroup)) { throw this.moveError(); }
+					}
+				}
+			}
 		}
 		this.enabled = true;
 		this.sidebarRequested = true;
 		this.sidebarOpened = false;
 		this.sidebar.value = this.layout.createEmbeddedSideBar(this.sidebarHost, visible => {
 			this.sidebarRequested = visible;
-			if (visible) { void this.openTool('editor', true).catch(onUnexpectedError); }
-			else { this.layoutEditors(); }
+			if (visible) { void this.openTool('editor', true).catch(onUnexpectedError); } else { this.layoutEditors(); }
 		});
-		this.syncEditors();
-		if (restoreActive === 'editor' && !restoreEmptyEditor && restoredEditor && restoredGroup.contains(restoredEditor)) {
-			// Moving an IDE source into this group can change its active input.
-			await this.select(this.id(restoredEditor, restoredGroup));
-		} else if (restoreActive && this.tabs.some(tab => tab.tool && tab.id === restoreActive)) {
-			await this.select(restoreActive);
-		} else { await this.home(); }
-	}
-
-	async deactivate(target: IEditorGroup): Promise<void> {
-		const part = this.part;
-		if (!part) { return; }
-		await part.whenReady;
-		this.enabled = false; ++this.visibilityRevision;
-		part.setVisible(false); this.surface.hidden = true;
-		this.sidebar.value?.setVisible(false);
-		// Move inputs, without closing or saving them, so IDE can access every new and dirty editor.
-		for (const group of part.groups) {
-			const destinations = new Map<IEditorGroup, EditorInput[]>();
-			for (const editor of group.getEditors(EditorsOrder.SEQUENTIAL)) {
-				const original = this.ideGroups.get(editor);
-				const destination = original && this.groups.mainPart.getGroup(original.id) === original ? original : target;
-				const editors = destinations.get(destination) ?? [];
-				editors.push(editor); destinations.set(destination, editors);
-			}
-			for (const [destination, editors] of destinations) {
-				if (!group.moveEditors(editors.map(editor => ({ editor, options: { preserveFocus: true } })), destination)) {
-					this.enabled = true;
-					this.syncEditors();
-					throw new Error(studioModeState.state.labels.moveEditorsError ?? 'Unable to move tool workspace editors back to the IDE.');
-				}
+		for (const id of restoreDefaultViews) {
+			const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
+			if (tool && 'view' in tool && id !== 'terminal' && !this.nativeGroups.some(group => group.editors.some(editor => editor instanceof StudioToolViewInput && editor.toolId === id))) {
+				const target = this.ensurePart(id);
+				await target.whenReady;
+				await this.editors.openEditor(new StudioToolViewInput(id, tool.view), { pinned: true, index: 0, inactive: true, preserveFocus: true }, target.activeGroup);
 			}
 		}
-		this.sidebar.clear();
-		this.modeLifetime.clear();
-		this.part = undefined;
-		this.partLifetime.clear();
-		clearNode(this.host);
-		this.projectGroup = undefined;
-		this.projectUri = undefined;
-		this.setProject(undefined);
-		this.ideGroups.clear();
+		this.syncEditors();
+		if (restoreActive === 'editor' && !restoreEmptyEditor && restoredEditor && restoredGroup.contains(restoredEditor)) {
+			await this.select(this.id(restoredEditor, restoredGroup), true);
+		} else if (restoreActive && (this.tools.has(restoreActive) || this.parts.has(restoreActive))) { await this.openTool(restoreActive); }
+		else { await this.home(); }
+	}
+
+	private moveError(): Error { return new Error(studioModeState.state.labels.moveEditorsError ?? 'Unable to move tool workspace editors back to the IDE.'); }
+
+	async deactivate(target: IEditorGroup): Promise<void> {
+		await Promise.all([...this.parts.values()].map(({ part }) => part.whenReady));
+		this.enabled = false; ++this.visibilityRevision;
+		for (const { part, host } of this.parts.values()) { part.setVisible(false); host.hidden = true; }
+		this.surface.hidden = true;
+		this.sidebar.value?.setVisible(false);
+		for (const group of this.nativeGroups) {
+			for (const editor of [...group.getEditors(EditorsOrder.SEQUENTIAL)]) {
+				if (editor instanceof StudioToolViewInput) { await group.closeEditor(editor, { preserveFocus: true }); continue; }
+				if (editor instanceof TerminalEditorInput && editor.terminalInstance && !this.ideGroups.has(editor)) {
+					await this.terminals.moveToTerminalView(editor.terminalInstance); continue;
+				}
+				const original = this.ideGroups.get(editor);
+				const destination = original && this.groups.mainPart.getGroup(original.id) === original ? original : target;
+				if (!group.moveEditors([{ editor, options: { preserveFocus: true } }], destination)) { this.enabled = true; this.syncEditors(); throw this.moveError(); }
+			}
+		}
+		this.sidebar.clear(); this.modeLifetime.clear();
+		this.parts.clear(); this.partLifetime.clear();
+		for (const element of this.editorPane.querySelectorAll('.studio-steam-editors')) { element.remove(); }
+		this.projectGroup = undefined; this.projectUri = undefined; this.setProject(undefined); this.ideGroups.clear();
 		this.syncEditors();
 	}
 
@@ -257,96 +262,116 @@ export class StudioSteamWorkspace extends Disposable {
 	async openTool(id: string, preserveFocus = false): Promise<void> {
 		if (!this.enabled) { return; }
 		const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
-		if (!tool) { return; }
-		if (this.tabs.some(tab => this.toolFor(tab)?.id === id)) { await this.select(id, false, preserveFocus); return; }
-		if ('command' in tool) { await this.commands.executeCommand(tool.command); return; }
-		if ('view' in tool && !this.descriptors.getViewContainerByViewId(tool.view)) { return; }
-		if (!this.tabs.some(tab => tab.id === id)) { this.tabs.push({ id, tool }); }
-		await this.select(id, false, preserveFocus);
+		if (!tool && !this.parts.has(id)) { return; }
+		const candidates = this.tabs.filter(tab => this.category(tab) === id);
+		if (candidates.length) {
+			this.tools.add(id);
+			const selectedEditor = this.selectedEditors.get(id);
+			const selected = candidates.find(tab => tab.id === this.selectedInstances.get(id))
+				?? candidates.find(tab => selectedEditor && tab.editor.matches(selectedEditor))
+				?? candidates.find(tab => tab.group.activeEditor === tab.editor) ?? candidates[0];
+			await this.select(selected.id, true, preserveFocus); return;
+		}
+		if (tool && 'command' in tool) { await this.commands.executeCommand(tool.command); return; }
+		if (tool && 'view' in tool && !this.descriptors.getViewContainerByViewId(tool.view)) { return; }
+		this.tools.add(id);
+		if (tool?.id === 'terminal') {
+			const hasTerminals = this.terminals.instances.length > 0;
+			this.retainTerminals();
+			if (!hasTerminals) { await this.newInstance('terminal'); }
+			return;
+		}
+		if (tool && 'view' in tool) {
+			const revision = ++this.visibilityRevision;
+			let opening = this.pendingViews.get(id);
+			if (!opening) {
+				opening = (async () => {
+					const part = this.ensurePart(id);
+					await part.whenReady;
+					if (this.enabled && this.tools.has(id) && this.parts.get(id)?.part === part) {
+						await this.editors.openEditor(new StudioToolViewInput(id, tool.view), { pinned: true, preserveFocus, inactive: revision !== this.visibilityRevision }, part.activeGroup);
+					}
+				})();
+				this.pendingViews.set(id, opening);
+			}
+			try { await opening; } finally { if (this.pendingViews.get(id) === opening) { this.pendingViews.delete(id); } }
+			return;
+		}
+		++this.visibilityRevision; this.active = id; this.publish();
+		await this.views.openView(HOME_VIEW, false);
 	}
 
-	async newInstance(id: string | undefined): Promise<void> {
+	private retainTerminals(): void {
+		const part = this.ensurePart('terminal');
+		++this.movingTerminals;
+		try {
+			for (const terminal of [...this.terminalGroups.instances]) { this.terminals.moveToEditor(terminal, part.activeGroup.id); }
+		} finally { --this.movingTerminals; }
+	}
+
+	async newInstance(id: string | undefined = studioSteamWorkspaceState.tool, groupId?: number): Promise<void> {
 		if (!this.enabled) { return; }
+		if (groupId !== undefined) {
+			const group = this.groups.getGroup(groupId);
+			const owner = [...this.parts].find(([, { part }]) => group && part.groups.includes(group));
+			if (!group || !owner) { return; }
+			this.groups.activateGroup(group); id = owner[0];
+		}
 		const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
 		if (!tool) { return; }
-		if (tool.id === 'editor') {
-			await this.commands.executeCommand('workbench.action.files.newUntitledFile');
-		} else if (tool.id === 'terminal') {
-			const instance = await this.terminals.createTerminal({ location: TerminalLocation.Panel });
-			if (instance && this.enabled) { await this.openTool('terminal'); await this.terminalGroups.focusInstance(instance); }
-		} else if ('command' in tool) {
-			await this.commands.executeCommand(tool.command, undefined, ...(tool.id === 'browser' ? [{ forceNew: true }] : []));
-		} else { await this.commands.executeCommand('studio.createToolInstance', tool.id); }
+		this.tools.add(tool.id);
+		if (tool.id === 'editor') { await this.commands.executeCommand('workbench.action.files.newUntitledFile'); }
+		else if (tool.id === 'terminal') { await this.terminals.createTerminal({ location: { viewColumn: this.ensurePart('terminal').activeGroup.id } }); }
+		else if ('command' in tool) { await this.commands.executeCommand(tool.command, undefined, ...(tool.id === 'browser' ? [{ forceNew: true }] : [])); }
+		else { await this.commands.executeCommand('studio.createToolInstance', tool.id); }
 	}
 
 	async select(id: string, instance = false, preserveFocus = false): Promise<void> {
 		if (!this.enabled) { return; }
-		if (id.startsWith('terminal:')) {
-			const terminal = this.terminalGroups.instances.find(terminal => `terminal:${terminal.instanceId}` === id);
-			if (terminal) {
-				this.active = 'terminal';
-				await this.views.openView('terminal', true);
-				if (this.enabled && this.active === 'terminal' && this.terminalGroups.instances.includes(terminal)) { await this.terminalGroups.focusInstance(terminal); }
-				this.publish();
-			}
-			return;
-		}
-		if (!instance) {
-			const candidates = this.tabs.filter(tab => this.toolFor(tab)?.id === id);
-			id = candidates.find(tab => tab.id === this.selectedInstances.get(id))?.id ?? candidates.find(tab => tab.editor)?.id ?? candidates[0]?.id ?? id;
-		}
+		if (!instance && (this.tools.has(id) || this.parts.has(id))) { await this.openTool(id, preserveFocus); return; }
 		const tab = this.tabs.find(tab => tab.id === id);
 		if (!tab) { return; }
-		++this.visibilityRevision; this.active = id; this.publish();
-		if (tab.tool && 'view' in tab.tool) { await this.views.openView(tab.tool.view, true); }
-		else if (tab.tool?.id === 'editor') {
-			await this.views.openView(HOME_VIEW, false);
-			if (this.enabled && this.active === id) { this.layoutEditors(); }
-		}
-		else if (tab.editor && tab.group) {
-			this.revealEditor(tab.editor, tab.group);
-			await this.editors.openEditor(tab.editor, { preserveFocus }, tab.group);
-			if (!preserveFocus && this.enabled && this.active === id && this.part?.groups.includes(tab.group)) { tab.group.focus(); }
-		}
+		this.revealEditor(tab.editor, tab.group);
+		await this.editors.openEditor(tab.editor, { preserveFocus }, tab.group);
+		if (!preserveFocus && this.enabled && this.active === id && this.nativeGroups.includes(tab.group)) { tab.group.focus(); }
 	}
 
-	async close(id: string, instance = false): Promise<void> {
-		if (!this.enabled) { return; }
-		if (id.startsWith('terminal:')) {
-			const terminal = this.terminalGroups.instances.find(terminal => `terminal:${terminal.instanceId}` === id);
-			if (terminal) { await this.terminals.safeDisposeTerminal(terminal); }
-			if (!this.terminalGroups.instances.length && this.active === 'terminal') { await this.home(); }
-			this.publish(); return;
-		}
-		if (!instance && studioSteamToolDefinitions.some(tool => tool.id === id)) {
-			const category = this.tabs.filter(tab => this.toolFor(tab)?.id === id);
-			const wasActive = this.toolFor(this.tabs.find(tab => tab.id === this.active))?.id === id;
-			const part = this.part;
-			for (const tab of category.filter(tab => tab.editor)) {
-				if (!await tab.group!.closeEditor(tab.editor!, { preserveFocus: true })) { this.publish(); return; }
-				if (!this.enabled || this.part !== part) { return; }
+	async close(id: string, instance = false): Promise<boolean> {
+		if (!this.enabled) { return false; }
+		const category = !instance && (this.tools.has(id) || this.parts.has(id));
+		const closing = this.tabs.filter(tab => category ? this.category(tab) === id : tab.id === id);
+		const wasActive = category ? this.category(this.tabs.find(tab => tab.id === this.active)) === id || this.active === id : this.active === id;
+		if (category && id === 'terminal') { ++this.movingTerminals; }
+		try {
+			for (const tab of closing) {
+				if (category && tab.editor instanceof TerminalEditorInput && tab.editor.terminalInstance) { await this.terminals.moveToTerminalView(tab.editor.terminalInstance); }
+				else if (!await tab.group.closeEditor(tab.editor, { preserveFocus: true })) { this.syncEditors(); return false; }
+				if (!this.enabled || !this.nativeGroups.includes(tab.group)) { return false; }
 			}
-			this.tabs = this.tabs.filter(tab => !category.some(closed => closed.id === tab.id));
-			this.selectedInstances.delete(id);
-			if (wasActive || !this.active || !this.tabs.some(tab => tab.id === this.active)) {
-				if (this.tabs.length) { await this.select(this.tabs.at(-1)!.id, true); } else { await this.home(); }
-			} else { this.publish(); }
-			return;
-		}
-		const index = this.tabs.findIndex(tab => tab.id === id), tab = this.tabs[index];
-		if (!tab) { return; }
-		const wasActive = this.active === id;
-		const tool = this.toolFor(tab);
-		const siblings = tool ? this.tabs.filter(candidate => this.toolFor(candidate)?.id === tool.id) : [];
-		const siblingIndex = siblings.indexOf(tab);
-		const next = siblings[siblingIndex + 1]?.id ?? siblings[siblingIndex - 1]?.id ?? this.tabs[index + 1]?.id ?? this.tabs[index - 1]?.id;
-		const part = this.part;
-		if (tab.editor && tab.group && !await tab.group.closeEditor(tab.editor, { preserveFocus: true })) { return; }
-		if (!this.enabled || this.part !== part) { return; }
-		this.tabs = this.tabs.filter(tab => tab.id !== id);
+		} finally { if (category && id === 'terminal') { --this.movingTerminals; } }
+		if (category) { this.tools.delete(id); this.selectedInstances.delete(id); this.selectedEditors.delete(id); }
+		this.syncEditors();
 		if (wasActive) {
-			if (next && this.tabs.some(tab => tab.id === next)) { await this.select(next, true); } else { await this.home(); }
+			const remaining = this.tabs.find(tab => tab.id === this.active) ?? this.tabs.find(tab => this.category(tab) === id) ?? this.tabs.at(-1);
+			if (remaining) { await this.select(remaining.id, true); }
+			else if (!category && this.tools.has('editor') && this.active === 'editor') { await this.openTool('editor'); }
+			else { await this.home(); }
 		} else { this.publish(); }
+		return true;
+	}
+
+	async closeTabs(id: string, mode: 'others' | 'all'): Promise<void> {
+		const categories = studioSteamWorkspaceState.tabs.map(tab => tab.id).filter(candidate => mode === 'all' || candidate !== id);
+		for (const category of categories) { if (!await this.close(category)) { break; } }
+	}
+
+	async selectProject(groupId?: number): Promise<void> {
+		const group = groupId === undefined ? undefined : this.nativeGroups.find(group => group.id === groupId);
+		const tab = group ? this.tabs.find(tab => tab.group === group && tab.editor === group.activeEditor) : this.tabs.find(tab => tab.id === this.active);
+		if (tab && group) { await this.select(tab.id, true); }
+		const kind = this.category(tab);
+		const command = tab?.editor instanceof StudioToolViewInput ? kind === 'versions' ? 'studio.selectVersionsProject' : 'studio.selectInfoProject' : 'studio.selectToolInstanceProject';
+		await this.commands.executeCommand(command, kind);
 	}
 
 	private setProject(editor: EditorInput | undefined): void {
@@ -358,25 +383,18 @@ export class StudioSteamWorkspace extends Disposable {
 	private matchesProject(editor: EditorInput): boolean {
 		if (editor.isDisposed() || !(editor instanceof WebviewInput) || editor.webview.providedViewType !== 'studio.project' && editor.webview.providedViewType !== 'studio.projectTool') { return false; }
 		if (this.project && !this.project.isDisposed()) { return editor === this.project; }
-		// New panels open before their frame can publish serialized state. Their
-		// placement cannot depend on whether a previously closed input was cached.
-		try {
-			const uri = JSON.parse(editor.webview.state ?? '{}').projectUri;
-			return uri ? uri === this.projectUri : editor.webview.providedViewType === 'studio.project';
-		} catch { return false; }
+		try { const uri = JSON.parse(editor.webview.state ?? '{}').projectUri; return uri ? uri === this.projectUri : editor.webview.providedViewType === 'studio.project'; }
+		catch { return false; }
 	}
 
 	private target(editor: EditorInput | IUntypedEditorInput, preferred: PreferredGroup | undefined): IEditorGroup | undefined {
 		if (!this.enabled) { return undefined; }
 		const explicit = typeof preferred === 'number' && preferred >= 0 ? this.groups.getGroup(preferred) : typeof preferred === 'object' ? preferred : undefined;
-		if (editor instanceof EditorInput && this.matchesProject(editor)) {
-			this.setProject(editor);
-			return this.projectGroup;
-		}
-		// Existing auxiliary windows keep their own scoped editor services.
+		if (editor instanceof EditorInput && this.matchesProject(editor)) { this.setProject(editor); return this.projectGroup; }
 		if (explicit && this.groups.getPart(explicit).windowId !== this.groups.mainPart.windowId) { return undefined; }
-		if (explicit && this.part?.groups.includes(explicit)) { return explicit; }
-		return this.part?.activeGroup;
+		const category = this.editorCategory(editor);
+		const part = this.ensurePart(category);
+		return explicit && part.groups.includes(explicit) ? explicit : part.activeGroup;
 	}
 
 	private id(editor: EditorInput, group: IEditorGroup): string {
@@ -386,83 +404,89 @@ export class StudioSteamWorkspace extends Disposable {
 	}
 
 	private syncEditors(): void {
-		const editors = this.part?.groups.flatMap(group => group.getEditors(EditorsOrder.SEQUENTIAL).map(editor => ({ id: this.id(editor, group), editor, group }))) ?? [];
-		const current = new Map(editors.map(tab => [tab.id, tab]));
-		this.tabs = this.tabs.flatMap(tab => tab.tool ? [tab] : current.has(tab.id) ? [current.get(tab.id)!] : []);
-		for (const tab of editors) { if (!this.tabs.some(entry => entry.id === tab.id)) { this.tabs.push(tab); } }
-		if (editors.some(tab => this.toolFor(tab)?.id === 'editor') && !this.tabs.some(tab => tab.id === 'editor')) {
-			this.tabs.push({ id: 'editor', tool: studioSteamToolDefinitions.find(tool => tool.id === 'editor')! });
+		const previous = this.tabs.find(tab => tab.id === this.active);
+		let revealHome = false;
+		const previousCategories = new Set(this.tabs.map(tab => this.category(tab)));
+		this.tabs = this.nativeGroups.flatMap(group => group.getEditors(EditorsOrder.SEQUENTIAL).map(editor => ({ id: this.id(editor, group), editor, group })));
+		for (const tab of this.tabs) { this.tools.add(this.category(tab)); }
+		if (this.enabled) {
+			for (const id of previousCategories) {
+				if (id !== 'editor' && !this.tabs.some(tab => this.category(tab) === id)) { this.tools.delete(id); }
+			}
 		}
-		if (this.active && !this.tabs.some(tab => tab.id === this.active)) {
-			this.active = this.part?.activeGroup.activeEditor ? this.id(this.part.activeGroup.activeEditor, this.part.activeGroup) : undefined;
+		if (this.active && !this.tabs.some(tab => tab.id === this.active) && this.active !== 'editor') {
+			const id = this.category(previous);
+			const group = previous?.group;
+			const next = this.tabs.find(tab => tab.group === group && tab.editor === group?.activeEditor)
+				?? this.tabs.find(tab => this.category(tab) === id) ?? (id !== 'editor' ? this.tabs.at(-1) : undefined);
+			this.active = next?.id ?? (id === 'editor' && this.tools.has('editor') ? 'editor' : undefined);
+			revealHome = this.enabled && !!previous && !this.active;
 		}
 		this.publish();
+		if (revealHome) { void this.views.openView(HOME_VIEW, false).catch(onUnexpectedError); }
 	}
 
 	private revealEditor(editor: EditorInput, group: IEditorGroup): void {
-		this.active = this.id(editor, group); this.publish();
+		this.active = this.id(editor, group); this.tools.add(this.editorCategory(editor)); this.publish();
 		const revision = ++this.visibilityRevision;
-		// Keep the native auxiliary part open underneath the embedded editor surface.
-		void this.views.openView(HOME_VIEW, false).then(() => {
-			if (revision === this.visibilityRevision) { this.layoutEditors(); }
-		}, onUnexpectedError);
+		if (!(editor instanceof StudioToolViewInput)) {
+			void this.views.openView(HOME_VIEW, false).then(() => { if (revision === this.visibilityRevision) { this.layoutEditors(); } }, onUnexpectedError);
+		}
 	}
 
 	private publish(): void {
 		const labels = studioModeState.state.labels;
 		this.emptyLabel.textContent = labels.editorEmpty ?? 'Open a file from Explorer or Quick Open to start editing.';
 		this.openFile.textContent = labels.openFile ?? 'Open File';
-		const activeTool = this.toolFor(this.tabs.find(tab => tab.id === this.active));
-		if (activeTool && this.active) { this.selectedInstances.set(activeTool.id, this.active); }
-		const describe = (tab: WorkspaceTab): StudioSteamTab => ({ id: tab.id,
-			label: tab.tool ? studioModeState.state.labels[tab.id] ?? tab.id : tab.editor!.getName(),
-			icon: tab.tool?.icon ?? 'file', dirty: tab.editor?.isDirty(),
-		});
-		const tabs = new Map<string, StudioSteamTab>();
-		for (const tab of this.tabs) {
-			const tool = this.toolFor(tab);
-			const id = tool?.id ?? tab.id;
-			const previous = tabs.get(id);
-			tabs.set(id, { ...(tool ? { id, label: studioModeState.state.labels[id] ?? id, icon: tool.icon } : describe(tab)), dirty: previous?.dirty || tab.editor?.isDirty() });
+		const activeTab = this.tabs.find(tab => tab.id === this.active);
+		const category = activeTab ? this.category(activeTab) : this.active;
+		if (this.enabled && category && this.active) {
+			this.selectedInstances.set(category, this.active);
+			if (activeTab) { this.selectedEditors.set(category, activeTab.editor); }
 		}
-		const instances = activeTool ? this.tabs.filter(tab => this.toolFor(tab)?.id === activeTool.id && tab.id !== 'editor').flatMap(tab => tab.id === 'terminal'
-			? this.terminalGroups.instances.map(terminal => ({ id: `terminal:${terminal.instanceId}`, label: terminal.title, icon: 'terminal' })) : [describe(tab)]) : [];
-		let selected = this.active;
-		if (activeTool?.id === 'terminal' && this.active === 'terminal') {
-			selected = this.terminalGroups.activeInstance ? `terminal:${this.terminalGroups.activeInstance.instanceId}` : undefined;
+		const describe = (tab: WorkspaceTab): StudioSteamTab => ({ id: tab.id, label: tab.editor.getName(), icon: this.toolFor(tab.editor)?.icon ?? 'file', dirty: tab.editor.isDirty() });
+		const tabs: StudioSteamTab[] = [];
+		for (const id of this.tools) {
+			const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
+			const children = this.tabs.filter(tab => this.category(tab) === id);
+			if (!children.length && id !== 'editor') { continue; }
+			tabs.push({ id, label: tool ? labels[id] ?? id : children[0].editor.getName(), icon: tool?.icon ?? 'file', dirty: children.some(tab => tab.editor.isDirty()) });
 		}
-		studioSteamWorkspaceState.update([...tabs.values()], activeTool?.id ?? this.active, this.enabled ? instances : [], selected, activeTool?.id);
+		studioSteamWorkspaceState.update(tabs, category, this.enabled ? this.tabs.filter(tab => this.category(tab) === category).map(describe) : [], this.active, category);
 		if (this.enabled) {
-			this.savedActive = this.active?.startsWith('editor:') ? 'editor' : this.active;
+			this.savedActive = category;
 			this.savedEmptyEditor = this.active === 'editor';
-			this.storage.store(TABS_KEY, { tools: this.tabs.filter(tab => tab.tool).map(tab => tab.id), active: this.savedActive, emptyEditor: this.savedEmptyEditor }, StorageScope.WORKSPACE, StorageTarget.MACHINE);
+			this.defaultViews.clear();
+			for (const tab of this.tabs) { if (tab.editor instanceof StudioToolViewInput) { this.defaultViews.add(tab.editor.toolId); } }
+			this.storage.store(TABS_KEY, { tools: [...this.tools], active: category, emptyEditor: this.savedEmptyEditor, parts: [...this.parts.keys()], defaultViews: [...this.defaultViews] }, StorageScope.WORKSPACE, StorageTarget.MACHINE);
 		}
 		this.layoutEditors();
 	}
 
-	private toolFor(tab: WorkspaceTab | undefined): typeof studioSteamToolDefinitions[number] | undefined {
-		if (tab?.tool) { return tab.tool; }
-		const editor = tab?.editor;
-		if (!editor) { return undefined; }
+	private category(tab: WorkspaceTab | undefined): string { return tab ? this.editorCategory(tab.editor) : ''; }
+	private editorCategory(editor: EditorInput | IUntypedEditorInput): string { return this.toolFor(editor)?.id ?? (editor instanceof EditorInput ? editor.typeId : undefined) ?? 'editor'; }
+
+	private toolFor(editor: EditorInput | IUntypedEditorInput): Tool | undefined {
 		let id: string | undefined;
-		if (editor instanceof WebviewInput) {
+		if (editor instanceof StudioToolViewInput) { id = editor.toolId; }
+		else if (editor instanceof WebviewInput) {
 			const type = editor.webview.providedViewType;
-			id = type?.startsWith('studio.tool.') ? type.slice('studio.tool.'.length)
-				: type === 'simpleBrowser.view' ? 'browser' : type === 'studio.projectTool' ? 'project' : editor instanceof CustomEditorInput ? 'editor' : undefined;
-		} else if (editor.typeId === 'workbench.editors.terminal') { id = 'terminal'; }
-		else if (editor.typeId === 'workbench.editorinputs.browser') { id = 'browser'; }
+			id = type?.startsWith('studio.tool.') ? type.slice('studio.tool.'.length) : type === 'simpleBrowser.view' ? 'browser' : type === 'studio.projectTool' ? 'project' : editor instanceof CustomEditorInput ? 'editor' : undefined;
+		} else if (editor instanceof EditorInput && editor.typeId === 'workbench.editors.terminal') { id = 'terminal'; }
+		else if (editor instanceof EditorInput && editor.typeId === 'workbench.editorinputs.browser') { id = 'browser'; }
 		else if (EditorResourceAccessor.getOriginalUri(editor, { supportSideBySide: SideBySideEditor.PRIMARY })) { id = 'editor'; }
 		return studioSteamToolDefinitions.find(tool => tool.id === id);
 	}
 
 	private layoutEditors(): void {
-		const code = this.toolFor(this.tabs.find(tab => tab.id === this.active))?.id === 'editor';
-		const visible = this.enabled && (code || !!this.active?.startsWith('editor:')) && this.layout.isVisible(Parts.AUXILIARYBAR_PART);
-		const hasInput = !!this.active?.startsWith('editor:');
+		const category = this.category(this.tabs.find(tab => tab.id === this.active)) || this.active;
+		const code = category === 'editor';
+		const visible = this.enabled && !!category && this.layout.isVisible(Parts.AUXILIARYBAR_PART);
+		const hasInput = !!this.tabs.find(tab => tab.id === this.active);
 		this.surface.hidden = !visible;
-		this.host.hidden = !visible || !hasInput;
-		this.empty.hidden = hasInput;
+		this.empty.hidden = !visible || hasInput;
 		this.surface.parentElement?.classList.toggle('studio-steam-editor-active', visible);
+		for (const [id, { part, host }] of this.parts) { host.hidden = !visible || id !== category || !hasInput; part.setVisible(!host.hidden); }
 		this.sidebar.value?.setVisible(visible && code && this.sidebarRequested);
 		if (visible && code && this.sidebarRequested && !this.sidebarOpened) {
 			this.sidebarOpened = true;
@@ -475,6 +499,5 @@ export class StudioSteamWorkspace extends Disposable {
 			this.split.layout(this.surface.clientWidth);
 			if (this.split.isViewVisible(1)) { this.split.resizeView(1, Math.min(this.sidebarWidth, Math.max(140, this.surface.clientWidth - 120))); }
 		}
-		this.part?.setVisible(visible && hasInput);
 	}
 }

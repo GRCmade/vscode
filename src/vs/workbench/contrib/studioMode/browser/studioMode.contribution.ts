@@ -8,6 +8,7 @@ import { Sequencer } from '../../../../base/common/async.js';
 import { Codicon } from '../../../../base/common/codicons.js';
 import { Disposable, DisposableStore, MutableDisposable, IDisposable } from '../../../../base/common/lifecycle.js';
 import { localize2 } from '../../../../nls.js';
+import { MenuId, MenuRegistry } from '../../../../platform/actions/common/actions.js';
 import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
 import { ConfigurationTarget, IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { ContextKeyExpr, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
@@ -131,9 +132,30 @@ export class StudioModeContribution extends Disposable {
 		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTool', (_accessor, id: string) => this.openTool(id)));
 		this._register(CommandsRegistry.registerCommand('studio.internalSelectSteamTab', (_accessor, id: string) => this.workspace.select(id)));
 		this._register(CommandsRegistry.registerCommand('studio.internalCloseSteamTab', (_accessor, id: string) => this.workspace.close(id)));
-		this._register(CommandsRegistry.registerCommand('studio.internalNewSteamInstance', (_accessor, id?: string) => this.workspace.newInstance(id)));
+		this._register(CommandsRegistry.registerCommand('studio.internalCloseOtherSteamTabs', (_accessor, id: string) => this.workspace.closeTabs(id, 'others')));
+		this._register(CommandsRegistry.registerCommand('studio.internalCloseAllSteamTabs', (_accessor, id: string) => this.workspace.closeTabs(id, 'all')));
+		this._register(CommandsRegistry.registerCommand('studio.internalNewSteamInstance', (_accessor, id?: string | { groupId?: number }, context?: { groupId?: number }) => this.workspace.newInstance(typeof id === 'string' ? id : undefined, context?.groupId ?? (typeof id === 'object' ? id?.groupId : undefined))));
 		this._register(CommandsRegistry.registerCommand('studio.internalSelectSteamInstance', (_accessor, id: string) => this.workspace.select(id, true)));
 		this._register(CommandsRegistry.registerCommand('studio.internalCloseSteamInstance', (_accessor, id: string) => this.workspace.close(id, true)));
+		this._register(CommandsRegistry.registerCommand('studio.internalSelectSteamInstanceProject', (_accessor, resource?: { groupId?: number }, context?: { groupId?: number }) => this.workspace.selectProject(context?.groupId ?? resource?.groupId)));
+		const newInstanceTitle = localize2('studioNewToolInstance', "New Tool Instance");
+		const selectProjectTitle = localize2('studioSelectToolProject', "Select Project");
+		const updateInstanceTitle = () => {
+			newInstanceTitle.value = studioModeState.state.labels.newToolInstance ?? newInstanceTitle.original;
+			selectProjectTitle.value = studioModeState.state.labels.selectProject ?? selectProjectTitle.original;
+		};
+		updateInstanceTitle();
+		this._register(studioModeState.onDidChangeState(updateInstanceTitle));
+		this._register(MenuRegistry.appendMenuItem(MenuId.EditorTitle, {
+			command: { id: 'studio.internalNewSteamInstance', title: newInstanceTitle, icon: Codicon.add },
+			when: ContextKeyExpr.and(ContextKeyExpr.has('studio.steamMode'), ContextKeyExpr.has('studio.steamTool'), ContextKeyExpr.notEquals('studio.steamTool', 'terminal')),
+			group: 'navigation', order: -10,
+		}));
+		this._register(MenuRegistry.appendMenuItem(MenuId.EditorTitle, {
+			command: { id: 'studio.internalSelectSteamInstanceProject', title: selectProjectTitle },
+			when: ContextKeyExpr.and(ContextKeyExpr.has('studio.steamMode'), ContextKeyExpr.or(ContextKeyExpr.equals('studio.steamTool', 'info'), ContextKeyExpr.equals('studio.steamTool', 'versions'))),
+			group: '2_configuration',
+		}));
 		this._register(studioModeState.onDidChangeState(state => {
 			toolsTitle.value = state.labels.tools ?? toolsTitle.original;
 			if (!this.initialized || !state.available) {

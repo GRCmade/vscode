@@ -308,6 +308,8 @@
 	.monaco-workbench .studio-steam-tools-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
+.monaco-workbench.studio-mode-changing-layout :is(.part, .webview-overlay-content, .studio-steam-tools-chrome) { opacity: 0; pointer-events: none; }
+
 .monaco-workbench.monaco-reduce-motion :is(.studio-mode-switcher, .studio-mode-thumb, .studio-mode-label, .studio-mode-loading) { transition: none; }
 
 @media (prefers-reduced-motion: reduce) {

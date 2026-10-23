@@ -210,7 +210,7 @@ export class StudioModeLoading extends Disposable {
 
 	hide(): void { this.element.hidden = true; }
 
-	private layout(): void {
+	layout(): void {
 		if (this.element.hidden || !this.editor) { return; }
 		const parent = this.parent.getBoundingClientRect();
 		const editor = this.editor.getBoundingClientRect();

@@ -160,14 +160,14 @@ export class StudioModeContribution extends Disposable {
 			const projectUri = this.snapshot?.projectUri ?? studioModeState.state.projectUri;
 			if (next === this.steam && (next ? this.projectReady && this.workspace.hasProject : !this.snapshot)) {
 				if (!next) { await this.workspace.deactivate(this.groups.mainPart.activeGroup); }
+				if (revision === this.revision && !this._store.isDisposed && this.storage.get(MODE_KEY, StorageScope.WORKSPACE) !== (next ? 'steam' : 'ide')) {
+					await this.rememberMode(next);
+				}
 				return;
 			}
 			studioModeState.setMode(this.steam, true, next);
 			try {
 				if (next) {
-					const group = this.groups.mainPart.activeGroup;
-					if (!this.snapshot && group.activeEditor) { this.ideEditor = { group, editor: group.activeEditor }; }
-					this.captureIde();
 					let prepared: boolean | undefined;
 					const prepare = async () => {
 						try { return await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject', projectUri); }
@@ -177,7 +177,10 @@ export class StudioModeContribution extends Disposable {
 						}
 					};
 					if (!this.steam) {
-						await this.transition(true, async () => {
+						await this.transition(true, revision, async () => {
+							const group = this.groups.mainPart.activeGroup;
+							if (!this.snapshot && group.activeEditor) { this.ideEditor = { group, editor: group.activeEditor }; }
+							this.captureIde();
 							this.loading.show();
 							await this.enterSteam(projectUri);
 							// Reveal retained content before the incoming animation, without a loading flash.
@@ -201,8 +204,9 @@ export class StudioModeContribution extends Disposable {
 					}
 					this.projectReady = true;
 				} else {
-					await this.transition(false, async () => { this.loading.hide(); await this.restoreIde(); });
+					await this.transition(false, revision, async () => { this.loading.hide(); await this.restoreIde(); });
 				}
+				if (revision !== this.revision || this._store.isDisposed) { return; }
 				await this.rememberMode(next);
 			} catch (error) {
 				if (this._store.isDisposed) { return; }
@@ -338,10 +342,15 @@ export class StudioModeContribution extends Disposable {
 		this.storage.remove(SNAPSHOT_KEY, StorageScope.WORKSPACE);
 	}
 
-	private async transition(steam: boolean, change: () => Promise<void>): Promise<void> {
+	private async transition(steam: boolean, revision: number, change: () => Promise<void>): Promise<void> {
 		const win = getWindow(this.layout.mainContainer);
+		const isCurrent = () => revision === this.revision && !this._store.isDisposed;
+		if (!isCurrent()) { return; }
 		if (win.matchMedia('(prefers-reduced-motion: reduce)').matches || this.layout.mainContainer.classList.contains('monaco-reduce-motion')) { await change(); return; }
 		const effects: Animation[] = [];
+		const clearEffects = () => {
+			for (const animation of effects.splice(0)) { this.animations.delete(animation); animation.cancel(); }
+		};
 		const animate = async (leaving: boolean) => {
 			const parts = [Parts.TITLEBAR_PART, Parts.STATUSBAR_PART, ...sideParts, Parts.EDITOR_PART] as const;
 			const elements = parts.filter(part => this.layout.isVisible(part, win)).flatMap(part => this.layout.getContainer(win, part) ?? []);
@@ -367,13 +376,19 @@ export class StudioModeContribution extends Disposable {
 			// Finish the outgoing chrome before the grid hides it. Animate the live
 			// incoming parts after async restoration, including cold project startup.
 			await animate(true);
-			if (this._store.isDisposed) { return; }
+			if (!isCurrent()) { return; }
+			// Also conceal newly revealed parts while asynchronous layout work is pending.
+			// Remove transforms before that work measures the editor or title-bar slots.
+			this.layout.mainContainer.classList.add('studio-mode-changing-layout');
+			clearEffects();
 			await change();
-			for (const animation of effects.splice(0)) { this.animations.delete(animation); animation.cancel(); }
-			if (this._store.isDisposed) { return; }
+			if (!isCurrent()) { return; }
+			this.layout.mainContainer.classList.remove('studio-mode-changing-layout');
 			await animate(false);
 		} finally {
-			for (const animation of effects) { this.animations.delete(animation); animation.cancel(); }
+			clearEffects();
+			this.layout.mainContainer.classList.remove('studio-mode-changing-layout');
+			if (!this._store.isDisposed) { this.loading.layout(); }
 		}
 	}
 

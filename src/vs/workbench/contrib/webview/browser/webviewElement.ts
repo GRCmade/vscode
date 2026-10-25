@@ -38,6 +38,7 @@ import { WebviewThemeDataProvider } from './themeing.js';
 import { areWebviewContentOptionsEqual, IWebviewElement, WebviewContentOptions, WebviewExtensionDescription, WebviewInitInfo, WebviewMessageReceivedEvent, WebviewOptions } from './webview.js';
 import { WebviewFindDelegate, WebviewFindWidget } from './webviewFindWidget.js';
 import { StudioWindowDragRegions } from './studioWindowDrag.js';
+import { StudioWebviewDrop } from './studioWebviewDrop.js';
 import { FromWebviewMessage, KeyEvent, ToWebviewMessage, WebViewDragEvent } from './webviewMessages.js';
 
 interface WebviewContent {
@@ -78,6 +79,7 @@ const webviewIdContext = 'webviewId';
 export class WebviewElement extends Disposable implements IWebviewElement, WebviewFindDelegate {
 
 	protected readonly id = generateUuid();
+	private readonly _studioFileDrop = this._register(new StudioWebviewDrop(message => { void this.postMessage(message); }));
 
 	/**
 	 * The provided identifier of this webview.
@@ -213,6 +215,10 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 		}));
 
 		this._register(this.on('onmessage', ({ message, transfer }) => {
+			if (message?.type === 'workflow-drop-target' && message.version === 1 && this.extension?.id.value === 'studio.studio-workstation') {
+				this._studioFileDrop.update(message.target);
+				return;
+			}
 			if (message?.type === 'studio-window-drag-regions' && this.providedViewType === 'studio.project'
 				&& this.extension?.id.value === 'studio.studio-workstation' && this.element?.parentElement) {
 				const drag = this._studioWindowDrag.value ?? (this._studioWindowDrag.value = new StudioWindowDragRegions(this.element));
@@ -498,6 +504,9 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 			}
 		});
 		this._registerMessageHandler(targetWindow);
+		if (this.extension?.id.value === 'studio.studio-workstation') {
+			this._studioFileDrop.mount(element, targetWindow);
+		}
 
 		if (this._webviewFindWidget) {
 			this._webviewFindWidget.getDomNode().style.setProperty('-webkit-app-region', 'no-drag');

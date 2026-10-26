@@ -471,7 +471,7 @@ export class StudioSteamWorkspace extends Disposable {
 		if (editor instanceof StudioToolViewInput) { id = editor.toolId; }
 		else if (editor instanceof WebviewInput) {
 			const type = editor.webview.providedViewType;
-			id = type === 'studio.settings' ? 'settings' : type?.startsWith('studio.tool.') ? type.slice('studio.tool.'.length) : type === 'simpleBrowser.view' ? 'browser' : type === 'studio.projectTool' ? 'project' : editor instanceof CustomEditorInput ? 'editor' : undefined;
+			id = type === 'studio.settings' ? 'settings' : type === 'studio.login' ? 'login' : type?.startsWith('studio.tool.') ? type.slice('studio.tool.'.length) : type === 'simpleBrowser.view' ? 'browser' : type === 'studio.projectTool' ? 'project' : editor instanceof CustomEditorInput ? 'editor' : undefined;
 		} else if (editor instanceof EditorInput && editor.typeId === 'workbench.editors.terminal') { id = 'terminal'; }
 		else if (editor instanceof EditorInput && editor.typeId === 'workbench.editorinputs.browser') { id = 'browser'; }
 		else if (EditorResourceAccessor.getOriginalUri(editor, { supportSideBySide: SideBySideEditor.PRIMARY })) { id = 'editor'; }

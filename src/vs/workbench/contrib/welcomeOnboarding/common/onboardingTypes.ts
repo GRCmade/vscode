@@ -5,6 +5,7 @@
 
 import { localize } from '../../../../nls.js';
 import { IProductOnboardingTheme } from '../../../../base/common/product.js';
+import { onboardingStrings } from './onboardingStrings.js';
 
 /**
  * Step identifiers for the onboarding walkthrough.
@@ -21,9 +22,9 @@ export const enum OnboardingStepId {
 export function getOnboardingStepTitle(stepId: OnboardingStepId): string {
 	switch (stepId) {
 		case OnboardingStepId.SignIn:
-			return localize('onboarding.step.signIn', "Sign In");
+			return onboardingStrings.signInTitle;
 		case OnboardingStepId.Personalize:
-			return localize('onboarding.step.personalize', "Make It Yours");
+			return onboardingStrings.personalizeTitle;
 		case OnboardingStepId.AiPreference:
 			return localize('onboarding.step.aiPreference', "Your AI Style");
 	}
@@ -35,9 +36,9 @@ export function getOnboardingStepTitle(stepId: OnboardingStepId): string {
 export function getOnboardingStepSubtitle(stepId: OnboardingStepId): string {
 	switch (stepId) {
 		case OnboardingStepId.SignIn:
-			return localize('onboarding.step.signIn.subtitle', "Sync settings, unlock AI features, and connect to GitHub");
+			return onboardingStrings.description;
 		case OnboardingStepId.Personalize:
-			return localize('onboarding.step.personalize.subtitle', "Choose your theme and keyboard mapping");
+			return onboardingStrings.personalizeSubtitle;
 		case OnboardingStepId.AiPreference:
 			return localize('onboarding.step.aiPreference.subtitle', "Choose how much AI collaboration fits your workflow");
 	}

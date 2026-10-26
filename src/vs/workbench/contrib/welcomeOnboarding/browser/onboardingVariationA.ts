@@ -4,37 +4,32 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
+import { disposableTimeout } from '../../../../base/common/async.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { $, append, addDisposableListener, EventType, clearNode, getActiveWindow } from '../../../../base/browser/dom.js';
-import { isCancellationError } from '../../../../base/common/errors.js';
-import { StopWatch } from '../../../../base/common/stopwatch.js';
 import { URI } from '../../../../base/common/uri.js';
 import { isWindows, isMacintosh, isLinux } from '../../../../base/common/platform.js';
-import { assertDefined } from '../../../../base/common/types.js';
 import { FileAccess } from '../../../../base/common/network.js';
 import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
 import { KeyCode } from '../../../../base/common/keyCodes.js';
 import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
-import { InputBox } from '../../../../base/browser/ui/inputbox/inputBox.js';
 import { localize } from '../../../../nls.js';
+import { format } from '../../../../base/common/strings.js';
+import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
+import { STEAMHARNESS_ICON_DATA_URI } from '../../../common/studioBranding.js';
+import { onboardingStrings } from '../common/onboardingStrings.js';
 import { Codicon } from '../../../../base/common/codicons.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
 import { renderIcon } from '../../../../base/browser/ui/iconLabel/iconLabels.js';
-import { Action } from '../../../../base/common/actions.js';
 import { IWorkbenchThemeService } from '../../../services/themes/common/workbenchThemeService.js';
 import { EXTENSION_INSTALL_SKIP_WALKTHROUGH_CONTEXT, IExtensionGalleryService, IExtensionManagementService } from '../../../../platform/extensionManagement/common/extensionManagement.js';
-import { GitHubPaths, IDefaultAccountService } from '../../../../platform/defaultAccount/common/defaultAccount.js';
 import { CancellationToken } from '../../../../base/common/cancellation.js';
 import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
 import { ConfigurationTarget, IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
-import { defaultInputBoxStyles } from '../../../../platform/theme/browser/defaultStyles.js';
 import product from '../../../../platform/product/common/product.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { IPathService } from '../../../services/path/common/pathService.js';
 import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry.js';
-import { InstallChatEvent, InstallChatClassification, ChatSetupStrategy } from '../../chat/browser/chatSetup/chatSetup.js';
-import { IChatMicrosoftSignInProbeService } from '../../chat/browser/chatSetup/chatSetupMicrosoftProbe.js';
-import { autorun } from '../../../../base/common/observable.js';
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { IAccessibilityService } from '../../../../platform/accessibility/common/accessibility.js';
 import {
@@ -47,8 +42,6 @@ import {
 	getOnboardingStepSubtitle,
 } from '../common/onboardingTypes.js';
 import { IOnboardingService } from '../common/onboardingService.js';
-import { addGitHubEnterpriseUri, getConfiguredGitHubEnterpriseUris, GheParseResultKind, isValidGitHubEnterpriseUri, parseGheInstanceInput } from '../../../services/accounts/common/githubEnterprise.js';
-import { IWorkspaceTrustManagementService } from '../../../../platform/workspace/common/workspaceTrust.js';
 
 type OnboardingStepViewClassification = {
 	owner: 'cwebster-99';
@@ -76,10 +69,7 @@ type OnboardingActionEvent = {
 	argument: string | undefined;
 };
 
-type EnterpriseSignInUiState = 'options' | 'instance' | 'progress';
-
-assertDefined(product.defaultChatAgent, 'Onboarding requires a default chat agent product configuration.');
-const defaultChat = product.defaultChatAgent;
+const accountContextKeys = new Set(['studio.authenticated']);
 
 /**
  * Variation A — Classic Wizard Modal
@@ -89,8 +79,7 @@ const defaultChat = product.defaultChatAgent;
  * tab. When dismissed, the welcome tab is revealed underneath.
  *
  * Steps:
- * 1. Sign In — sessions-style sign-in hero with GitHub Copilot, Google, and Apple options, plus
- *    Microsoft when {@link IChatMicrosoftSignInProbeService} offers it
+ * 1. Sign In — hand off to the shared SteamHarness account settings page
  * 2. Personalize — Theme selection grid + keymap pills
  */
 export class OnboardingVariationA extends Disposable implements IOnboardingService {
@@ -121,6 +110,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 	private readonly steps = ONBOARDING_STEPS;
 	private readonly disposables = this._register(new DisposableStore());
 	private readonly stepDisposables = this._register(new DisposableStore());
+	private readonly footerDisposables = this._register(new DisposableStore());
 	private previouslyFocusedElement: HTMLElement | undefined;
 	private _isShowing = false;
 
@@ -131,14 +121,12 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 	private _detectedEditorIds: Set<string> | undefined;
 	private _userSignedIn = false;
 	private selectedAiMode: AiCollaborationMode = AiCollaborationMode.Balanced;
-	private enterpriseSignInUiState: EnterpriseSignInUiState = 'options';
-	private enterpriseInstanceValue = '';
-	private enterpriseSignInWatch: StopWatch | undefined;
+	private openingAccount = false;
 
 	constructor(
 		@ILayoutService private readonly layoutService: ILayoutService,
 		@IWorkbenchThemeService private readonly themeService: IWorkbenchThemeService,
-		@IDefaultAccountService private readonly defaultAccountService: IDefaultAccountService,
+		@IContextKeyService private readonly contextKeyService: IContextKeyService,
 		@IExtensionGalleryService private readonly extensionGalleryService: IExtensionGalleryService,
 		@IExtensionManagementService private readonly extensionManagementService: IExtensionManagementService,
 		@IConfigurationService private readonly configurationService: IConfigurationService,
@@ -148,8 +136,6 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 		@ITelemetryService private readonly telemetryService: ITelemetryService,
 		@ICommandService private readonly commandService: ICommandService,
 		@IAccessibilityService private readonly accessibilityService: IAccessibilityService,
-		@IChatMicrosoftSignInProbeService private readonly microsoftSignInProbeService: IChatMicrosoftSignInProbeService,
-		@IWorkspaceTrustManagementService private readonly workspaceTrustManagementService: IWorkspaceTrustManagementService,
 	) {
 		super();
 
@@ -170,10 +156,11 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 	}
 
 	show(): void {
-		if (this.overlay) {
+		if (this.overlay || this._store.isDisposed) {
 			return;
 		}
 
+		this._userSignedIn = this.contextKeyService.getContextKeyValue<boolean>('studio.authenticated') === true;
 		this._isShowing = true;
 		this.previouslyFocusedElement = getActiveWindow().document.activeElement as HTMLElement | undefined;
 
@@ -183,7 +170,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 		this.overlay = append(container, $('.onboarding-a-overlay'));
 		this.overlay.setAttribute('role', 'dialog');
 		this.overlay.setAttribute('aria-modal', 'true');
-		this.overlay.setAttribute('aria-label', localize('onboarding.a.aria', "Welcome to Visual Studio Code"));
+		this.overlay.setAttribute('aria-label', onboardingStrings.welcome);
 
 		// Card
 		this.card = append(this.overlay, $('.onboarding-a-card'));
@@ -191,7 +178,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 		// Close button (upper-right corner of card)
 		this.closeButton = append(this.card, $<HTMLButtonElement>('button.onboarding-a-close-btn'));
 		this.closeButton.type = 'button';
-		this.closeButton.setAttribute('aria-label', localize('onboarding.close', "Close"));
+		this.closeButton.setAttribute('aria-label', onboardingStrings.close);
 		this.closeButton.appendChild(renderIcon(Codicon.close));
 
 		// Header with progress
@@ -216,7 +203,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 		const footerRight = append(footer, $('.onboarding-a-footer-right'));
 
 		this.backButton = append(footerRight, $<HTMLButtonElement>('button.onboarding-a-btn.onboarding-a-btn-secondary'));
-		this.backButton.textContent = localize('onboarding.back', "Back");
+		this.backButton.textContent = onboardingStrings.back;
 		this.backButton.type = 'button';
 		this.footerFocusableElements.push(this.backButton);
 
@@ -231,13 +218,6 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 			this._dismiss('skip');
 		}));
 		this.disposables.add(addDisposableListener(this.backButton, EventType.CLICK, () => {
-			if (this.currentStepIndex === 0 && this.enterpriseSignInUiState === 'instance') {
-				this._logAction('cancelEnterpriseInstancePrompt');
-				this.enterpriseSignInWatch = undefined;
-				this._setEnterpriseSignInUiState('options');
-				return;
-			}
-
 			this._logAction('back');
 			this._prevStep();
 		}));
@@ -247,7 +227,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 				this._logAction('complete');
 				this._dismiss('complete');
 			} else if (this.currentStepIndex === 0) {
-				this._logAction('continueWithoutSignIn');
+				this._logAction(this._userSignedIn ? 'next' : 'continueWithoutSignIn');
 				this._nextStep();
 			} else {
 				this._logAction('next');
@@ -278,6 +258,24 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 			}
 		}));
 
+		this.disposables.add(this.contextKeyService.onDidChangeContext(event => {
+			if (!event.affectsSome(accountContextKeys)) {
+				return;
+			}
+			const signedIn = this.contextKeyService.getContextKeyValue<boolean>('studio.authenticated') === true;
+			if (signedIn !== this._userSignedIn) {
+				this._userSignedIn = signedIn;
+				const hadFocus = this.contentEl?.contains(getActiveWindow().document.activeElement);
+				if (this.steps[this.currentStepIndex] === OnboardingStepId.SignIn) {
+					this._renderStep();
+				}
+				this._updateButtonStates();
+				if (hadFocus) {
+					this._focusCurrentStepElement();
+				}
+			}
+		}));
+
 		// Entrance animation
 		this.overlay.classList.add('entering');
 		getActiveWindow().requestAnimationFrame(() => {
@@ -288,19 +286,20 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 		this._focusCurrentStepElement();
 	}
 
-	private _dismiss(reason: 'complete' | 'skip'): void {
-		if (!this.overlay) {
+	private _dismiss(reason: 'complete' | 'skip', immediate = false): void {
+		const overlay = this.overlay;
+		if (!overlay) {
 			return;
 		}
 
 		this._logAction('dismiss', undefined, reason);
 
-		this.overlay.classList.remove('visible');
-		this.overlay.classList.add('exiting');
+		overlay.classList.remove('visible');
+		overlay.classList.add('exiting');
 
 		let handled = false;
 		const onTransitionEnd = () => {
-			if (handled) {
+			if (handled || this.overlay !== overlay) {
 				return;
 			}
 			handled = true;
@@ -311,18 +310,18 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 			this._onDidDismiss.fire();
 		};
 
-		this.overlay.addEventListener('transitionend', onTransitionEnd, { once: true });
-		setTimeout(onTransitionEnd, 400);
+		if (immediate) {
+			onTransitionEnd();
+			return;
+		}
+
+		this.disposables.add(addDisposableListener(overlay, 'transitionend', onTransitionEnd));
+		this.disposables.add(disposableTimeout(onTransitionEnd, 400));
 	}
 
 	private _nextStep(): void {
 		if (this.currentStepIndex < this.steps.length - 1) {
 			const leavingStep = this.steps[this.currentStepIndex];
-			if (leavingStep === OnboardingStepId.SignIn) {
-				this.enterpriseSignInUiState = 'options';
-				this.enterpriseInstanceValue = '';
-				this.enterpriseSignInWatch = undefined;
-			}
 			this._applyStepSelections(leavingStep);
 			this.currentStepIndex++;
 			this._renderStep();
@@ -375,12 +374,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 		}
 
 		this.progressContainer.appendChild(this.stepLabelEl);
-		this.stepLabelEl.textContent = localize(
-			'onboarding.stepOf',
-			"{0} of {1}",
-			this.currentStepIndex + 1,
-			this.steps.length
-		);
+		this.stepLabelEl.textContent = format(onboardingStrings.stepOf, this.currentStepIndex + 1, this.steps.length);
 	}
 
 	private _renderStep(): void {
@@ -416,58 +410,41 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 				break;
 		}
 
-		this.bodyEl?.setAttribute('aria-label', localize(
-			'onboarding.step.aria',
-			"Step {0} of {1}: {2}",
-			this.currentStepIndex + 1,
-			this.steps.length,
-			getOnboardingStepTitle(stepId)
-		));
+		this.bodyEl?.setAttribute('aria-label', format(onboardingStrings.stepAria, this.currentStepIndex + 1, this.steps.length, getOnboardingStepTitle(stepId)));
 	}
 
 	private _updateButtonStates(): void {
+		this.footerDisposables.clear();
 		if (this.backButton) {
-			const showEnterpriseBack = this.currentStepIndex === 0 && this.enterpriseSignInUiState === 'instance';
-			this.backButton.style.display = (this.currentStepIndex === 0 && !showEnterpriseBack) ? 'none' : '';
+			this.backButton.style.display = this.currentStepIndex === 0 ? 'none' : '';
 		}
 		if (this.nextButton) {
 			if (this.currentStepIndex === 0) {
 				if (this._userSignedIn) {
 					this.nextButton.className = 'onboarding-a-btn onboarding-a-btn-primary';
-					this.nextButton.textContent = localize('onboarding.continue', "Continue");
+					this.nextButton.textContent = onboardingStrings.continue;
 				} else {
 					// Sign-in step: secondary "Continue without Signing In"
 					this.nextButton.className = 'onboarding-a-btn onboarding-a-btn-secondary';
-					this.nextButton.textContent = localize('onboarding.continueWithoutSignIn', "Continue without Signing In");
+					this.nextButton.textContent = onboardingStrings.skipSignIn;
 				}
 			} else if (this._isLastStep()) {
 				this.nextButton.className = 'onboarding-a-btn onboarding-a-btn-primary';
-				this.nextButton.textContent = localize('onboarding.getStarted', "Get Started");
+				this.nextButton.textContent = onboardingStrings.getStarted;
 			} else {
 				this.nextButton.className = 'onboarding-a-btn onboarding-a-btn-primary';
-				this.nextButton.textContent = localize('onboarding.next', "Continue");
+				this.nextButton.textContent = onboardingStrings.continue;
 			}
 		}
 		if (this.footerLeft) {
-			if (this._isLastStep()) {
-				// Show sign-in nudge in footer
-				if (!this._footerSignInBtn && !this._userSignedIn) {
-					this._footerSignInBtn = append(this.footerLeft, $<HTMLButtonElement>('button.onboarding-a-signin-nudge-btn'));
-					this._footerSignInBtn.type = 'button';
-					this._footerSignInBtn.textContent = localize('onboarding.sessions.signInNudge', "Sign in to use GitHub Copilot");
-					this.stepDisposables.add(addDisposableListener(this._footerSignInBtn, EventType.CLICK, async () => {
-						this._logAction('signInNudge');
-						await this._handleSignIn();
-						if (this._userSignedIn && this._footerSignInBtn) {
-							this._footerSignInBtn.style.display = 'none';
-						}
-					}));
-				}
-			} else {
-				if (this._footerSignInBtn) {
-					this._footerSignInBtn.remove();
-					this._footerSignInBtn = undefined;
-				}
+			// Rebuild the nudge with each step so its listener never outlives its step.
+			this._footerSignInBtn?.remove();
+			this._footerSignInBtn = undefined;
+			if (this._isLastStep() && !this._userSignedIn) {
+				const button = this._footerSignInBtn = append(this.footerLeft, $<HTMLButtonElement>('button.onboarding-a-signin-nudge-btn'));
+				button.type = 'button';
+				button.textContent = onboardingStrings.signIn;
+				this.footerDisposables.add(addDisposableListener(button, EventType.CLICK, () => { void this._handleSignIn(); }));
 			}
 		}
 	}
@@ -479,354 +456,54 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 	private _renderSignInStep(container: HTMLElement): void {
 		const wrapper = append(container, $('.onboarding-a-signin'));
 		const brand = append(wrapper, $('.onboarding-a-signin-brand'));
-		const brandIcon = append(brand, $('span.onboarding-a-signin-brand-icon'));
-		brandIcon.setAttribute('role', 'img');
-		brandIcon.setAttribute('aria-label', product.nameLong);
+		const brandIcon = append(brand, $<HTMLImageElement>('img.onboarding-a-signin-brand-icon'));
+		brandIcon.src = STEAMHARNESS_ICON_DATA_URI;
+		brandIcon.alt = '';
+		brandIcon.setAttribute('aria-hidden', 'true');
 
 		const content = append(wrapper, $('.onboarding-a-signin-content'));
-		const contentMain = append(content, $('.onboarding-a-signin-content-main'));
-		const title = append(contentMain, $('h2.onboarding-a-signin-title'));
-		title.textContent = localize('onboarding.signIn.heroTitle', "Welcome to VS Code");
+		const title = append(content, $('h2.onboarding-a-signin-title'));
+		title.textContent = onboardingStrings.welcome;
+		const subtitle = append(content, $('p.onboarding-a-signin-subtitle'));
+		subtitle.textContent = onboardingStrings.description;
 
-		const subtitle = append(contentMain, $('p.onboarding-a-signin-subtitle'));
-		subtitle.textContent = localize('onboarding.signIn.heroSubtitle', "Sign in to use GitHub Copilot.");
-
-		const actions = append(contentMain, $('.onboarding-a-signin-actions'));
-
+		const actions = append(content, $('.onboarding-a-signin-actions'));
 		if (this._userSignedIn) {
 			const signedIn = append(actions, $('.onboarding-a-signin-confirmation'));
+			signedIn.setAttribute('role', 'status');
 			const icon = append(signedIn, $('span'));
 			icon.classList.add(...ThemeIcon.asClassNameArray(Codicon.check));
 			icon.setAttribute('aria-hidden', 'true');
-			const text = append(signedIn, $('span'));
-			text.textContent = localize('onboarding.signIn.signedIn', "You're signed in. You can continue to the next step.");
+			append(signedIn, $('span')).textContent = onboardingStrings.signedIn;
 		} else {
-			switch (this.enterpriseSignInUiState) {
-				case 'instance':
-					this._renderEnterpriseInstanceForm(actions);
-					break;
-				case 'progress':
-					this._renderEnterpriseSignInProgress(actions);
-					break;
-				default:
-					this._renderDefaultSignInActions(actions);
-					break;
-			}
+			const button = this._registerStepFocusable(append(actions, $<HTMLButtonElement>('button.onboarding-a-signin-btn.primary')));
+			button.type = 'button';
+			button.textContent = onboardingStrings.signIn;
+			this.stepDisposables.add(addDisposableListener(button, EventType.CLICK, () => { void this._handleSignIn(); }));
 		}
 
-		const footer = append(wrapper, $('.onboarding-a-signin-footer'));
-
-		const disclaimerCol = append(footer, $('.onboarding-a-signin-disclaimer-col'));
-
-		// GitHub Copilot disclaimer
-		const copilotDisclaimer = append(disclaimerCol, $('.onboarding-a-signin-disclaimer'));
-		copilotDisclaimer.append(localize('onboarding.signIn.disclaimer.prefix', "By signing in, you agree to {0}'s ", defaultChat.provider.default.name));
-		this._createInlineLink(copilotDisclaimer, localize('onboarding.signIn.disclaimer.terms', "Terms"), defaultChat.termsStatementUrl);
-		copilotDisclaimer.append(localize('onboarding.signIn.disclaimer.middle', " and "));
-		this._createInlineLink(copilotDisclaimer, localize('onboarding.signIn.disclaimer.privacy', "Privacy Statement"), defaultChat.privacyStatementUrl);
-		copilotDisclaimer.append(localize('onboarding.signIn.disclaimer.copilotPrefix', ". {0} Copilot may show ", defaultChat.provider.default.name));
-		this._createInlineLink(copilotDisclaimer, localize('onboarding.signIn.disclaimer.publicCode', "public code"), defaultChat.publicCodeMatchesUrl);
-		copilotDisclaimer.append(localize('onboarding.signIn.disclaimer.improveSuffix', " suggestions and use your data to improve the product."));
-		copilotDisclaimer.append(' ');
-		copilotDisclaimer.append(localize('onboarding.signIn.disclaimer.settingsPrefix', "You can change these "));
-		this._createInlineLink(copilotDisclaimer, localize('onboarding.signIn.disclaimer.settings', "settings"), this.defaultAccountService.resolveGitHubUrl(GitHubPaths.copilotSettings));
-		copilotDisclaimer.append(localize('onboarding.signIn.disclaimer.suffix', " anytime."));
+		const hint = append(content, $('p.onboarding-a-signin-hint'));
+		hint.textContent = onboardingStrings.accountHint;
 	}
 
-	private _renderDefaultSignInActions(actions: HTMLElement): void {
-		const githubBtn = this._registerStepFocusable(this._createSignInButton(actions, 'github', localize('onboarding.signIn.github', "Continue with GitHub"), {
-			emphasized: true,
-			label: localize('onboarding.signIn.github.aria', "Continue with GitHub")
-		}));
-		this.stepDisposables.add(addDisposableListener(githubBtn, EventType.CLICK, () => {
-			this._logAction('signIn', undefined, 'github');
-			this._handleSignIn();
-		}));
-
-		const googleBtn = this._registerStepFocusable(this._createSignInButton(actions, 'google', localize('onboarding.signIn.google', "Continue with Google"), {
-			iconOnly: true,
-			label: localize('onboarding.signIn.google', "Continue with Google")
-		}));
-		this.stepDisposables.add(addDisposableListener(googleBtn, EventType.CLICK, () => {
-			this._logAction('signIn', undefined, 'google');
-			this._handleSignIn('google');
-		}));
-
-		const appleBtn = this._registerStepFocusable(this._createSignInButton(actions, 'apple', localize('onboarding.signIn.apple', "Continue with Apple"), {
-			iconOnly: true,
-			label: localize('onboarding.signIn.apple', "Continue with Apple")
-		}));
-		this.stepDisposables.add(addDisposableListener(appleBtn, EventType.CLICK, () => {
-			this._logAction('signIn', undefined, 'apple');
-			this._handleSignIn('apple');
-		}));
-
-		const microsoftBtn = this._registerStepFocusable(this._createSignInButton(actions, 'microsoft', localize('onboarding.signIn.microsoft', "Continue with Microsoft"), {
-			iconOnly: true,
-			label: localize('onboarding.signIn.microsoft', "Continue with Microsoft")
-		}));
-		this.stepDisposables.add(addDisposableListener(microsoftBtn, EventType.CLICK, () => {
-			this._logAction('signIn', undefined, 'microsoft');
-			this._handleSignIn(defaultChat.provider.microsoft.id);
-		}));
-		// Only offered once a linked Microsoft account is found, which can happen while this step shows.
-		this.microsoftSignInProbeService.notifySignInShown();
-		this.stepDisposables.add(autorun(reader => {
-			microsoftBtn.style.display = this.microsoftSignInProbeService.offerMicrosoftSignIn.read(reader) ? '' : 'none';
-		}));
-
-		const gheBtn = this._registerStepFocusable(this._createSignInButton(actions, 'github-enterprise', localize('onboarding.signIn.ghe', "GHE"), {
-			textOnly: true,
-			label: localize('onboarding.signIn.ghe.aria', "Continue with GitHub Enterprise")
-		}));
-		this.stepDisposables.add(addDisposableListener(gheBtn, EventType.CLICK, () => {
-			this._logAction('signIn', undefined, 'github-enterprise');
-			void this._handleEnterpriseSignIn();
-		}));
-	}
-
-	private static readonly GHE_INPUT_ACTION_PADDING = 28;
-
-	private _renderEnterpriseInstanceForm(actions: HTMLElement): void {
-		const enterprisePromptLabel = this._getEnterpriseInstancePromptLabel();
-		const replacedUri = getConfiguredGitHubEnterpriseUris(this.configurationService, this.workspaceTrustManagementService.isWorkspaceTrusted(), defaultChat.providerUriSetting).find(uri => !isValidGitHubEnterpriseUri(uri));
-
-		const container = append(actions, $('.onboarding-a-signin-ghe-input'));
-
-		const submitAction = this.stepDisposables.add(new Action(
-			'onboarding.signIn.enterprise.submit',
-			localize('onboarding.signIn.enterprise.continue', "Continue"),
-			ThemeIcon.asClassName(Codicon.arrowRight),
-			false,
-		));
-
-		const inputBox = this.stepDisposables.add(new InputBox(container, undefined, {
-			placeholder: localize('onboarding.signIn.enterprise.placeholder', 'i.e. "octocat" or "https://octocat.ghe.com"...'),
-			ariaLabel: enterprisePromptLabel,
-			actions: [submitAction],
-			inputBoxStyles: defaultInputBoxStyles,
-		}));
-		inputBox.value = this.enterpriseInstanceValue;
-		inputBox.paddingRight = OnboardingVariationA.GHE_INPUT_ACTION_PADDING;
-		const input = this._registerStepFocusable(inputBox.inputElement);
-
-		const submit = async () => {
-			const result = parseGheInstanceInput(inputBox.value);
-			if (result.kind === GheParseResultKind.Empty || result.kind === GheParseResultKind.Invalid) {
-				validate();
-				return;
-			}
-			await this._submitEnterpriseInstance(result.resolvedUri, replacedUri);
-		};
-		submitAction.run = submit;
-
-		const message = append(container, $('.onboarding-a-signin-ghe-message'));
-
-		const validate = (): boolean => {
-			this.enterpriseInstanceValue = inputBox.value;
-			inputBox.element.classList.remove('error');
-			message.classList.remove('error', 'info');
-
-			const result = parseGheInstanceInput(inputBox.value);
-			switch (result.kind) {
-				case GheParseResultKind.Empty:
-					message.textContent = enterprisePromptLabel;
-					submitAction.enabled = false;
-					return false;
-				case GheParseResultKind.SingleWord:
-					message.classList.add('info');
-					message.textContent = localize('onboarding.signIn.enterprise.resolve', "Will resolve to {0}", result.resolvedUri);
-					submitAction.enabled = true;
-					return true;
-				case GheParseResultKind.FullUri:
-					submitAction.enabled = true;
-					message.textContent = '';
-					return true;
-				case GheParseResultKind.Invalid:
-					inputBox.element.classList.add('error');
-					message.classList.add('error');
-					message.textContent = localize('onboarding.signIn.enterprise.invalid', "Enter a GHE.com instance name or HTTPS URL.");
-					submitAction.enabled = false;
-					return false;
-			}
-		};
-
-		this.stepDisposables.add(inputBox.onDidChange(() => {
-			validate();
-		}));
-
-		this.stepDisposables.add(addDisposableListener(input, EventType.KEY_DOWN, e => {
-			const event = new StandardKeyboardEvent(e);
-			if (event.keyCode === KeyCode.Enter) {
-				e.preventDefault();
-				void submitAction.run();
-				return;
-			}
-
-			if (event.keyCode === KeyCode.Escape) {
-				e.preventDefault();
-				e.stopPropagation();
-				this._logAction('cancelEnterpriseInstancePrompt');
-				this.enterpriseSignInWatch = undefined;
-				this._setEnterpriseSignInUiState('options');
-			}
-		}));
-
-		validate();
-	}
-
-	private _renderEnterpriseSignInProgress(actions: HTMLElement): void {
-		const container = append(actions, $('.onboarding-a-signin-ghe-progress'));
-		container.setAttribute('aria-live', 'polite');
-		const spinner = append(container, $('span'));
-		spinner.classList.add(...ThemeIcon.asClassNameArray(Codicon.loading), 'codicon-modifier-spin');
-		spinner.setAttribute('aria-hidden', 'true');
-		const message = append(container, $('.onboarding-a-signin-ghe-progress-message'));
-		message.textContent = localize('onboarding.signIn.enterprise.progress', "Waiting for {0} sign-in to complete...", defaultChat.provider.enterprise.name);
-	}
-
-	private _getEnterpriseInstancePromptLabel(): string {
-		return localize('onboarding.signIn.enterprise.prompt', "What is your {0} instance?", defaultChat.provider.enterprise.name);
-	}
-
-	private _setEnterpriseSignInUiState(state: EnterpriseSignInUiState): void {
-		this.enterpriseSignInUiState = state;
-		if (this.steps[this.currentStepIndex] === OnboardingStepId.SignIn && this.contentEl) {
-			this._renderStep();
-			this._updateButtonStates();
-			this._focusCurrentStepElement();
-		}
-	}
-
-	private _createSignInButton(parent: HTMLElement, providerClass: 'github' | 'github-enterprise' | 'google' | 'apple' | 'microsoft', label: string, options?: { emphasized?: boolean; iconOnly?: boolean; textOnly?: boolean; label?: string }): HTMLButtonElement {
-		const isCompact = options?.iconOnly || options?.textOnly;
-		const btn = append(parent, $<HTMLButtonElement>(isCompact ? 'button.onboarding-a-signin-icon-btn' : 'button.onboarding-a-signin-btn'));
-		btn.type = 'button';
-		btn.title = options?.label ?? label;
-		btn.setAttribute('aria-label', options?.label ?? label);
-		if (options?.emphasized) {
-			btn.classList.add('primary');
-		}
-
-		if (!options?.textOnly) {
-			const mark = append(btn, $('span.onboarding-a-provider-mark'));
-			mark.classList.add(providerClass);
-			mark.setAttribute('aria-hidden', 'true');
-			if (providerClass === 'github' || providerClass === 'github-enterprise') {
-				mark.appendChild(renderIcon(Codicon.github));
-			}
-		}
-
-		if (!options?.iconOnly) {
-			const labelEl = append(btn, $('span.onboarding-a-signin-btn-label'));
-			labelEl.textContent = label;
-		}
-
-		return btn;
-	}
-
-	private async _handleSignIn(socialProvider?: string): Promise<void> {
-		const provider = socialProvider ?? 'github';
-		const watch = StopWatch.create();
-		try {
-			const account = await this.defaultAccountService.signIn({
-				extraAuthorizeParameters: { get_started_with: 'copilot-vscode' },
-				provider: socialProvider,
-			});
-			if (account) {
-				this._userSignedIn = true;
-				this.telemetryService.publicLog2<InstallChatEvent, InstallChatClassification>('commandCenter.chatInstall', { installResult: 'installed', installDuration: watch.elapsed(), signUpErrorCode: undefined, provider });
-				// Run chat setup in the background (sign-up, extension install, entitlement resolution)
-				this.commandService.executeCommand('workbench.action.chat.triggerSetup', undefined, {
-					disableChatViewReveal: true,
-					setupStrategy: ChatSetupStrategy.DefaultSetup,
-				});
-				this._nextStep();
-			}
-		} catch (error) {
-			if (isCancellationError(error)) {
-				this.telemetryService.publicLog2<InstallChatEvent, InstallChatClassification>('commandCenter.chatInstall', { installResult: 'cancelled', installDuration: watch.elapsed(), signUpErrorCode: undefined, provider });
-				return;
-			}
-
-			this.telemetryService.publicLog2<InstallChatEvent, InstallChatClassification>('commandCenter.chatInstall', { installResult: 'failedNotSignedIn', installDuration: watch.elapsed(), signUpErrorCode: undefined, provider });
-			this.notificationService.notify({
-				severity: Severity.Error,
-				message: localize('onboarding.signIn.error', "Sign-in failed. You can try again later from the Accounts menu."),
-			});
-		}
-	}
-
-	private async _handleEnterpriseSignIn(): Promise<void> {
-		let uris: readonly string[];
-		try {
-			uris = getConfiguredGitHubEnterpriseUris(this.configurationService, this.workspaceTrustManagementService.isWorkspaceTrusted(), defaultChat.providerUriSetting);
-		} catch {
-			this._notifyEnterpriseSignInError();
+	private async _handleSignIn(): Promise<void> {
+		if (this.openingAccount) {
 			return;
 		}
-		const invalidUri = uris.find(uri => !isValidGitHubEnterpriseUri(uri));
-		const hasCloudInstance = uris.some(uri => parseGheInstanceInput(uri).kind === GheParseResultKind.FullUri);
-		if (!hasCloudInstance || invalidUri !== undefined) {
-			this.enterpriseInstanceValue = invalidUri ?? '';
-			this.enterpriseSignInWatch ??= StopWatch.create();
-			this._setEnterpriseSignInUiState('instance');
-			return;
-		}
-
-		await this._runEnterpriseSignInSetup();
-	}
-
-	private async _submitEnterpriseInstance(resolvedUri: string, replacedUri?: string): Promise<void> {
+		this.openingAccount = true;
+		this._applyStepSelections(this.steps[this.currentStepIndex]);
+		this._logAction('signIn', undefined, 'steamharness');
+		// Remove the modal and its focus trap before revealing the shared login form.
+		this._dismiss('skip', true);
 		try {
-			await addGitHubEnterpriseUri(this.configurationService, resolvedUri, this.workspaceTrustManagementService.isWorkspaceTrusted(), defaultChat.providerUriSetting, replacedUri);
-			this.enterpriseInstanceValue = resolvedUri;
-			await this._handleEnterpriseSignIn();
+			await this.commandService.executeCommand('studio.openAccount');
 		} catch {
-			this.enterpriseSignInWatch = undefined;
-			this._setEnterpriseSignInUiState('instance');
-			this._notifyEnterpriseSignInError();
-		}
-	}
-
-	private async _runEnterpriseSignInSetup(): Promise<void> {
-		const watch = this.enterpriseSignInWatch ?? StopWatch.create();
-		const provider = defaultChat.provider.enterprise.id;
-		this._setEnterpriseSignInUiState('progress');
-
-		try {
-			const success = await this.commandService.executeCommand<boolean>('workbench.action.chat.triggerSetup', undefined, {
-				disableChatViewReveal: true,
-				setupStrategy: ChatSetupStrategy.SetupWithEnterpriseProvider,
-			});
-
-			if (success) {
-				this._userSignedIn = true;
-				this.telemetryService.publicLog2<InstallChatEvent, InstallChatClassification>('commandCenter.chatInstall', { installResult: 'installed', installDuration: watch.elapsed(), signUpErrorCode: undefined, provider });
-				this._nextStep();
-			} else {
-				this._setEnterpriseSignInUiState('options');
+			if (!this._store.isDisposed) {
+				this.notificationService.notify({ severity: Severity.Error, message: onboardingStrings.openAccountError });
 			}
-		} catch (error) {
-			if (isCancellationError(error)) {
-				this._setEnterpriseSignInUiState('options');
-				this.telemetryService.publicLog2<InstallChatEvent, InstallChatClassification>('commandCenter.chatInstall', { installResult: 'cancelled', installDuration: watch.elapsed(), signUpErrorCode: undefined, provider });
-				return;
-			}
-
-			this._setEnterpriseSignInUiState('instance');
-			this.telemetryService.publicLog2<InstallChatEvent, InstallChatClassification>('commandCenter.chatInstall', { installResult: 'failedNotSignedIn', installDuration: watch.elapsed(), signUpErrorCode: undefined, provider });
-			this._notifyEnterpriseSignInError();
 		} finally {
-			this.enterpriseSignInWatch = undefined;
+			this.openingAccount = false;
 		}
-	}
-
-	private _notifyEnterpriseSignInError(): void {
-		this.notificationService.notify({
-			severity: Severity.Error,
-			message: localize('onboarding.signIn.enterprise.error', "GitHub Enterprise sign-in failed. Check your instance URL and try again."),
-		});
 	}
 
 	// =====================================================================
@@ -838,14 +515,14 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 
 		// Theme section
 		const themeLabel = append(wrapper, $('div.onboarding-a-section-label'));
-		themeLabel.textContent = localize('onboarding.personalize.theme', "Color Theme");
+		themeLabel.textContent = onboardingStrings.theme;
 
 		const themeHint = append(wrapper, $('div.onboarding-a-theme-hint'));
-		themeHint.textContent = localize('onboarding.personalize.themeHint', "You can browse and install more themes later from the Extensions view.");
+		themeHint.textContent = onboardingStrings.themeHint;
 
 		const themeGrid = append(wrapper, $('.onboarding-a-theme-grid'));
 		themeGrid.setAttribute('role', 'radiogroup');
-		themeGrid.setAttribute('aria-label', localize('onboarding.personalize.themeLabel', "Choose a color theme"));
+		themeGrid.setAttribute('aria-label', onboardingStrings.chooseTheme);
 
 		const hasOtherEditors = this._hasOtherEditors();
 		const allThemes = product.onboardingThemes ?? [];
@@ -874,14 +551,14 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 
 		if (hasOtherEditors) {
 			const keymapLabel = append(wrapper, $('div.onboarding-a-section-label.onboarding-a-section-label-keymap'));
-			keymapLabel.textContent = localize('onboarding.personalize.keymap', "Keyboard Mapping");
+			keymapLabel.textContent = onboardingStrings.keymap;
 
 			const keymapHint = append(wrapper, $('div.onboarding-a-theme-hint'));
-			keymapHint.textContent = localize('onboarding.personalize.keymapHint', "Coming from another editor? Import your keyboard mapping to feel right at home.");
+			keymapHint.textContent = onboardingStrings.keymapHint;
 
 			const keymapList = append(wrapper, $('.onboarding-a-keymap-list'));
 			keymapList.setAttribute('role', 'radiogroup');
-			keymapList.setAttribute('aria-label', localize('onboarding.personalize.keymapLabel', "Choose a keyboard mapping"));
+			keymapList.setAttribute('aria-label', onboardingStrings.chooseKeymap);
 
 			const keymapPills: HTMLButtonElement[] = [];
 			for (const keymap of keymapOptions) {
@@ -909,7 +586,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 					}
 					pill.classList.add('selected');
 					pill.setAttribute('aria-checked', 'true');
-					this.accessibilityService.alert(localize('onboarding.keymap.selected.alert', "{0} keyboard mapping selected", keymap.label));
+					this.accessibilityService.alert(format(onboardingStrings.keymapSelected, keymap.label));
 				}));
 			}
 			const selectedKeymapIndex = keymapOptions.findIndex(k => k.id === this.selectedKeymapId);
@@ -919,17 +596,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 	}
 
 	private _renderPersonalizeSubtitle(container: HTMLElement): void {
-		clearNode(container);
-		const modifier = isMacintosh ? 'Cmd' : 'Ctrl';
-		container.append(
-			localize('onboarding.personalize.tip.prefix', "Tip: Press "),
-			this._createKbd(localize({ key: 'onboarding.personalize.tip.modifier', comment: ['This is a keyboard modifier key, Ctrl on Windows/Linux or Cmd on Mac'] }, "{0}", modifier)),
-			'+',
-			this._createKbd(localize('onboarding.personalize.tip.shift', "Shift")),
-			'+',
-			this._createKbd(localize('onboarding.personalize.tip.p', "P")),
-			localize('onboarding.personalize.tip.suffix', " to access all VS Code commands."),
-		);
+		container.textContent = format(onboardingStrings.commandHint, isMacintosh ? '⌘⇧P' : 'Ctrl+Shift+P');
 	}
 
 	private _createThemeCard(parent: HTMLElement, theme: IOnboardingThemeOption, allCards: HTMLElement[]): void {
@@ -962,7 +629,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 			}
 			card.classList.add('selected');
 			card.setAttribute('aria-checked', 'true');
-			this.accessibilityService.alert(localize('onboarding.theme.selected.alert', "{0} theme selected", theme.label));
+			this.accessibilityService.alert(format(onboardingStrings.themeSelected, theme.label));
 		}));
 
 		this.stepDisposables.add(addDisposableListener(card, EventType.KEY_DOWN, (e: KeyboardEvent) => {
@@ -1000,7 +667,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 		} catch {
 			this.notificationService.notify({
 				severity: Severity.Warning,
-				message: localize('onboarding.keymap.installError', "Could not install {0} keymap. You can install it later from Extensions.", keymap.label),
+				message: format(onboardingStrings.keymapInstallError, keymap.label),
 			});
 		}
 	}
@@ -1135,25 +802,6 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 		}
 	}
 
-	private _createKbd(label: string): HTMLElement {
-		const kbd = $('kbd.onboarding-a-kbd');
-		kbd.textContent = label;
-		return kbd;
-	}
-
-	private _createInlineLink(parent: HTMLElement, label: string, href: string | undefined): void {
-		if (!href) {
-			parent.append(label);
-			return;
-		}
-
-		const link = this._registerStepFocusable(append(parent, $<HTMLAnchorElement>('a.onboarding-a-inline-link')));
-		link.textContent = label;
-		link.href = href;
-		link.target = '_blank';
-		link.rel = 'noopener';
-	}
-
 	// =====================================================================
 	// Radio-group keyboard navigation (roving tabindex)
 	// =====================================================================
@@ -1226,7 +874,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 	}
 
 	private _getFocusableElements(): HTMLElement[] {
-		return [...(this.closeButton ? [this.closeButton] : []), ...this.stepFocusableElements, ...this.footerFocusableElements].filter(element => this._isTabbable(element));
+		return [...(this.closeButton ? [this.closeButton] : []), ...this.stepFocusableElements, ...(this._footerSignInBtn ? [this._footerSignInBtn] : []), ...this.footerFocusableElements].filter(element => this._isTabbable(element));
 	}
 
 	private _focusCurrentStepElement(): void {
@@ -1292,12 +940,10 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 		this._footerSignInBtn = undefined;
 		this.footerFocusableElements.length = 0;
 		this.stepFocusableElements.length = 0;
-		this.enterpriseSignInUiState = 'options';
-		this.enterpriseInstanceValue = '';
-		this.enterpriseSignInWatch = undefined;
 		this._isShowing = false;
 		this.disposables.clear();
 		this.stepDisposables.clear();
+		this.footerDisposables.clear();
 
 		if (this.previouslyFocusedElement) {
 			this.previouslyFocusedElement.focus();

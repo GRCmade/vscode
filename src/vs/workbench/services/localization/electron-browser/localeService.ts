@@ -22,6 +22,9 @@ import { IHostService } from '../../host/browser/host.js';
 import { IDialogService } from '../../../../platform/dialogs/common/dialogs.js';
 import { IProductService } from '../../../../platform/product/common/productService.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
+import { studioLocaleStrings } from '../common/studioLocaleStrings.js';
+import { format } from '../../../../base/common/strings.js';
+import { FileOperationError, FileOperationResult } from '../../../../platform/files/common/files.js';
 
 // duplicate of IExtensionsViewPaneContainer in contrib
 interface IExtensionsViewPaneContainer extends IViewPaneContainer {
@@ -51,6 +54,17 @@ class NativeLocaleService implements ILocaleService {
 		@IProductService private readonly productService: IProductService
 	) { }
 
+	async getLocalePreference(): Promise<string | undefined> {
+		try {
+			const content = await this.textFileService.read(this.environmentService.argvResource, { encoding: 'utf8' });
+			const value = parse<{ locale?: unknown }>(content.value)?.locale;
+			return typeof value === 'string' ? value.toLowerCase() : undefined;
+		} catch (error) {
+			if (error instanceof FileOperationError && error.fileOperationResult === FileOperationResult.FILE_NOT_FOUND) { return undefined; }
+			throw error;
+		}
+	}
+
 	private async validateLocaleFile(): Promise<boolean> {
 		try {
 			const content = await this.textFileService.read(this.environmentService.argvResource, { encoding: 'utf8' });
@@ -59,6 +73,7 @@ class NativeLocaleService implements ILocaleService {
 			// https://github.com/microsoft/vscode/blob/32d40cf44e893e87ac33ac4f08de1e5f7fe077fc/src/main.js#L238-L246
 			parse(content.value);
 		} catch (error) {
+			if (error instanceof FileOperationError && error.fileOperationResult === FileOperationResult.FILE_NOT_FOUND) { return true; }
 			this.notificationService.notify({
 				severity: Severity.Error,
 				message: localize('argvInvalid', 'Unable to write display language. Please open the runtime settings, correct errors/warnings in it and try again.'),
@@ -87,7 +102,13 @@ class NativeLocaleService implements ILocaleService {
 
 	async setLocale(languagePackItem: ILanguagePackItem, skipDialog = false): Promise<void> {
 		const locale = languagePackItem.id;
-		if (locale === Language.value() || (!locale && Language.isDefaultVariant())) {
+		const preference = await this.getLocalePreference();
+		if (locale === Language.value() && locale === preference) {
+			return;
+		}
+		// Pinning the currently active language still needs to persist an explicit preference.
+		if (locale === Language.value()) {
+			if (!await this.writeLocaleValue(locale)) { throw new Error(studioLocaleStrings.writeFailed); }
 			return;
 		}
 		const installedLanguages = await this.languagePackService.getInstalledLanguages();
@@ -95,7 +116,8 @@ class NativeLocaleService implements ILocaleService {
 
 			// Only Desktop has the concept of installing language packs so we only do this for Desktop
 			// and only if the language pack is not installed
-			if (!installedLanguages.some(installedLanguage => installedLanguage.id === languagePackItem.id)) {
+			const studioSourceLanguage = !this.environmentService.isBuilt && (locale === 'zh-cn' || locale === 'en');
+			if (!studioSourceLanguage && !installedLanguages.some(installedLanguage => installedLanguage.id === languagePackItem.id)) {
 
 				// Only actually install a language pack from Microsoft
 				if (languagePackItem.galleryExtension?.publisher.toLowerCase() !== 'ms-ceintl') {
@@ -121,34 +143,31 @@ class NativeLocaleService implements ILocaleService {
 			if (!skipDialog && !await this.showRestartDialog(languagePackItem.label)) {
 				return;
 			}
-			await this.writeLocaleValue(locale);
+			if (!await this.writeLocaleValue(locale)) { throw new Error(studioLocaleStrings.writeFailed); }
 			await this.hostService.restart();
 		} catch (err) {
 			this.notificationService.error(err);
+			throw err;
 		}
 	}
 
 	async clearLocalePreference(): Promise<void> {
 		try {
-			await this.writeLocaleValue(undefined);
-			if (!Language.isDefaultVariant()) {
-				await this.showRestartDialog('English');
-			}
+			if (await this.getLocalePreference() === undefined) { return; }
+			if (!await this.showRestartDialog(studioLocaleStrings.system)) { return; }
+			if (!await this.writeLocaleValue(undefined)) { throw new Error(studioLocaleStrings.writeFailed); }
+			await this.hostService.restart();
 		} catch (err) {
 			this.notificationService.error(err);
+			throw err;
 		}
 	}
 
 	private async showRestartDialog(languageName: string): Promise<boolean> {
 		const { confirmed } = await this.dialogService.confirm({
-			message: localize('restartDisplayLanguageMessage1', "Restart {0} to switch to {1}?", this.productService.nameLong, languageName),
-			detail: localize(
-				'restartDisplayLanguageDetail1',
-				"To change the display language to {0}, {1} needs to restart.",
-				languageName,
-				this.productService.nameLong
-			),
-			primaryButton: localize({ key: 'restart', comment: ['&& denotes a mnemonic character'] }, "&&Restart"),
+			message: format(studioLocaleStrings.restartMessage, this.productService.nameLong, languageName),
+			detail: format(studioLocaleStrings.restartDetail, languageName, this.productService.nameLong),
+			primaryButton: studioLocaleStrings.restart,
 		});
 
 		return confirmed;

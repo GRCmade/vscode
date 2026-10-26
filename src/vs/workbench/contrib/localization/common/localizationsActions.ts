@@ -11,6 +11,28 @@ import { ServicesAccessor } from '../../../../platform/instantiation/common/inst
 import { ILanguagePackItem, ILanguagePackService } from '../../../../platform/languagePacks/common/languagePacks.js';
 import { ILocaleService } from '../../../services/localization/common/locale.js';
 import { IExtensionsWorkbenchService } from '../../extensions/common/extensions.js';
+import { IEnvironmentService } from '../../../../platform/environment/common/environment.js';
+import { studioLocaleStrings } from '../../../services/localization/common/studioLocaleStrings.js';
+
+export async function setStudioDisplayLanguage(accessor: ServicesAccessor, language: string): Promise<string> {
+	const localeService = accessor.get(ILocaleService);
+	if (language === 'system') {
+		await localeService.clearLocalePreference();
+	} else if (language === 'en' || language === 'zh-cn') {
+		const packs = accessor.get(ILanguagePackService);
+		const installed = await packs.getInstalledLanguages();
+		const source = !accessor.get(IEnvironmentService).isBuilt;
+		let item = installed.find(item => item.id === language);
+		if (!item && (source || language === 'en')) { item = { id: language, label: language === 'en' ? 'English' : '简体中文' }; }
+		if (!item) { item = (await packs.getAvailableLanguages()).find(item => item.id === language); }
+		if (!item) { throw new Error(studioLocaleStrings.unavailable); }
+		// Source Studio provides its own en/zh-cn catalogs; packaged builds use the installed/gallery pack.
+		await localeService.setLocale(item);
+	} else {
+		throw new Error(studioLocaleStrings.unsupported);
+	}
+	return await localeService.getLocalePreference() ?? 'system';
+}
 
 export class ConfigureDisplayLanguageAction extends Action2 {
 	public static readonly ID = 'workbench.action.configureLocale';

@@ -209,7 +209,8 @@ function defaultNLSConfiguration(userLocale: string, osLocale: string, nlsMetada
 	return {
 		userLocale,
 		osLocale,
-		resolvedLanguage: 'en',
+		// Source builds ship Studio's bilingual catalogs without generated core NLS tables.
+		resolvedLanguage: process.env['VSCODE_DEV'] && /^zh(?:-|$)/i.test(userLocale) ? 'zh-cn' : 'en',
 		defaultMessagesFile: join(nlsMetadataPath, 'nls.messages.json'),
 
 		// NLS: below 2 are a relic from old times only used by vscode-nls and deprecated

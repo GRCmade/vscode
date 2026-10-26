@@ -34,6 +34,10 @@ const localeStorage = new class LocaleStorage {
 		this.doClearLocaleToCookie();
 	}
 
+	getLocale(): string | undefined {
+		return localStorage.getItem(LocaleStorage.LOCAL_STORAGE_LOCALE_KEY) ?? undefined;
+	}
+
 	private doClearLocaleToCookie(): void {
 		document.cookie = `${LocaleStorage.LOCAL_STORAGE_LOCALE_KEY}=;path=/;max-age=0`;
 	}
@@ -61,9 +65,13 @@ export class WebLocaleService implements ILocaleService {
 		@IProductService private readonly productService: IProductService
 	) { }
 
+	async getLocalePreference(): Promise<string | undefined> {
+		return localeStorage.getLocale();
+	}
+
 	async setLocale(languagePackItem: ILanguagePackItem, _skipDialog = false): Promise<void> {
 		const locale = languagePackItem.id;
-		if (locale === Language.value() || (!locale && Language.value() === navigator.language.toLowerCase())) {
+		if (locale === Language.value() && locale === await this.getLocalePreference()) {
 			return;
 		}
 		if (locale) {

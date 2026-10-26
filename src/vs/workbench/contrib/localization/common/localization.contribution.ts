@@ -10,9 +10,15 @@ import { IExtensionManifest } from '../../../../platform/extensions/common/exten
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { IWorkbenchContribution } from '../../../common/contributions.js';
-import { ClearDisplayLanguageAction, ConfigureDisplayLanguageAction } from './localizationsActions.js';
+import { ClearDisplayLanguageAction, ConfigureDisplayLanguageAction, setStudioDisplayLanguage } from './localizationsActions.js';
+import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
+import { ILocaleService } from '../../../services/localization/common/locale.js';
 import { IExtensionFeatureTableRenderer, IRenderedData, ITableData, IRowData, IExtensionFeaturesRegistry, Extensions } from '../../../services/extensionManagement/common/extensionFeatures.js';
 import { ExtensionsRegistry } from '../../../services/extensions/common/extensionsRegistry.js';
+
+// Settings can open before the eventual language-pack suggestion contribution starts.
+CommandsRegistry.registerCommand('studio.internalGetDisplayLanguage', async accessor => await accessor.get(ILocaleService).getLocalePreference() ?? 'system');
+CommandsRegistry.registerCommand('studio.internalSetDisplayLanguage', setStudioDisplayLanguage);
 
 export class BaseLocalizationWorkbenchContribution extends Disposable implements IWorkbenchContribution {
 	constructor() {

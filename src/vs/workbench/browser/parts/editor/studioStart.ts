@@ -23,8 +23,8 @@ export interface StudioStartState {
 	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
 	projects: { uri: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: { status: string; serverVersion?: string; canDownload: boolean; busy?: boolean } }[];
 	recent: { uri: string; label: string; kind: string; lastOpened: number; projectType?: string; version?: string; avatarUrl?: string }[];
-	pending: { id: string; name: string; directory: string; status: string; error?: string }[];
-	environment: { studio: string; vscode: string; node?: string; core?: string; cli?: string; account: string; server: string; error?: string };
+	pending: { id: string; name: string; directory: string; status: string; stage?: string; error?: string }[];
+	environment: { studio: string; vscode: string; node?: string; harness?: string; cli?: string; account: string; server: string; error?: string };
 	summary?: { projects: number; running: number; waiting: number; unavailable: number; generatedAt: number };
 	error?: string;
 	busy: boolean;
@@ -109,7 +109,7 @@ export class StudioStartView extends Disposable {
 		this.section(grid, 'recent');
 		const system = this.section(grid, 'system');
 		const details = append(system, $('dl.studio-start-stats'));
-		for (const key of ['studio', 'vscode', 'node', 'core', 'cli', 'account', 'server', 'projects', 'running', 'waiting']) {
+		for (const key of ['studio', 'vscode', 'node', 'harness', 'cli', 'account', 'server', 'projects', 'running', 'waiting']) {
 			this.labels.set(`stat.${key}`, append(details, $('dt')));
 			this.stats.set(key, append(details, $('dd')));
 		}
@@ -267,10 +267,18 @@ export class StudioStartView extends Disposable {
 			for (const project of state.pending) {
 				const row = append(root, $('.studio-start-pending'));
 				append(row, $('span', undefined, project.name));
-				append(row, $('small', undefined, text(state.installing === project.id ? 'installing' : project.status === 'cancelled' ? 'cancelled' : 'installFailed')));
+				const active = state.installing === project.id;
+				const status = active ? project.stage === 'registration' ? 'registering' : project.stage === 'validation' ? 'validating' : 'installing'
+					: project.status === 'cancelled' ? 'cancelled' : project.stage === 'registration' ? 'registrationFailed' : project.stage === 'validation' ? 'validationFailed' : 'installFailed';
+				append(row, $('small', undefined, text(status)));
 				const retry = this.button(row, text('retry'), 'refresh', 'studio.retryProjectSetup', project.id, false, false, store);
 				retry.disabled = state.busy;
 				this.button(row, text('openSource'), 'folder-opened', 'studio.openCreatedProject', project.id, false, true, store);
+				if (project.error && !active) {
+					const details = append(row, $('details.studio-start-setup-error'));
+					append(details, $('summary', undefined, text('details')));
+					append(details, $('pre', undefined, project.error));
+				}
 			}
 			if (state.pending.length) { this.button(root, text('installationLog'), 'output', 'studio.showProjectSetupLog', undefined, false, false, store); }
 		});

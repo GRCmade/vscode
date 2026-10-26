@@ -80,6 +80,13 @@
 .studio-start-pending { display:flex; flex-wrap:wrap; grid-column:1 / -1; gap:5px 10px; align-items:center; margin-bottom:10px; overflow-wrap:anywhere; }
 .studio-start-pending > .studio-start-action:not(.studio-start-action-icon) { width:auto; }
 .studio-start-pending small { color:var(--vscode-descriptionForeground); }
+.studio-start-setup-error { flex-basis:100%; }
+.studio-start-setup-error summary { cursor:pointer; }
+.studio-start-setup-error pre { max-height:160px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; scrollbar-width:thin; scrollbar-color:transparent transparent; }
+.studio-start-setup-error pre:hover { scrollbar-color:var(--vscode-scrollbarSlider-background) transparent; }
+.studio-start-setup-error pre::-webkit-scrollbar { width:8px; height:8px; }
+.studio-start-setup-error pre::-webkit-scrollbar-thumb { background:transparent; }
+.studio-start-setup-error pre:hover::-webkit-scrollbar-thumb { background:var(--vscode-scrollbarSlider-background); }
 @container (max-width:600px) {
   .studio-start-inner { padding:20px; }
   .studio-start-toolbar { grid-column:1 / -1; grid-row:2; justify-self:start; }

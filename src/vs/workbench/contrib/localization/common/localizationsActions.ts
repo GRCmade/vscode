@@ -20,8 +20,8 @@ export async function setStudioDisplayLanguage(accessor: ServicesAccessor, langu
 		await localeService.clearLocalePreference();
 	} else if (language === 'en' || language === 'zh-cn') {
 		const packs = accessor.get(ILanguagePackService);
-		const installed = await packs.getInstalledLanguages();
 		const source = !accessor.get(IEnvironmentService).isBuilt;
+		const installed = await packs.getInstalledLanguages();
 		let item = installed.find(item => item.id === language);
 		if (!item && (source || language === 'en')) { item = { id: language, label: language === 'en' ? 'English' : '简体中文' }; }
 		if (!item) { item = (await packs.getAvailableLanguages()).find(item => item.id === language); }

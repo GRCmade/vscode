@@ -96,13 +96,13 @@ export class StudioStartView extends Disposable {
 		const header = append(inner, $('header.studio-start-header'));
 		const logo = append(header, $('img.studio-start-logo', { alt: '', 'aria-hidden': 'true' })) as HTMLImageElement;
 		logo.src = STEAMHARNESS_ICON_DATA_URI;
-		append(header, $('h1', undefined, 'SteamHarness Studio'));
+		const brand = append(header, $('.studio-start-brand'));
+		append(brand, $('h1', undefined, 'SteamHarness Studio'));
+		this.badge = append(brand, $('span.studio-start-badge'));
+		this.badge.hidden = true;
 		append(header, $('span.codicon.codicon-loading.codicon-modifier-spin.studio-start-loading-indicator')).setAttribute('aria-hidden', 'true');
 		const top = append(header, $('.studio-start-toolbar'));
-		this.badge = append(top, $('span.studio-start-badge'));
-		this.badge.hidden = true;
 		this.button(top, 'create', 'add', 'studio.createProject', undefined, true).classList.add('studio-start-primary');
-		this.button(top, 'refresh', 'refresh', 'studio.refreshStart', undefined, false, true);
 		this.createLoadingPlaceholder(inner);
 		const grid = append(inner, $('.studio-start-grid'));
 		this.section(grid, 'current');

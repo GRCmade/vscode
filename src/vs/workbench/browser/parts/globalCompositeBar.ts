@@ -45,6 +45,7 @@ import { isString } from '../../../base/common/types.js';
 import { FileAccess } from '../../../base/common/network.js';
 import { URI } from '../../../base/common/uri.js';
 import { KeyCode } from '../../../base/common/keyCodes.js';
+import { language } from '../../../base/common/platform.js';
 import { ACTIVITY_BAR_BADGE_BACKGROUND, ACTIVITY_BAR_BADGE_FOREGROUND } from '../../common/theme.js';
 import { IBaseActionViewItemOptions } from '../../../base/browser/ui/actionbar/actionViewItems.js';
 import { ICommandService } from '../../../platform/commands/common/commands.js';
@@ -731,13 +732,15 @@ export class GlobalActivityActionViewItem extends AbstractGlobalActivityActionVi
 		@IKeybindingService keybindingService: IKeybindingService,
 		@IInstantiationService instantiationService: IInstantiationService,
 		@IActivityService activityService: IActivityService,
+		@ICommandService private readonly commandService: ICommandService,
 	) {
 		const action = instantiationService.createInstance(CompositeBarAction, {
 			id: GLOBAL_ACTIVITY_ID,
-			name: localize('manage', "Manage"),
+			// Studio's settings label is not included in upstream language packs.
+			name: language === 'zh-cn' ? "设置" : localize('settings', "Settings"),
 			classNames: ThemeIcon.asClassNameArray(userDataProfileService.currentProfile.icon ? ThemeIcon.fromId(userDataProfileService.currentProfile.icon) : DEFAULT_ICON)
 		});
-		super(MenuId.GlobalActivity, action, options, contextMenuActionsProvider, contextMenuAlignmentOptions, themeService, hoverService, menuService, contextMenuService, contextKeyService, configurationService, keybindingService, activityService);
+		super(MenuId.GlobalActivity, action, { ...options, hasPopup: false }, contextMenuActionsProvider, contextMenuAlignmentOptions, themeService, hoverService, menuService, contextMenuService, contextKeyService, configurationService, keybindingService, activityService);
 		this._register(action);
 		this._register(this.userDataProfileService.onDidChangeCurrentProfile(e => {
 			action.compositeBarActionItem = {
@@ -749,6 +752,7 @@ export class GlobalActivityActionViewItem extends AbstractGlobalActivityActionVi
 
 	override render(container: HTMLElement): void {
 		super.render(container);
+		container.setAttribute('role', 'button');
 
 		this.profileBadge = append(container, $('.profile-badge'));
 		this.profileBadgeContent = append(this.profileBadge, $('.profile-badge-content'));
@@ -785,8 +789,8 @@ export class GlobalActivityActionViewItem extends AbstractGlobalActivityActionVi
 		this.updateProfileBadge();
 	}
 
-	protected override computeTitle(): string {
-		return this.userDataProfileService.currentProfile.isDefault ? super.computeTitle() : localize('manage profile', "Manage {0} (Profile)", this.userDataProfileService.currentProfile.name);
+	protected override async run(): Promise<void> {
+		await this.commandService.executeCommand('studio.openSettings');
 	}
 }
 
@@ -845,7 +849,8 @@ export class SimpleGlobalActivityActionViewItem extends GlobalActivityActionView
 		@IInstantiationService instantiationService: IInstantiationService,
 		@IActivityService activityService: IActivityService,
 		@IStorageService storageService: IStorageService,
-		@IProductService productService: IProductService
+		@IProductService productService: IProductService,
+		@ICommandService commandService: ICommandService,
 	) {
 		super(() => simpleActivityContextMenuActions(storageService, productService, false),
 			{
@@ -856,7 +861,7 @@ export class SimpleGlobalActivityActionViewItem extends GlobalActivityActionView
 				}),
 				hoverOptions,
 				compact: true,
-			}, () => undefined, userDataProfileService, themeService, hoverService, menuService, contextMenuService, contextKeyService, configurationService, environmentService, keybindingService, instantiationService, activityService);
+			}, () => undefined, userDataProfileService, themeService, hoverService, menuService, contextMenuService, contextKeyService, configurationService, environmentService, keybindingService, instantiationService, activityService, commandService);
 	}
 }
 

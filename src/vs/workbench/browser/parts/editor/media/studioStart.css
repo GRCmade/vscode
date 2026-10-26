@@ -12,7 +12,8 @@
 .studio-start-inner { max-width:1040px; padding:32px; margin:0 auto; }
 .studio-start-header { display:grid; grid-template-columns:28px minmax(0,1fr) auto; align-items:center; gap:12px; margin-bottom:28px; }
 .studio-start .studio-start-logo { display:block; grid-column:1; grid-row:1; width:28px; height:28px; object-fit:contain; }
-.studio-start h1 { grid-column:2; grid-row:1; min-width:0; font-size:24px; font-weight:500; margin:0; line-height:1.3; overflow-wrap:anywhere; }
+.studio-start-brand { display:flex; align-items:center; grid-column:2; grid-row:1; min-width:0; gap:12px; }
+.studio-start h1 { min-width:0; font-size:24px; font-weight:500; margin:0; line-height:1.3; overflow-wrap:anywhere; }
 .studio-start-toolbar { display:flex; flex-wrap:nowrap; align-items:center; grid-column:3; grid-row:1; justify-self:end; min-width:0; gap:8px; }
 .studio-start-badge { display:inline-flex; align-items:center; flex:none; height:20px; padding:0 8px; border:1px solid var(--vscode-textLink-foreground); border-radius:999px; color:var(--vscode-textLink-foreground); font-size:10px; font-weight:600; letter-spacing:.04em; line-height:1; white-space:nowrap; }
 .studio-start-badge[hidden] { display:none; }

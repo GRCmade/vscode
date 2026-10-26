@@ -27,7 +27,8 @@ declare global {
 	 *
 	 * Instead of accessing this global variable directly, use function getNLSMessages.
 	 */
-	var _VSCODE_NLS_MESSAGES: string[];
+	// Source builds use stable module/key identifiers; packaged builds use numeric indices.
+	var _VSCODE_NLS_MESSAGES: string[] | Record<string, string>;
 	/**
 	 * The actual language of the NLS messages (e.g. 'en', de' or 'pt-br').
 	 *

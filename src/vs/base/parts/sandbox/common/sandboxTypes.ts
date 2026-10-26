@@ -63,7 +63,7 @@ export interface ISandboxConfiguration {
 		 * All NLS messages produced by `localize` and `localize2` calls
 		 * under `src/vs`.
 		 */
-		messages: string[];
+		messages: string[] | Record<string, string>;
 
 		/**
 		 * The actual language of the NLS messages (e.g. 'en', de' or 'pt-br').

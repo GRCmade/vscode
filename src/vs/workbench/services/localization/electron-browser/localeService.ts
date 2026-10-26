@@ -116,8 +116,7 @@ class NativeLocaleService implements ILocaleService {
 
 			// Only Desktop has the concept of installing language packs so we only do this for Desktop
 			// and only if the language pack is not installed
-			const studioSourceLanguage = !this.environmentService.isBuilt && (locale === 'zh-cn' || locale === 'en');
-			if (!studioSourceLanguage && !installedLanguages.some(installedLanguage => installedLanguage.id === languagePackItem.id)) {
+			if (locale !== LANGUAGE_DEFAULT && !installedLanguages.some(installedLanguage => installedLanguage.id === locale)) {
 
 				// Only actually install a language pack from Microsoft
 				if (languagePackItem.galleryExtension?.publisher.toLowerCase() !== 'ms-ceintl') {

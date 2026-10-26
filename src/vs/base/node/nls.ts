@@ -46,12 +46,12 @@ export interface IResolveNLSConfigurationContext {
 
 export async function resolveNLSConfiguration({ userLocale, osLocale, userDataPath, commit, nlsMetadataPath, nlsMetadataHash }: IResolveNLSConfigurationContext): Promise<INLSConfiguration> {
 	mark('code/willGenerateNls');
+	const sourceBuild = !!process.env['VSCODE_DEV'];
 
 	if (
-		process.env['VSCODE_DEV'] ||
 		userLocale === 'pseudo' ||
 		userLocale.startsWith('en') ||
-		!commit ||
+		(!sourceBuild && !commit) ||
 		!userDataPath
 	) {
 		return defaultNLSConfiguration(userLocale, osLocale, nlsMetadataPath);
@@ -63,7 +63,7 @@ export async function resolveNLSConfiguration({ userLocale, osLocale, userDataPa
 			return defaultNLSConfiguration(userLocale, osLocale, nlsMetadataPath);
 		}
 
-		const resolvedLanguage = resolveLanguagePackLanguage(languagePacks, userLocale);
+		const resolvedLanguage = resolveLanguagePackLanguage(languagePacks, userLocale.toLowerCase().replace(/^zh-hans(?:-|$).*/, 'zh-cn'));
 		if (!resolvedLanguage) {
 			return defaultNLSConfiguration(userLocale, osLocale, nlsMetadataPath);
 		}
@@ -82,7 +82,8 @@ export async function resolveNLSConfiguration({ userLocale, osLocale, userDataPa
 
 		const languagePackId = `${languagePack.hash}.${resolvedLanguage}`;
 		const globalLanguagePackCachePath = join(userDataPath, 'clp', languagePackId);
-		const commitLanguagePackCachePath = join(globalLanguagePackCachePath, nlsMetadataHash ?? commit);
+		// Source identifiers don't depend on build order or the current commit.
+		const commitLanguagePackCachePath = join(globalLanguagePackCachePath, sourceBuild ? 'source' : (nlsMetadataHash ?? commit!));
 		const languagePackMessagesFile = join(commitLanguagePackCachePath, 'nls.messages.json');
 		const translationsConfigFile = join(globalLanguagePackCachePath, 'tcf.json');
 		const languagePackCorruptMarkerFile = join(globalLanguagePackCachePath, 'corrupted.info');
@@ -115,6 +116,25 @@ export async function resolveNLSConfiguration({ userLocale, osLocale, userDataPa
 
 		if (await Promises.exists(languagePackMessagesFile)) {
 			touch(commitLanguagePackCachePath).catch(() => { }); // We don't wait for this. No big harm if we can't touch
+			mark('code/didGenerateNls');
+			return result;
+		}
+
+		if (sourceBuild) {
+			const pack: { contents: Record<string, Record<string, string>> } = JSON.parse(await promises.readFile(mainLanguagePackPath, 'utf-8'));
+			const messages: Record<string, string> = Object.create(null);
+			for (const [moduleId, translations] of Object.entries(pack.contents)) {
+				for (const [key, translation] of Object.entries(translations)) {
+					if (typeof translation === 'string' && translation.length > 0) {
+						messages[`${moduleId}#${key}`] = translation;
+					}
+				}
+			}
+			await promises.mkdir(commitLanguagePackCachePath, { recursive: true });
+			await Promise.all([
+				promises.writeFile(languagePackMessagesFile, JSON.stringify(messages), 'utf-8'),
+				promises.writeFile(translationsConfigFile, JSON.stringify(languagePack.translations), 'utf-8')
+			]);
 			mark('code/didGenerateNls');
 			return result;
 		}
@@ -209,8 +229,7 @@ function defaultNLSConfiguration(userLocale: string, osLocale: string, nlsMetada
 	return {
 		userLocale,
 		osLocale,
-		// Source builds ship Studio's bilingual catalogs without generated core NLS tables.
-		resolvedLanguage: process.env['VSCODE_DEV'] && /^zh(?:-|$)/i.test(userLocale) ? 'zh-cn' : 'en',
+		resolvedLanguage: 'en',
 		defaultMessagesFile: join(nlsMetadataPath, 'nls.messages.json'),
 
 		// NLS: below 2 are a relic from old times only used by vscode-nls and deprecated

@@ -6,6 +6,7 @@
 import * as esbuild from 'esbuild';
 import * as fs from 'fs';
 import * as path from 'path';
+import { generateNLSSourceMap, transformToPlaceholders } from './nls-plugin.ts';
 
 const UTF8_BOM = Buffer.from([0xef, 0xbb, 0xbf]);
 
@@ -26,9 +27,20 @@ const transformOptions: esbuild.TransformOptions = {
 	}),
 };
 
-export async function transpileFile(srcPath: string, destPath: string): Promise<void> {
+export async function transpileFile(srcPath: string, destPath: string, sourceRoot = path.resolve(import.meta.dirname, '../../src')): Promise<void> {
 	const source = await fs.promises.readFile(srcPath, 'utf-8');
-	const result = await esbuild.transform(source, {
+	let contents = source;
+	if (source.includes('/nls') && source.includes('localize')) {
+		// Stable module/key identifiers also work when only one file is rebuilt.
+		// Keep the English message for missing translations and English startup.
+		const moduleId = path.relative(sourceRoot, srcPath).replace(/\\/g, '/').replace(/\.ts$/, '');
+		const { code, edits } = transformToPlaceholders(source, moduleId);
+		if (edits.length > 0) {
+			const map = generateNLSSourceMap(source, path.basename(srcPath), edits);
+			contents = code + `\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(map).toString('base64')}\n`;
+		}
+	}
+	const result = await esbuild.transform(contents, {
 		...transformOptions,
 		sourcefile: srcPath,
 	});
@@ -126,7 +138,7 @@ export async function applyIncrementalClientChanges(repoRoot: string, outDir: st
 		if (operation.kind === 'copy') {
 			await copyFile(operation.sourcePath, operation.destinationPath);
 		} else if (operation.kind === 'transpile') {
-			await transpileFile(operation.sourcePath, operation.destinationPath);
+			await transpileFile(operation.sourcePath, operation.destinationPath, path.join(repoRoot, 'src'));
 		}
 	});
 }

@@ -104,6 +104,8 @@ class CliMain extends Disposable {
 			const fileService = accessor.get(IFileService);
 			const environmentService = accessor.get(INativeEnvironmentService);
 			const userDataProfilesService = accessor.get(IUserDataProfilesService);
+			// Register language-pack install/uninstall participants before running the CLI.
+			const languagePackService = accessor.get(ILanguagePackService) as NativeLanguagePackService;
 
 			// Log info
 			logService.info('CLI main', this.argv);
@@ -117,6 +119,8 @@ class CliMain extends Disposable {
 
 			// Run based on argv
 			await this.doRun(environmentService, fileService, userDataProfilesService, instantiationService);
+			// Also repair the index when an already installed pack is reused by a new user-data directory.
+			await languagePackService.update();
 
 			// Flush the remaining data in AI adapter (with 1s timeout)
 			await Promise.all(appenders.map(a => {

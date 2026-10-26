@@ -246,16 +246,22 @@ async function doSetupNLS(): Promise<INLSConfiguration | undefined> {
 	}
 
 	if (
-		process.env['VSCODE_DEV'] ||	// no NLS support in dev mode
+		(process.env['VSCODE_DEV'] && !nlsConfig?.languagePack) || // English source messages are kept inline
 		!messagesFile					// no NLS messages file
 	) {
 		return undefined;
 	}
 
 	try {
-		globalThis._VSCODE_NLS_MESSAGES = JSON.parse((await fs.promises.readFile(messagesFile)).toString());
+		const messages = JSON.parse((await fs.promises.readFile(messagesFile)).toString());
+		if (process.env['VSCODE_DEV'] ? !messages || typeof messages !== 'object' || Array.isArray(messages) : !Array.isArray(messages)) {
+			throw new Error('Invalid NLS messages format');
+		}
+		globalThis._VSCODE_NLS_MESSAGES = messages;
 	} catch (error) {
 		console.error(`Error reading NLS messages file ${messagesFile}: ${error}`);
+		globalThis._VSCODE_NLS_LANGUAGE = 'en';
+		globalThis._VSCODE_NLS_MESSAGES = [];
 
 		// Mark as corrupt: this will re-create the language pack cache next startup
 		if (nlsConfig?.languagePack?.corruptMarkerFile) {
@@ -267,12 +273,16 @@ async function doSetupNLS(): Promise<INLSConfiguration | undefined> {
 		}
 
 		// Fallback to the default message file to ensure english translation at least
-		if (nlsConfig?.defaultMessagesFile && nlsConfig.defaultMessagesFile !== messagesFile) {
+		if (!process.env['VSCODE_DEV'] && nlsConfig?.defaultMessagesFile && nlsConfig.defaultMessagesFile !== messagesFile) {
 			try {
 				globalThis._VSCODE_NLS_MESSAGES = JSON.parse((await fs.promises.readFile(nlsConfig.defaultMessagesFile)).toString());
 			} catch (error) {
 				console.error(`Error reading default NLS messages file ${nlsConfig.defaultMessagesFile}: ${error}`);
 			}
+		}
+		if (nlsConfig) {
+			nlsConfig = { ...nlsConfig, resolvedLanguage: 'en', languagePack: undefined, availableLanguages: {} };
+			process.env['VSCODE_NLS_CONFIG'] = JSON.stringify(nlsConfig);
 		}
 	}
 

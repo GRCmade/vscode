@@ -16,7 +16,7 @@ const defaults = {
 	restartDetail: localize('studio.locale.restartDetail', "To change the display language to {0}, {1} needs to restart."),
 };
 
-// Source builds have Studio catalogs before any core language pack is installed.
+// Studio-specific messages are not included in upstream language packs.
 const chinese: typeof defaults = {
 	writeFailed: "无法保存显示语言。",
 	unsupported: "不支持此显示语言。",

@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-export function getNLSMessages(): string[] {
+export function getNLSMessages(): string[] | Record<string, string> {
 	return globalThis._VSCODE_NLS_MESSAGES;
 }
 
@@ -86,7 +86,20 @@ export function localize(data: ILocalizeInfo | string /* | number when built */,
 	if (typeof data === 'number') {
 		return _format(lookupMessage(data, message), args);
 	}
-	return _format(message, args);
+	return _format(lookupSourceMessage(data, message), args);
+}
+
+/** Looks up stable source-build keys without changing packaged numeric tables. */
+function lookupSourceMessage(data: ILocalizeInfo | string, fallback: string): string {
+	const messages = getNLSMessages();
+	if (typeof data === 'string' && messages && !Array.isArray(messages)) {
+		const key = /^%%NLS2?:(.+)%%$/.exec(data)?.[1];
+		const message = key ? messages[key] : undefined;
+		if (typeof message === 'string') {
+			return message;
+		}
+	}
+	return fallback;
 }
 
 /**
@@ -95,7 +108,8 @@ export function localize(data: ILocalizeInfo | string /* | number when built */,
  * depending on the target context.
  */
 function lookupMessage(index: number, fallback: string | null): string {
-	const message = getNLSMessages()?.[index];
+	const messages = getNLSMessages();
+	const message = Array.isArray(messages) ? messages[index] : undefined;
 	if (typeof message !== 'string') {
 		if (typeof fallback === 'string') {
 			return fallback;
@@ -143,7 +157,7 @@ export function localize2(data: ILocalizeInfo | string /* | number when built */
 	if (typeof data === 'number') {
 		message = lookupMessage(data, originalMessage);
 	} else {
-		message = originalMessage;
+		message = lookupSourceMessage(data, originalMessage);
 	}
 
 	const value = _format(message, args);
@@ -164,7 +178,7 @@ export interface INLSLanguagePackConfiguration {
 
 	/**
 	 * The path to the file containing the translations for this language
-	 * pack as flat string array.
+	 * pack as a flat string array (packaged) or module/key dictionary (source).
 	 */
 	readonly messagesFile: string;
 

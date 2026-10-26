@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { KeyChord, KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
+import { onUnexpectedError } from '../../../../base/common/errors.js';
 import { Disposable, DisposableStore, MutableDisposable } from '../../../../base/common/lifecycle.js';
 import { Schemas } from '../../../../base/common/network.js';
 import { isBoolean, isObject, isString } from '../../../../base/common/types.js';
@@ -47,7 +48,6 @@ import { CONTEXT_AI_SETTING_RESULTS_AVAILABLE, CONTEXT_KEYBINDINGS_EDITOR, CONTE
 import { PreferencesContribution } from '../common/preferencesContribution.js';
 import { KeybindingsEditor } from './keybindingsEditor.js';
 import { ConfigureLanguageBasedSettingsAction } from './preferencesActions.js';
-import { PreferencesEditor } from './preferencesEditor.js';
 import { preferencesOpenSettingsIcon } from './preferencesIcons.js';
 import { IPreferencesRenderer, UserSettingsRenderer, WorkspaceSettingsRenderer } from './preferencesRenderers.js';
 import { SettingsEditor2, SettingsFocusContext } from './settingsEditor2.js';
@@ -71,40 +71,19 @@ const SETTINGS_EDITOR_COMMAND_FILTER_UNTRUSTED = 'settings.filterUntrusted';
 const SETTINGS_COMMAND_OPEN_SETTINGS = 'workbench.action.openSettings';
 const SETTINGS_COMMAND_FILTER_TELEMETRY = 'settings.filterByTelemetry';
 
-Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
-	EditorPaneDescriptor.create(
-		SettingsEditor2,
-		SettingsEditor2.ID,
-		nls.localize('settingsEditor2', "Settings Editor 2")
-	),
-	[
-		new SyncDescriptor(SettingsEditor2Input)
-	]
-);
-
-Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
-	EditorPaneDescriptor.create(
-		PreferencesEditor,
-		PreferencesEditor.ID,
-		nls.localize('preferencesEditor', "Preferences Editor")
-	),
-	[
-		new SyncDescriptor(PreferencesEditorInput)
-	]
-);
-
 class PreferencesEditorInputSerializer implements IEditorSerializer {
 
 	canSerialize(editorInput: EditorInput): boolean {
-		return true;
+		return false;
 	}
 
 	serialize(editorInput: EditorInput): string {
 		return '';
 	}
 
-	deserialize(instantiationService: IInstantiationService): EditorInput {
-		return instantiationService.createInstance(PreferencesEditorInput);
+	deserialize(instantiationService: IInstantiationService): EditorInput | undefined {
+		void instantiationService.invokeFunction(accessor => accessor.get(IPreferencesService).openSettings({ jsonEditor: false })).catch(onUnexpectedError);
+		return undefined;
 	}
 }
 
@@ -137,15 +116,16 @@ class KeybindingsEditorInputSerializer implements IEditorSerializer {
 class SettingsEditor2InputSerializer implements IEditorSerializer {
 
 	canSerialize(editorInput: EditorInput): boolean {
-		return true;
+		return false;
 	}
 
 	serialize(input: SettingsEditor2Input): string {
 		return '';
 	}
 
-	deserialize(instantiationService: IInstantiationService): SettingsEditor2Input {
-		return instantiationService.createInstance(SettingsEditor2Input);
+	deserialize(instantiationService: IInstantiationService): EditorInput | undefined {
+		void instantiationService.invokeFunction(accessor => accessor.get(IPreferencesService).openSettings({ jsonEditor: false })).catch(onUnexpectedError);
+		return undefined;
 	}
 }
 

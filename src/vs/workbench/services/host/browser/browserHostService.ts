@@ -413,7 +413,7 @@ export class BrowserHostService extends Disposable implements IHostService {
 
 						// Wait for the resources to be closed in the text editor...
 						const filesToWaitFor: URI[] = [];
-						if (options.mergeMode) {
+						if (options?.mergeMode) {
 							filesToWaitFor.push(fileOpenables[3].fileUri /* [3] is the resulting merge file */);
 						} else {
 							filesToWaitFor.push(...fileOpenables.map(fileOpenable => fileOpenable.fileUri));

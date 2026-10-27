@@ -1650,6 +1650,17 @@ begin
     Result := '{#AppMutex}setup';
 end;
 
+function GetExtendedLengthPath(Value: string): string;
+begin
+  Result := Value;
+  if Copy(Result, 1, 4) <> '\\?\' then begin
+    if Copy(Result, 1, 2) = '\\' then
+      Result := '\\?\UNC\' + Copy(Result, 3, Length(Result) - 2)
+    else
+      Result := '\\?\' + Result;
+  end;
+end;
+
 function GetDestDir(Value: string): string;
 begin
   if IsBackgroundUpdate() and not IsVersionedUpdate() then
@@ -1657,14 +1668,9 @@ begin
   else
     Result := ExpandConstant('{app}');
 
-  // Nested production dependencies can exceed MAX_PATH in a user install.
-  // Keep the registered app directory canonical and extend filesystem targets.
-  if Copy(Result, 1, 4) <> '\\?\' then begin
-    if Copy(Result, 1, 2) = '\\' then
-      Result := '\\?\UNC\' + Copy(Result, 3, Length(Result) - 2)
-    else
-      Result := '\\?\' + Result;
-  end;
+  // Keep registration paths canonical; extend both installation and updater
+  // filesystem operations for deeply nested production dependencies.
+  Result := GetExtendedLengthPath(Result);
 end;
 
 function GetVisualElementsManifest(Value: string): string;
@@ -1858,7 +1864,7 @@ begin
       if not SessionEndFileExists() and not CancelFileExists() then begin
         StopTunnelServiceIfNeeded();
         Log('Invoking inno_updater for background update');
-        Exec(ExpandConstant('{app}\{#VersionedResourcesFolder}\tools\inno_updater.exe'), ExpandConstant('"{app}\{#ExeBasename}.exe" ' + BoolToStr(LockFileExists()) + ' "{cm:UpdatingVisualStudioCode}"'), '', SW_SHOW, ewWaitUntilTerminated, UpdateResultCode);
+        Exec(ExpandConstant('{app}\{#VersionedResourcesFolder}\tools\inno_updater.exe'), '"' + GetExtendedLengthPath(ExpandConstant('{app}\{#ExeBasename}.exe')) + '" ' + BoolToStr(LockFileExists()) + ' "' + ExpandConstant('{cm:UpdatingVisualStudioCode}') + '"', '', SW_SHOW, ewWaitUntilTerminated, UpdateResultCode);
         DeleteFile(ExpandConstant('{app}\updating_version'));
         Log('inno_updater completed successfully');
         #if "system" == InstallTarget

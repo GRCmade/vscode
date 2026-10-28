@@ -26,6 +26,7 @@ export const studioSteamToolDefinitions = [
 	{ id: 'editor', icon: 'code', editor: true },
 	{ id: 'settings', icon: 'settings-gear', command: 'studio.openSettings' },
 	{ id: 'login', icon: 'sign-in', command: 'studio.openLogin' },
+	{ id: 'databases', icon: 'database', view: 'studio.databases' },
 	{ id: 'kv', icon: 'database', view: 'studio.kv' },
 	{ id: 'knowledge', icon: 'book', view: 'studio.knowledge' },
 	{ id: 'info', icon: 'package', view: 'studio.projectInfo' },

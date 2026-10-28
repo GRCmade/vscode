@@ -167,7 +167,7 @@ export class TerminalTaskSystem extends Disposable implements ITaskSystem {
 	private _sameTaskTerminals: IStringDictionary<string>;
 	private _taskSystemInfoResolver: ITaskSystemInfoResolver;
 	private _lastTask: VerifiedTask | undefined;
-	private readonly _resolveNodeRuntime: () => Promise<INodeTaskRuntime | undefined>;
+	private readonly _resolveNodeRuntime: (command: string) => Promise<INodeTaskRuntime | undefined>;
 	// Should always be set in run
 	private _currentTask!: VerifiedTask;
 	private _isRerun: boolean = false;
@@ -229,12 +229,12 @@ export class TerminalTaskSystem extends Disposable implements ITaskSystem {
 		private _taskLookup: (taskKey: string) => Promise<Task | undefined>,
 	) {
 		super();
-		this._resolveNodeRuntime = () => instantiationService.invokeFunction(async accessor => {
+		this._resolveNodeRuntime = command => instantiationService.invokeFunction(async accessor => {
 			const extensionService = accessor.get(IExtensionService);
 			const commandService = accessor.get(ICommandService);
 			await extensionService.activateByEvent('onCommand:studio.internalResolveNodeTask');
 			return CommandsRegistry.getCommand('studio.internalResolveNodeTask')
-				? commandService.executeCommand<INodeTaskRuntime | undefined>('studio.internalResolveNodeTask')
+				? commandService.executeCommand<INodeTaskRuntime | undefined>('studio.internalResolveNodeTask', command)
 				: undefined;
 		});
 
@@ -1420,6 +1420,9 @@ export class TerminalTaskSystem extends Disposable implements ITaskSystem {
 			const runtime = await resolveNodeTaskRuntime(CommandString.value(command), options.env, this._environmentService.remoteAuthority, this._resolveNodeRuntime);
 			if (runtime) {
 				shellLaunchConfig.executable = runtime.nodePath;
+				if (runtime.args?.length) {
+					shellLaunchConfig.args = [...runtime.args, ...args.map(argument => CommandString.value(argument))];
+				}
 				shellLaunchConfig.env = { ...shellLaunchConfig.env, ...runtime.env };
 			}
 		}

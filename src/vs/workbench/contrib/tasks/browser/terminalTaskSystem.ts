@@ -54,6 +54,8 @@ import { IContextKey, IContextKeyService } from '../../../../platform/contextkey
 import { TaskProblemMonitor } from './taskProblemMonitor.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
 import { serializeVSCodeOscMessage } from '../../../../platform/terminal/common/xterm/shellIntegrationAddon.js';
+import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
+import { INodeTaskRuntime, resolveNodeTaskRuntime } from './nodeTaskRuntime.js';
 
 interface ITerminalData {
 	terminal: ITerminalInstance;
@@ -164,6 +166,7 @@ export class TerminalTaskSystem extends Disposable implements ITaskSystem {
 	private _sameTaskTerminals: IStringDictionary<string>;
 	private _taskSystemInfoResolver: ITaskSystemInfoResolver;
 	private _lastTask: VerifiedTask | undefined;
+	private readonly _resolveNodeRuntime: () => Promise<INodeTaskRuntime | undefined>;
 	// Should always be set in run
 	private _currentTask!: VerifiedTask;
 	private _isRerun: boolean = false;
@@ -225,6 +228,9 @@ export class TerminalTaskSystem extends Disposable implements ITaskSystem {
 		private _taskLookup: (taskKey: string) => Promise<Task | undefined>,
 	) {
 		super();
+		this._resolveNodeRuntime = async () => CommandsRegistry.getCommand('studio.internalResolveNodeTask')
+			? instantiationService.invokeFunction(accessor => accessor.get(ICommandService).executeCommand<INodeTaskRuntime | undefined>('studio.internalResolveNodeTask'))
+			: undefined;
 
 		this._activeTasks = Object.create(null);
 		this._busyTasks = Object.create(null);
@@ -1402,6 +1408,13 @@ export class TerminalTaskSystem extends Disposable implements ITaskSystem {
 				shellLaunchConfig.env = { ...shellLaunchConfig.env, ...options.env };
 			} else {
 				shellLaunchConfig.env = options.env;
+			}
+		}
+		if (task.command.runtime === RuntimeType.Process) {
+			const runtime = await resolveNodeTaskRuntime(CommandString.value(command), options.env, this._environmentService.remoteAuthority, this._resolveNodeRuntime);
+			if (runtime) {
+				shellLaunchConfig.executable = runtime.nodePath;
+				shellLaunchConfig.env = { ...shellLaunchConfig.env, ...runtime.env };
 			}
 		}
 		shellLaunchConfig.isFeatureTerminal = true;

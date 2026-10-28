@@ -68,6 +68,7 @@
 .studio-start-project-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:auto; padding-top:14px; }
 .studio-start-project { display:grid; grid-template-columns:minmax(0,1fr) 32px; align-items:start; gap:4px; }
 .studio-start-recent [data-action="studio.openRecentProject"] { grid-template-columns:24px minmax(0,1fr); align-items:center; gap:12px; }
+.studio-start-recent-current { display:inline-block; margin-inline-start:8px; padding:0 6px; border:1px solid var(--vscode-contrastBorder,transparent); border-radius:var(--vscode-cornerRadius-small,4px); color:var(--vscode-badge-foreground); background:var(--vscode-badge-background); font-size:11px; line-height:18px; white-space:nowrap; }
 .studio-start-recent [data-action="studio.openRecentProject"] > .codicon { justify-self:center; }
 .studio-start-recent [data-action="studio.removeRecentProject"] { opacity:0; pointer-events:none; }
 .studio-start-recent .studio-start-project:hover > [data-action="studio.removeRecentProject"], .studio-start-recent .studio-start-project:focus-within > [data-action="studio.removeRecentProject"] { opacity:1; pointer-events:auto; }

@@ -22,7 +22,7 @@ export interface StudioStartState {
 	badge?: string;
 	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
 	projects: { uri: string; entryId: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: { status: string; serverVersion?: string; canDownload: boolean; busy?: boolean } }[];
-	recent: { uri: string; label: string; kind: string; lastOpened: number; projectType?: string; version?: string; avatarUrl?: string }[];
+	recent: { uri: string; label: string; kind: string; lastOpened: number; current?: boolean; projectType?: string; version?: string; avatarUrl?: string }[];
 	pending: { id: string; name: string; directory: string; status: string; stage?: string; error?: string }[];
 	environment: { studio: string; vscode: string; node?: string; harness?: string; cli?: string; account: string; server: string; error?: string };
 	summary?: { projects: number; running: number; waiting: number; unavailable: number; generatedAt: number };
@@ -293,6 +293,10 @@ export class StudioStartView extends Disposable {
 					button.firstElementChild?.replaceWith($('img.studio-start-recent-avatar', { src: project.avatarUrl, alt: '' }));
 				}
 				button.title = project.uri;
+				if (project.current) {
+					button.setAttribute('aria-current', 'true');
+					append(button.lastElementChild!, $('span.studio-start-recent-current', undefined, text('currentProject')));
+				}
 				this.button(row, text('removeRecent'), 'close', 'studio.removeRecentProject', project, false, true, store);
 			}
 		});

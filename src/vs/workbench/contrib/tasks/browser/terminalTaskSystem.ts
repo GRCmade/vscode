@@ -56,6 +56,7 @@ import { generateUuid } from '../../../../base/common/uuid.js';
 import { serializeVSCodeOscMessage } from '../../../../platform/terminal/common/xterm/shellIntegrationAddon.js';
 import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
 import { INodeTaskRuntime, resolveNodeTaskRuntime } from './nodeTaskRuntime.js';
+import { IExtensionService } from '../../../services/extensions/common/extensions.js';
 
 interface ITerminalData {
 	terminal: ITerminalInstance;
@@ -228,9 +229,14 @@ export class TerminalTaskSystem extends Disposable implements ITaskSystem {
 		private _taskLookup: (taskKey: string) => Promise<Task | undefined>,
 	) {
 		super();
-		this._resolveNodeRuntime = async () => CommandsRegistry.getCommand('studio.internalResolveNodeTask')
-			? instantiationService.invokeFunction(accessor => accessor.get(ICommandService).executeCommand<INodeTaskRuntime | undefined>('studio.internalResolveNodeTask'))
-			: undefined;
+		this._resolveNodeRuntime = () => instantiationService.invokeFunction(async accessor => {
+			const extensionService = accessor.get(IExtensionService);
+			const commandService = accessor.get(ICommandService);
+			await extensionService.activateByEvent('onCommand:studio.internalResolveNodeTask');
+			return CommandsRegistry.getCommand('studio.internalResolveNodeTask')
+				? commandService.executeCommand<INodeTaskRuntime | undefined>('studio.internalResolveNodeTask')
+				: undefined;
+		});
 
 		this._activeTasks = Object.create(null);
 		this._busyTasks = Object.create(null);

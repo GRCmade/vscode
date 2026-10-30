@@ -573,6 +573,12 @@
 }
 
 .monaco-workbench .part.editor > .content .editor-group-container > .title .editor-layout-actions {
+	display: flex;
+	align-items: center;
+	padding-right: 8px;
+}
+
+.monaco-workbench .part.editor > .content .editor-group-container > .title .editor-layout-actions.hidden {
 	display: none;
 }
 

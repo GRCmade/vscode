@@ -231,6 +231,10 @@
 
 .monaco-workbench .part.editor > .content .editor-group-container > .editor-group-container-toolbar {
 	display: none;
+	position: absolute;
+	top: 0;
+	right: 0;
+	z-index: 2; /* keep empty group actions above the Studio Start watermark */
 	height: 35px;
 }
 

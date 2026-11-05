@@ -42,7 +42,7 @@ MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
 		icon: Codicon.rocket
 	},
 	when: ContextKeyExpr.equals('studio.projectReleaseAvailable', true),
-	group: '0_studio', order: 1
+	group: '0_studio', order: 0.5
 });
 
 

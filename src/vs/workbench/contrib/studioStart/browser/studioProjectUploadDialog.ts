@@ -20,6 +20,8 @@ export interface ProjectUploadDialogRequest {
 	version: string;
 	serverUrl: string;
 	folderPath: string;
+	distributionMode?: string;
+	entryNames?: string;
 	labels: Record<string, string>;
 	options?: { id: string; label: string; checked: boolean }[];
 }
@@ -58,7 +60,7 @@ export class StudioProjectUploadDialog extends Disposable {
 	private render(container: HTMLElement): void {
 		this.form = append(container, $('.studio-upload-form'));
 		const metadata = append(this.form, $('dl.studio-upload-metadata'));
-		for (const [key, value] of [['project', this.request.name], ['version', this.request.version || this.text('unavailable')], ['server', this.request.serverUrl], ['directory', this.request.folderPath]]) {
+		for (const [key, value] of [['project', this.request.name], ['version', this.request.version || this.text('unavailable')], ['server', this.request.serverUrl], ['directory', this.request.folderPath], ...(this.request.distributionMode ? [['distributionMode', this.request.distributionMode], ['entries', this.request.entryNames ?? '']] : [])]) {
 			append(metadata, $('dt', undefined, this.text(key)));
 			append(metadata, $('dd', undefined, value));
 		}

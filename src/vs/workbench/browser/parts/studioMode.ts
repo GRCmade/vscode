@@ -51,6 +51,7 @@ export const studioSteamWorkspaceState = {
 };
 
 export interface StudioModeState {
+	releaseOnly?: boolean;
 	available: boolean;
 	projectUri?: string;
 	ready?: boolean;
@@ -145,6 +146,8 @@ export class StudioModeSwitcher extends Disposable {
 		this._register(toDisposable(() => { observer.disconnect(); getWindow(dock).clearTimeout(timer); slot.remove(); dock.remove(); toolsDock.remove(); }));
 		const update = () => {
 			const { state, steam: active, busy, targetSteam } = studioModeState;
+			mode.hidden = state.releaseOnly === true;
+			slot.hidden = state.releaseOnly === true;
 			toolsDock.hidden = !active;
 			const toolsParent = active ? toolsDock : right;
 			if (toggle.parentElement !== toolsParent) { toolsParent.append(toggle); }

@@ -35,6 +35,16 @@ MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
 	group: '0_studio',
 	order: 0
 });
+MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
+	command: {
+		id: 'studio.openProjectRelease',
+		get title() { return MenuRegistry.getCommand('studio.openProjectRelease')?.title ?? localize('studio.runProjectRelease', "Run (Release Mode)"); },
+		icon: Codicon.rocket
+	},
+	when: ContextKeyExpr.equals('studio.projectReleaseAvailable', true),
+	group: '0_studio', order: 1
+});
+
 
 MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
 	command: {

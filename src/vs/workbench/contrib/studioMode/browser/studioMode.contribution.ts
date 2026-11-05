@@ -158,9 +158,9 @@ export class StudioModeContribution extends Disposable {
 		}));
 		this._register(studioModeState.onDidChangeState(state => {
 			toolsTitle.value = state.labels.tools ?? toolsTitle.original;
-			if (!this.initialized || !state.available) {
+			if (!this.initialized || !state.available || state.releaseOnly && !this.requested) {
 				this.initialized = true;
-				void this.request(this.requested && state.available).catch(error => notifications.error(error));
+				void this.request((this.requested || !!state.releaseOnly) && state.available).catch(error => notifications.error(error));
 			}
 		}));
 		if (studioModeState.state.labels.mode) {
@@ -170,7 +170,7 @@ export class StudioModeContribution extends Disposable {
 	}
 
 	private request(steam: boolean): Promise<void> {
-		this.requested = steam && studioModeState.state.available;
+		this.requested = (steam || !!studioModeState.state.releaseOnly) && studioModeState.state.available;
 		const revision = ++this.revision;
 		for (const animation of this.animations) { animation.cancel(); }
 		if (!this.requested && studioModeState.busy) {
@@ -219,6 +219,7 @@ export class StudioModeContribution extends Disposable {
 					prepared ??= await prepare();
 					if (revision !== this.revision || !studioModeState.state.available || this._store.isDisposed) { return; }
 					if (!prepared) {
+						if (studioModeState.state.releaseOnly) { await this.rememberMode(true); return; }
 						this.requested = false;
 						if (this.snapshot) { await this.restoreIde(); }
 						await this.rememberMode(false);
@@ -232,6 +233,7 @@ export class StudioModeContribution extends Disposable {
 				await this.rememberMode(next);
 			} catch (error) {
 				if (this._store.isDisposed) { return; }
+				if (studioModeState.state.releaseOnly) { await this.rememberMode(true); throw error; }
 				if (revision === this.revision) { this.requested = false; }
 				await this.restoreIde();
 				await this.rememberMode(false);

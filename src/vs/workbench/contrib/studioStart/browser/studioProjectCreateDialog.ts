@@ -92,7 +92,7 @@ export class StudioProjectCreateDialog extends Disposable {
 		const templates = append(this.localFields, $('fieldset.studio-create-templates'));
 		append(templates, $('legend', undefined, this.text('template')));
 		const options = append(templates, $('.studio-create-options'));
-		for (const type of ['workflow', 'conversation', 'kanban', 'link']) {
+		for (const type of ['workflow', 'bot', 'kanban', 'link']) {
 			const label = append(types, $('label.studio-create-type'));
 			const radio = append(label, $<HTMLInputElement>('input', { type: 'radio', name: 'projectType', value: type }));
 			radio.checked = this.projectType === type;

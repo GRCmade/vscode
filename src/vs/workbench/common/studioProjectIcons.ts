@@ -7,7 +7,7 @@
 export function studioProjectIcon(projectType: string | undefined): string | undefined {
 	switch (projectType) {
 		case 'workflow': return 'run-all';
-		case 'conversation': return 'comment-discussion';
+		case 'bot': return 'hubot';
 		case 'kanban': return 'layout';
 		default: return undefined;
 	}

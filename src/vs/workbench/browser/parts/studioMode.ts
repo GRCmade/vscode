@@ -51,11 +51,16 @@ export const studioSteamWorkspaceState = {
 };
 
 export interface StudioModeState {
+	project?: { name: string; avatarUrl: string };
 	releaseOnly?: boolean;
 	available: boolean;
 	projectUri?: string;
 	ready?: boolean;
 	labels: Record<string, string>;
+}
+
+export function isStudioSteamToolAvailable(id: string | undefined): boolean {
+	return !studioModeState.state.releaseOnly || id !== 'editor' && id !== 'assistant';
 }
 
 const stateChange = new Emitter<StudioModeState>();
@@ -98,6 +103,9 @@ export class StudioModeSwitcher extends Disposable {
 		append(mode, $('span.studio-mode-label.studio-mode-label-steam', { 'aria-hidden': 'true' }, 'Steam'));
 		const thumb = append(mode, $('span.studio-mode-thumb', { 'aria-hidden': 'true' }));
 		append(thumb, $('span.codicon.codicon-code'));
+		const identity = append(element, $('span.studio-release-project', { hidden: true }));
+		const logo = append(identity, $('img.studio-release-project-logo', { alt: '' })) as HTMLImageElement;
+		const projectName = append(identity, $('span.studio-release-project-name'));
 		const modeHover = this._register(hoverService.setupManagedHover(getDefaultHoverDelegate('mouse'), mode, ''));
 		const toggle = append(right, $('button.studio-steam-toggle-tools', { type: 'button', 'aria-controls': Parts.AUXILIARYBAR_PART })) as HTMLButtonElement;
 		const toggleIcon = append(toggle, $('span.codicon', { 'aria-hidden': 'true' }));
@@ -128,6 +136,7 @@ export class StudioModeSwitcher extends Disposable {
 			const visible = layout.isVisible(Parts.AUXILIARYBAR_PART);
 			studioWindowChrome.active = studioModeState.steam;
 			studioWindowChrome.left = dock.offsetWidth;
+			slot.style.width = studioModeState.state.releaseOnly ? `${element.offsetWidth}px` : '';
 			studioWindowChrome.right = visible ? 0 : toolsDock.offsetWidth;
 			const { revision, ...geometry } = studioWindowChrome;
 			const serialized = JSON.stringify(geometry);
@@ -147,7 +156,13 @@ export class StudioModeSwitcher extends Disposable {
 		const update = () => {
 			const { state, steam: active, busy, targetSteam } = studioModeState;
 			mode.hidden = state.releaseOnly === true;
-			slot.hidden = state.releaseOnly === true;
+			identity.hidden = !state.releaseOnly;
+			element.classList.toggle('studio-release-caption', !!state.releaseOnly);
+			projectName.textContent = state.project?.name ?? '';
+			identity.title = state.project?.name ?? '';
+			logo.hidden = !state.project?.avatarUrl;
+			if (state.project?.avatarUrl) { if (logo.getAttribute('src') !== state.project.avatarUrl) logo.src = state.project.avatarUrl; }
+			else { logo.removeAttribute('src'); }
 			toolsDock.hidden = !active;
 			const toolsParent = active ? toolsDock : right;
 			if (toggle.parentElement !== toolsParent) { toolsParent.append(toggle); }
@@ -156,7 +171,7 @@ export class StudioModeSwitcher extends Disposable {
 			const dockParent = title ?? layout.mainContainer;
 			if (toolsDock.parentElement !== dockParent) { dockParent.append(toolsDock); }
 			toolsDock.classList.toggle('tools-hidden', !toolsVisible);
-			element.setAttribute('aria-label', state.labels.mode ?? 'Workspace Mode');
+			element.setAttribute('aria-label', state.releaseOnly ? state.project?.name ?? '' : state.labels.mode ?? 'Workspace Mode');
 			element.setAttribute('aria-busy', String(busy));
 			element.classList.toggle('steam', active);
 			const leavingSteam = busy ? targetSteam : active;
@@ -350,7 +365,7 @@ export class StudioSteamTools extends Disposable {
 		append(content, $('h2', undefined, labels.tools ?? 'Open Tools'));
 		append(content, $('p', undefined, labels.toolsHint ?? ''));
 		const grid = append(content, $('.studio-steam-tools-grid'));
-		for (const { id, icon } of studioSteamToolDefinitions) {
+		for (const { id, icon } of studioSteamToolDefinitions.filter(tool => isStudioSteamToolAvailable(tool.id))) {
 			const button = append(grid, $('button.studio-steam-tool', { type: 'button', 'data-tool': id, title: labels[`${id}Hint`] ?? '' }));
 			append(button, $(`span.codicon.codicon-${icon}`, { 'aria-hidden': 'true' }));
 			append(button, $('span.studio-steam-tool-label', undefined, labels[id] ?? id));

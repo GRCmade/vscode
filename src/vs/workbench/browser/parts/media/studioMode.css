@@ -382,3 +382,24 @@
 	-webkit-app-region: drag;
 }
 .monaco-workbench:not(.web) .studio-project-drag-region { pointer-events: auto; }
+
+.monaco-workbench .studio-mode-switcher.studio-release-caption {
+	width: auto;
+	max-width: min(320px, calc(100vw - 160px));
+	padding: 0 6px;
+	border-color: transparent;
+	background: transparent;
+	color: var(--vscode-titleBar-activeForeground, var(--vscode-foreground));
+}
+.monaco-workbench .studio-release-project {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	height: 100%;
+	min-width: 0;
+}
+.monaco-workbench .studio-release-project[hidden] { display: none; }
+.monaco-workbench .studio-release-project-logo { width: 24px; height: 24px; object-fit: contain; flex: 0 0 auto; }
+.monaco-workbench .studio-release-project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }
+
+.monaco-workbench .studio-mode-switcher.studio-release-caption .studio-mode-toggle { display: none; }

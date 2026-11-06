@@ -17,7 +17,7 @@ import { IInstantiationService } from '../../../../platform/instantiation/common
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
-import { StudioModeLoading, StudioSteamTools, studioModeState, studioWindowChrome, studioSteamToolDefinitions } from '../../../browser/parts/studioMode.js';
+import { StudioModeLoading, StudioSteamTools, studioModeState, studioWindowChrome, studioSteamToolDefinitions, isStudioSteamToolAvailable } from '../../../browser/parts/studioMode.js';
 import { ViewPane } from '../../../browser/parts/views/viewPane.js';
 import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
 import { WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
@@ -323,7 +323,7 @@ export class StudioModeContribution extends Disposable {
 
 	private async openTool(id: string): Promise<void> {
 		const tool = studioSteamToolDefinitions.find(tool => tool.id === id);
-		if (!this.steam || !tool) { return; }
+		if (!this.steam || !tool || !isStudioSteamToolAvailable(id)) { return; }
 		if ('command' in tool) { await this.workspace.openTool(id); }
 		else { await this.sequencer.queue(async () => { if (this.steam) { await this.workspace.openTool(id); } }); }
 	}

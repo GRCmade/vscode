@@ -96,6 +96,15 @@
 	margin-right: var(--vscode-spacing-size80);
 	padding: var(--vscode-spacing-size60);
 }
+.monaco-workbench .studio-steam-toggle-tools > .codicon {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--vscode-codiconFontSize);
+	height: var(--vscode-codiconFontSize);
+	font-size: var(--vscode-codiconFontSize);
+	line-height: 1;
+}
 .monaco-workbench.studio-steam-mode :is(.studio-steam-tabs, .studio-steam-toggle-tools) .codicon {
 	font-size: var(--vscode-codiconFontSize-compact);
 }
@@ -385,21 +394,22 @@
 
 .monaco-workbench .studio-mode-switcher.studio-release-caption {
 	width: auto;
+	height: var(--vscode-spacing-size280);
 	max-width: min(320px, calc(100vw - 160px));
-	padding: 0 6px;
-	border-color: transparent;
+	padding: 0;
+	border: 0;
 	background: transparent;
 	color: var(--vscode-titleBar-activeForeground, var(--vscode-foreground));
 }
 .monaco-workbench .studio-release-project {
 	display: flex;
 	align-items: center;
-	gap: 8px;
+	gap: var(--vscode-spacing-size80);
 	height: 100%;
 	min-width: 0;
 }
 .monaco-workbench .studio-release-project[hidden] { display: none; }
-.monaco-workbench .studio-release-project-logo { width: 24px; height: 24px; object-fit: contain; flex: 0 0 auto; }
-.monaco-workbench .studio-release-project-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }
+.monaco-workbench .studio-release-project-logo { width: var(--vscode-spacing-size200); height: var(--vscode-spacing-size200); object-fit: contain; flex: 0 0 auto; }
+.monaco-workbench .studio-release-project-name { font-size: var(--vscode-fontSize-body1); line-height: var(--vscode-spacing-size200); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }
 
 .monaco-workbench .studio-mode-switcher.studio-release-caption .studio-mode-toggle { display: none; }

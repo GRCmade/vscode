@@ -304,7 +304,9 @@ export class StudioModeContribution extends Disposable {
 		for (const part of [Parts.ACTIVITYBAR_PART, Parts.SIDEBAR_PART, Parts.PANEL_PART]) { this.layout.setPartHidden(true, part); }
 		this.layout.setPartHidden(false, Parts.EDITOR_PART);
 		await this.workspace.activate(projectUri);
-		this.restoreToolsWidth();
+		// Restoring a tool tab can reveal the bar. Start focused on the project;
+		// explicit tool commands reveal it and restore its independent width.
+		this.layout.setPartHidden(true, Parts.AUXILIARYBAR_PART);
 	}
 
 	private restoreToolsWidth(): void {

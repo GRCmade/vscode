@@ -105,7 +105,7 @@
 	font-size: var(--vscode-codiconFontSize);
 	line-height: 1;
 }
-.monaco-workbench.studio-steam-mode :is(.studio-steam-tabs, .studio-steam-toggle-tools) .codicon {
+.monaco-workbench.studio-steam-mode .studio-steam-tabs .codicon {
 	font-size: var(--vscode-codiconFontSize-compact);
 }
 .monaco-workbench.studio-steam-mode .titlebar-right > .window-controls-container { order: 2; }

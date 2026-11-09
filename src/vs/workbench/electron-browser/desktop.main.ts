@@ -7,6 +7,9 @@ import { localize } from '../../nls.js';
 import product from '../../platform/product/common/product.js';
 import { INativeWindowConfiguration, IWindowsConfiguration } from '../../platform/window/common/window.js';
 import { Workbench } from '../browser/workbench.js';
+import { initializeStudioReleaseProject } from '../browser/parts/studioMode.js';
+import { parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
+import { joinPath } from '../../base/common/resources.js';
 import { NativeWindow } from './window.js';
 import { setFullscreen } from '../../base/browser/browser.js';
 import { domContentLoaded } from '../../base/browser/dom.js';
@@ -127,10 +130,20 @@ export class DesktopMain extends Disposable {
 		// zoom level that is not derived from settings.
 		// (fixes https://github.com/microsoft/vscode/issues/187982)
 		this.applyWindowZoomLevel(services.configurationService);
+		let release = this.configuration.studioReleaseProject;
+		if (!release && isSingleFolderWorkspaceIdentifier(this.configuration.workspace)) {
+			const folder = this.configuration.workspace.uri;
+			const fileService = services.serviceCollection.get(IFileService) as IFileService;
+			try {
+				const [project, manifest] = await Promise.all(['steamharness.json', 'steamharness.release.json'].map(name => fileService.readFile(joinPath(folder, name), { limits: { size: 2_000_000 } })));
+				release = parseStudioReleaseProject(folder.toString(), project.value.toString(), manifest.value.toString());
+			} catch { /* Ordinary folders have no release identity. */ }
+		}
+		initializeStudioReleaseProject(release);
 
 		// Create Workbench
 		const workbench = new Workbench(mainWindow.document.body, {
-			extraClasses: this.getExtraClasses(),
+			extraClasses: [...this.getExtraClasses(), ...(release ? ['studio-steam-mode'] : [])],
 			resetLayout: this.configuration['disable-layout-restore'] === true
 		}, services.serviceCollection, services.logService);
 

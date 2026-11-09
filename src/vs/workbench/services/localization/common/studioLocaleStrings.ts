@@ -7,6 +7,9 @@ import { language } from '../../../../base/common/platform.js';
 import { localize } from '../../../../nls.js';
 
 const defaults = {
+	loadingProject: localize('studio.release.loading', "Loading project..."),
+	showTools: localize('studio.release.showTools', "Show Tools"),
+	hideTools: localize('studio.release.hideTools', "Hide Tools"),
 	writeFailed: localize('studio.locale.writeFailed', "Unable to save display language."),
 	unsupported: localize('studio.locale.unsupported', "Unsupported display language."),
 	unavailable: localize('studio.locale.unavailable', "The selected language pack is unavailable. Please try again."),
@@ -18,6 +21,9 @@ const defaults = {
 
 // Studio-specific messages are not included in upstream language packs.
 const chinese: typeof defaults = {
+	loadingProject: "正在加载项目…",
+	showTools: "显示工具区",
+	hideTools: "隐藏工具区",
 	writeFailed: "无法保存显示语言。",
 	unsupported: "不支持此显示语言。",
 	unavailable: "所选语言包暂不可用，请重试。",

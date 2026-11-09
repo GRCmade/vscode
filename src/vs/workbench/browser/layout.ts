@@ -52,6 +52,7 @@ import { ITelemetryService } from '../../platform/telemetry/common/telemetry.js'
 import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
 import { CodeWindow, mainWindow } from '../../base/browser/window.js';
 import { localize } from '../../nls.js';
+import { studioModeState } from './parts/studioMode.js';
 
 //#region Layout Implementation
 
@@ -745,6 +746,14 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 			mainContainerDimension: this._mainContainerDimension,
 			resetLayout: Boolean(this.layoutOptions?.resetLayout)
 		});
+		if (studioModeState.state.releaseOnly) {
+			this.windowChromeHidden = true;
+			for (const key of [LayoutStateKeys.ACTIVITYBAR_HIDDEN, LayoutStateKeys.SIDEBAR_HIDDEN, LayoutStateKeys.PANEL_HIDDEN, LayoutStateKeys.AUXILIARYBAR_HIDDEN, LayoutStateKeys.STATUSBAR_HIDDEN]) {
+				this.stateModel.setRuntimeValue(key, true);
+			}
+			this.stateModel.setRuntimeValue(LayoutStateKeys.EDITOR_HIDDEN, false);
+			this.stateModel.setRuntimeValue(LayoutStateKeys.AUXILIARYBAR_WAS_LAST_MAXIMIZED, false);
+		}
 
 		this._register(this.stateModel.onDidChangeState(change => {
 			if (change.key === LayoutStateKeys.ACTIVITYBAR_HIDDEN) {
@@ -777,14 +786,14 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 		}
 		const initialLayoutState: ILayoutInitializationState = {
 			layout: {
-				editors: initialEditorsState?.layout
+				editors: studioModeState.state.releaseOnly ? { orientation: GroupOrientation.HORIZONTAL, groups: [{}] } : initialEditorsState?.layout
 			},
 			editor: {
 				restoreEditors: this.shouldRestoreEditors(this.contextService, initialEditorsState),
 				editorsToOpen: this.resolveEditorsToOpen(fileService, initialEditorsState),
 			},
 			views: {
-				defaults: this.getDefaultLayoutViews(this.environmentService, this.storageService),
+				defaults: studioModeState.state.releaseOnly ? undefined : this.getDefaultLayoutViews(this.environmentService, this.storageService),
 				containerToRestore: {}
 			}
 		};

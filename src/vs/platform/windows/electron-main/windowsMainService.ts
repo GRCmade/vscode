@@ -60,6 +60,7 @@ import { ICSSDevelopmentService } from '../../cssDev/node/cssDevService.js';
 import { ResourceSet } from '../../../base/common/map.js';
 import { VSBuffer } from '../../../base/common/buffer.js';
 import { resolveAgentsWindowFolder } from './agentsWindow.js';
+import { readStudioReleaseProject } from '../node/studioReleaseProject.js';
 
 //#region Helper Interfaces
 
@@ -1567,6 +1568,8 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 
 			remoteAuthority: options.remoteAuthority,
 			workspace: options.workspace,
+			studioReleaseProject: await readStudioReleaseProject(isSingleFolderWorkspaceIdentifier(options.workspace) ? options.workspace.uri : undefined),
+			studioReleasePending: !!options.remoteAuthority && isSingleFolderWorkspaceIdentifier(options.workspace),
 			userEnv: { ...this.initialUserEnv, ...options.userEnv },
 
 			nls: {

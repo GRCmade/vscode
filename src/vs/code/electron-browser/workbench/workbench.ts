@@ -45,9 +45,9 @@ import { getPartsSplashColors, getPartsSplashLayoutMetrics } from './partsSplash
 			}
 		}
 
-		// developing an extension -> ignore stored layouts
-		if (data && configuration.extensionDevelopmentPath) {
-			data.layoutInfo = undefined;
+		// A release window must not paint an IDE-shaped splash before its application UI.
+		if (data && (configuration.extensionDevelopmentPath || configuration.studioReleaseProject || configuration.studioReleasePending)) {
+			data = { ...data, layoutInfo: undefined };
 		}
 
 		// minimal color configuration (works with or without persisted data)

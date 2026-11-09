@@ -383,15 +383,18 @@ export class StudioSteamWorkspace extends Disposable {
 
 	private matchesProject(editor: EditorInput): boolean {
 		if (editor.isDisposed() || !(editor instanceof WebviewInput) || editor.webview.providedViewType !== 'studio.project' && editor.webview.providedViewType !== 'studio.projectTool') { return false; }
-		if (this.project && !this.project.isDisposed()) { return editor === this.project; }
-		try { const uri = JSON.parse(editor.webview.state ?? '{}').projectUri; return uri ? uri === this.projectUri : editor.webview.providedViewType === 'studio.project'; }
+		// Primary panels can be recreated while an old serialized input is still alive.
+		// Their identity is the project root, never the first restored input object.
+		if (editor.webview.providedViewType === 'studio.projectTool') { return editor === this.project; }
+		try { const uri = JSON.parse(editor.webview.state ?? '{}').projectUri; return !uri || uri === (this.projectUri ?? studioModeState.state.projectUri); }
 		catch { return false; }
 	}
 
 	private target(editor: EditorInput | IUntypedEditorInput, preferred: PreferredGroup | undefined): IEditorGroup | undefined {
-		if (!this.enabled) { return undefined; }
+		if (!this.enabled && !studioModeState.state.releaseOnly) { return undefined; }
 		const explicit = typeof preferred === 'number' && preferred >= 0 ? this.groups.getGroup(preferred) : typeof preferred === 'object' ? preferred : undefined;
-		if (editor instanceof EditorInput && this.matchesProject(editor)) { this.setProject(editor); return this.projectGroup; }
+		if (editor instanceof EditorInput && this.matchesProject(editor)) { this.setProject(editor); return this.projectGroup ?? this.groups.mainPart.getGroups(GroupsOrder.GRID_APPEARANCE)[0]; }
+		if (!this.enabled) { return undefined; }
 		if (explicit && this.groups.getPart(explicit).windowId !== this.groups.mainPart.windowId) { return undefined; }
 		const category = this.editorCategory(editor);
 		const part = this.ensurePart(category);

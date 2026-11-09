@@ -295,7 +295,7 @@ export class StudioStartView extends Disposable {
 				button.title = project.uri;
 				if (project.current) {
 					button.setAttribute('aria-current', 'true');
-					append(button.lastElementChild!, $('span.studio-start-recent-current', undefined, text('currentProject')));
+					append(button.lastElementChild as HTMLElement, $('span.studio-start-recent-current', undefined, text('currentProject')));
 				}
 				this.button(row, text('removeRecent'), 'close', 'studio.removeRecentProject', project, false, true, store);
 			}

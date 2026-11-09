@@ -17,10 +17,13 @@ import { IWorkbenchLayoutService, Parts } from '../../services/layout/browser/la
 import { onDidChangeFullscreen, onDidChangeZoomLevel } from '../../../base/browser/browser.js';
 import { getIconRegistry } from '../../../platform/theme/common/iconRegistry.js';
 import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
+import { IStudioReleaseProject } from '../../../platform/window/common/studioReleaseProject.js';
+import { studioLocaleStrings } from '../../services/localization/common/studioLocaleStrings.js';
 
 /** Space reserved by the embedded project for the retained native workbench controls. */
 export const studioWindowChrome = { active: false, projectUri: undefined as string | undefined, height: 52, left: 0, right: 0, revision: 0 };
 CommandsRegistry.registerCommand('studio.internalGetWindowChrome', () => ({ ...studioWindowChrome }));
+CommandsRegistry.registerCommand('studio.internalIsReleaseWindow', () => !!studioModeState.state.releaseOnly);
 
 export const studioSteamToolDefinitions = [
 	{ id: 'editor', icon: 'code', editor: true },
@@ -66,6 +69,7 @@ export function isStudioSteamToolAvailable(id: string | undefined): boolean {
 const stateChange = new Emitter<StudioModeState>();
 const modeChange = new Emitter<void>();
 export const studioModeState = {
+	releaseProject: undefined as IStudioReleaseProject | undefined,
 	state: { available: false, labels: {} } as StudioModeState,
 	steam: false,
 	busy: false,
@@ -80,7 +84,23 @@ export const studioModeState = {
 	}
 };
 
+/** Establish the release shell before layout, title controls, or editor restoration. */
+export function initializeStudioReleaseProject(project: IStudioReleaseProject | undefined): void {
+	if (!project) { return; }
+	studioModeState.releaseProject = project;
+	studioModeState.state = { available: false, releaseOnly: true, projectUri: project.projectUri, project,
+		labels: { loading: studioLocaleStrings.loadingProject, showTools: studioLocaleStrings.showTools, hideTools: studioLocaleStrings.hideTools } };
+	studioWindowChrome.projectUri = project.projectUri;
+	studioModeState.setMode(true, true, true);
+}
+
 CommandsRegistry.registerCommand('studio.internalUpdateModeState', (_accessor, state: StudioModeState) => {
+	const release = studioModeState.releaseProject;
+	if (release) {
+		const primary = state.projectUri === release.projectUri;
+		state = { ...state, available: primary && state.available, ready: primary && state.ready, releaseOnly: true, projectUri: release.projectUri,
+			project: primary && state.project ? state.project : release, labels: { ...studioModeState.state.labels, ...state.labels } };
+	}
 	studioModeState.state = state;
 	stateChange.fire(state);
 });

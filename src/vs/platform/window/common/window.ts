@@ -513,6 +513,8 @@ export interface IOSConfiguration {
 }
 
 export interface INativeWindowConfiguration extends IWindowConfiguration, NativeParsedArgs, ISandboxConfiguration {
+	studioReleaseProject?: import('./studioReleaseProject.js').IStudioReleaseProject;
+	studioReleasePending?: boolean;
 	mainPid: number;
 	handle?: VSBuffer;
 

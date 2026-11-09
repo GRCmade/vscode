@@ -113,8 +113,14 @@ export class StudioModeContribution extends Disposable {
 		this.loading = this._register(new StudioModeLoading(layout.mainContainer, layout.getContainer(getWindow(layout.mainContainer), Parts.EDITOR_PART)));
 		this.workspace = this._register(instantiation.createInstance(StudioSteamWorkspace, layout.getContainer(getWindow(layout.mainContainer), Parts.AUXILIARYBAR_PART)!));
 		toolsTitle.value = studioModeState.state.labels.tools ?? toolsTitle.original;
-		this.snapshot = storage.getObject<IdeLayout>(SNAPSHOT_KEY, StorageScope.WORKSPACE);
-		this.requested = storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
+		this.snapshot = studioModeState.state.releaseOnly ? undefined : storage.getObject<IdeLayout>(SNAPSHOT_KEY, StorageScope.WORKSPACE);
+		this.requested = !!studioModeState.state.releaseOnly || storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
+		if (studioModeState.state.releaseOnly) {
+			this.contextKeys.createKey<boolean>('studio.steamMode', false).set(true);
+			this.layout.mainContainer.classList.add('studio-steam-mode');
+			this.editorOptions.value = this.groups.mainPart.enforcePartOptions({ showTabs: 'none', editorActionsLocation: 'hidden' });
+			this.loading.show();
+		}
 		this._register(layout.onDidResizeParts(() => {
 			if (this.steam && layout.isVisible(Parts.AUXILIARYBAR_PART) && !layout.isAuxiliaryBarMaximized()) {
 				const width = layout.getSize(Parts.AUXILIARYBAR_PART).width;
@@ -158,6 +164,7 @@ export class StudioModeContribution extends Disposable {
 		}));
 		this._register(studioModeState.onDidChangeState(state => {
 			toolsTitle.value = state.labels.tools ?? toolsTitle.original;
+			if (state.releaseOnly && !state.available) { return; }
 			if (!this.initialized || !state.available || state.releaseOnly && !this.requested) {
 				this.initialized = true;
 				void this.request((this.requested || !!state.releaseOnly) && state.available).catch(error => notifications.error(error));
@@ -187,7 +194,7 @@ export class StudioModeContribution extends Disposable {
 				}
 				return;
 			}
-			studioModeState.setMode(this.steam, true, next);
+			studioModeState.setMode(this.steam || !!studioModeState.state.releaseOnly, true, next);
 			try {
 				if (next) {
 					let prepared: boolean | undefined;
@@ -202,7 +209,7 @@ export class StudioModeContribution extends Disposable {
 						await this.transition(true, revision, async () => {
 							const group = this.groups.mainPart.activeGroup;
 							if (!this.snapshot && group.activeEditor) { this.ideEditor = { group, editor: group.activeEditor }; }
-							this.captureIde();
+							if (!studioModeState.state.releaseOnly) { this.captureIde(); }
 							this.loading.show();
 							await this.enterSteam(projectUri);
 							// Reveal retained content before the incoming animation, without a loading flash.
@@ -376,7 +383,7 @@ export class StudioModeContribution extends Disposable {
 		const win = getWindow(this.layout.mainContainer);
 		const isCurrent = () => revision === this.revision && !this._store.isDisposed;
 		if (!isCurrent()) { return; }
-		if (win.matchMedia('(prefers-reduced-motion: reduce)').matches || this.layout.mainContainer.classList.contains('monaco-reduce-motion')) { await change(); return; }
+		if (studioModeState.state.releaseOnly || win.matchMedia('(prefers-reduced-motion: reduce)').matches || this.layout.mainContainer.classList.contains('monaco-reduce-motion')) { await change(); return; }
 		const effects: Animation[] = [];
 		const clearEffects = () => {
 			for (const animation of effects.splice(0)) { this.animations.delete(animation); animation.cancel(); }
@@ -428,4 +435,4 @@ export class StudioModeContribution extends Disposable {
 	}
 }
 
-registerWorkbenchContribution2(StudioModeContribution.ID, StudioModeContribution, WorkbenchPhase.AfterRestored);
+registerWorkbenchContribution2(StudioModeContribution.ID, StudioModeContribution, WorkbenchPhase.BlockRestore);

@@ -136,7 +136,7 @@ export class DesktopMain extends Disposable {
 			const fileService = services.serviceCollection.get(IFileService) as IFileService;
 			try {
 				const [project, manifest] = await Promise.all(['steamharness.json', 'steamharness.release.json'].map(name => fileService.readFile(joinPath(folder, name), { limits: { size: 2_000_000 } })));
-				release = parseStudioReleaseProject(folder.toString(), project.value.toString(), manifest.value.toString());
+				release = parseStudioReleaseProject(folder.toString(), project.value.toString(), manifest.value.toString(), this.configuration.nls.language);
 			} catch { /* Ordinary folders have no release identity. */ }
 		}
 		initializeStudioReleaseProject(release);

@@ -10,7 +10,7 @@ export interface IStudioReleaseProject {
 }
 
 /** Read only the release identity needed before the workbench restores any views. */
-export function parseStudioReleaseProject(projectUri: string, projectJson: string, releaseJson: string): IStudioReleaseProject | undefined {
+export function parseStudioReleaseProject(projectUri: string, projectJson: string, releaseJson: string, locale = 'en'): IStudioReleaseProject | undefined {
 	try {
 		const project = JSON.parse(projectJson);
 		const release = JSON.parse(releaseJson);
@@ -22,6 +22,10 @@ export function parseStudioReleaseProject(projectUri: string, projectJson: strin
 			return undefined;
 		}
 		const avatar = project.projectCard?.avatarUrl;
-		return { projectUri, name: project.name, avatarUrl: typeof avatar === 'string' && /^data:image\/(?:png|jpeg|webp|gif|svg\+xml)[;,]/i.test(avatar) ? avatar : '' };
+		const language = locale.toLowerCase().replace(/_/g, '-');
+		const names = Object.entries(project.projectInfo?.localizedNames ?? {});
+		const localized = names.find(([key]) => key.toLowerCase() === language)?.[1] ?? names.find(([key]) => key.toLowerCase() === language.split('-')[0])?.[1] ?? names.find(([key]) => key.toLowerCase() === 'en')?.[1];
+		return { projectUri, name: typeof localized === 'string' && localized.trim() ? localized : project.name,
+			avatarUrl: typeof avatar === 'string' && /^data:image\/(?:png|jpeg|webp|gif|svg\+xml)[;,]/i.test(avatar) ? avatar : '' };
 	} catch { return undefined; }
 }

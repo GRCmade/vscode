@@ -1568,7 +1568,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 
 			remoteAuthority: options.remoteAuthority,
 			workspace: options.workspace,
-			studioReleaseProject: await readStudioReleaseProject(isSingleFolderWorkspaceIdentifier(options.workspace) ? options.workspace.uri : undefined),
+			studioReleaseProject: await readStudioReleaseProject(isSingleFolderWorkspaceIdentifier(options.workspace) ? options.workspace.uri : undefined, getNLSLanguage()),
 			studioReleasePending: !!options.remoteAuthority && isSingleFolderWorkspaceIdentifier(options.workspace),
 			userEnv: { ...this.initialUserEnv, ...options.userEnv },
 

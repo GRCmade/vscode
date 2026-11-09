@@ -85,6 +85,12 @@
         },
         "publisherDisplayName": "Microsoft"
       }
+    },
+    {
+      "name": "yy0931.vscode-sqlite3-editor",
+      "version": "1.0.214",
+      "sha256": "9711fe8fcdd1d996025ab101d1cef40d1482327e621f55f3fef5cb641138d848",
+      "vsix": "../../.studio/yy0931.vscode-sqlite3-editor-1.0.214.vsix"
     }
   ],
   "defaultChatAgent": {

@@ -94,3 +94,7 @@
   .studio-start-badge { display:none; }
 }
 @container (max-width:360px) { .studio-start h1 { font-size:20px; } }
+
+.studio-start-recommendation-description { color:var(--vscode-descriptionForeground); font-size:12px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; user-select:text; }
+.studio-start-recommendation-links { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:8px; }
+.studio-start-recommendation-message { grid-column:1 / -1; }

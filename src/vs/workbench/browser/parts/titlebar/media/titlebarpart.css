@@ -553,3 +553,19 @@
 	width: 12px;
 	height: 12px;
 }
+
+/* Keep the project run available when the native window leaves little title-bar space. */
+.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar > .titlebar-right > .center-adjacent-toolbar-container .action-item:not(.studio-titlebar-primary-run),
+.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar > .titlebar-right > .update-toolbar-container {
+	display: none;
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar > .titlebar-left > .window-appicon,
+.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar:not(.studio-auxiliary-titlebar) > .titlebar-left > .menubar,
+.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar:not(.studio-auxiliary-titlebar) > .titlebar-right > .action-toolbar-container {
+	display: none;
+}
+
+.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar.studio-auxiliary-titlebar > .titlebar-center > .window-title > .command-center > .monaco-toolbar > .monaco-action-bar > .actions-container > .action-item:not(.command-center-center) {
+	display: none;
+}

@@ -72,6 +72,7 @@ class StudioProjectRunActionViewItem extends MenuEntryActionViewItem {
 		this.options.label = false;
 		super.render(container);
 		container.classList.add('studio-workflow-run');
+		container.classList.toggle('studio-titlebar-primary-run', this.action.id === 'studio.openProject');
 	}
 }
 
@@ -313,6 +314,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 
 	private readonly isAuxiliary: boolean;
 	private isCompact = false;
+	private isStudioTitlebarNarrow = false;
 
 	private readonly isCompactContextKey: IContextKey<boolean>;
 
@@ -487,6 +489,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 	protected override createContentArea(parent: HTMLElement): HTMLElement {
 		this.element = parent;
 		this.rootContainer = append(parent, $('.titlebar-container'));
+		this.rootContainer.classList.toggle('studio-auxiliary-titlebar', this.isAuxiliary);
 		// Measure in the render phase so DOM reads do not force layout during startup.
 		this.titleBarToolBarOverflowScheduler = this._register(new AnimationFrameScheduler(this.rootContainer, () => this.updateTitleBarToolBarOverflow()));
 
@@ -798,6 +801,12 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 				actions.primary.push(GLOBAL_ACTIVITY_TITLE_ACTION);
 			}
 
+			if (this.isStudioTitlebarNarrow) {
+				const alwaysOnTop = new Set(['workbench.action.enableWindowAlwaysOnTop', 'workbench.action.disableWindowAlwaysOnTop']);
+				actions.primary.splice(0, actions.primary.length, ...actions.primary.filter(action => this.isAuxiliary && alwaysOnTop.has(action.id)));
+				actions.secondary.length = 0;
+			}
+
 			this.actionToolBar.setActions(prepareActions(actions.primary), prepareActions(actions.secondary));
 		};
 
@@ -998,6 +1007,17 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		}
 
 		const zoomFactor = getZoomFactor(getWindow(this.element));
+		const narrow = dimension.width <= 960;
+		if (this.isStudioTitlebarNarrow !== narrow) {
+			this.isStudioTitlebarNarrow = narrow;
+			this.rootContainer.classList.toggle('studio-narrow-titlebar', narrow);
+			if (!this.isAuxiliary) {
+				this.layoutService.mainContainer.classList.toggle('studio-narrow-titlebar', narrow);
+			}
+			if (this.actionToolBar) {
+				this.createActionToolBarMenus();
+			}
+		}
 
 		this.element.style.setProperty('--zoom-factor', zoomFactor.toString());
 		this.rootContainer.classList.toggle('counter-zoom', this.preventZoom);
@@ -1007,7 +1027,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 			this.customMenubar.value.layout(menubarDimension);
 		}
 
-		const hasCenter = this.isCommandCenterVisible || this.title.textContent !== '';
+		const hasCenter = (this.isAuxiliary || !narrow) && (this.isCommandCenterVisible || this.title.textContent !== '');
 		this.rootContainer.classList.toggle('has-center', hasCenter);
 	}
 
@@ -1028,6 +1048,9 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 
 	override dispose(): void {
 		this._onWillDispose.fire();
+		if (!this.isAuxiliary) {
+			this.layoutService.mainContainer.classList.remove('studio-narrow-titlebar');
+		}
 
 		super.dispose();
 	}

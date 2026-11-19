@@ -36,6 +36,7 @@ import { VisibleViewContainersTracker } from '../visibleViewContainersTracker.js
 import { Extensions } from '../../panecomposite.js';
 import { IToolBarResponsiveBehaviorOptions } from '../../../../base/browser/ui/toolbar/toolbar.js';
 import { StudioSteamTabs, studioModeState } from '../studioMode.js';
+import './studioSidebarTabs.js';
 
 interface IAuxiliaryBarPartConfiguration {
 	position: ActivityBarPosition;

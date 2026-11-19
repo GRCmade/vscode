@@ -22,6 +22,7 @@ import { IComposite } from '../../common/composite.js';
 import { CompositeDragAndDropData, CompositeDragAndDropObserver, IDraggedCompositeData, ICompositeDragAndDrop, Before2D, toggleDropEffect, ICompositeDragAndDropObserverCallbacks } from '../dnd.js';
 import { Gesture, EventType as TouchEventType, GestureEvent } from '../../../base/browser/touch.js';
 import { MutableDisposable } from '../../../base/common/lifecycle.js';
+import { isStudioSidebarTab } from '../../common/studioSidebar.js';
 
 export interface ICompositeBarItem {
 
@@ -45,6 +46,7 @@ export class CompositeDragAndDrop implements ICompositeDragAndDrop {
 	) { }
 
 	drop(data: CompositeDragAndDropData, targetCompositeId: string | undefined, originalEvent: DragEvent, before?: Before2D): void {
+		if (!this.canDrop(data, targetCompositeId)) { return; }
 		const dragData = data.getData();
 
 		if (dragData.type === 'composite') {
@@ -108,6 +110,7 @@ export class CompositeDragAndDrop implements ICompositeDragAndDrop {
 
 	private canDrop(data: CompositeDragAndDropData, targetCompositeId: string | undefined): boolean {
 		const dragData = data.getData();
+		if ((targetCompositeId && isStudioSidebarTab(targetCompositeId)) || (dragData.type === 'composite' && isStudioSidebarTab(dragData.id))) { return false; }
 
 		if (dragData.type === 'composite') {
 
@@ -407,6 +410,7 @@ export class CompositeBar extends Widget implements ICompositeBar {
 	}
 
 	unpin(compositeId: string): void {
+		if (isStudioSidebarTab(compositeId)) { return; }
 		if (this.model.setPinned(compositeId, false)) {
 
 			this.updateCompositeSwitcher();
@@ -669,7 +673,7 @@ export class CompositeBar extends Widget implements ICompositeBar {
 					id,
 					label: this.getAction(id).label || name || id,
 					checked: isPinned,
-					enabled: activityAction.enabled && (!isPinned || this.getPinnedCompositeIds().length > 1),
+					enabled: !isStudioSidebarTab(id) && activityAction.enabled && (!isPinned || this.getPinnedCompositeIds().length > 1),
 					run: () => {
 						if (this.isPinned(id)) {
 							this.unpin(id);

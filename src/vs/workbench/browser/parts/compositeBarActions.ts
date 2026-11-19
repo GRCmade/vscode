@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { localize } from '../../../nls.js';
+import { isStudioSidebarTab } from '../../common/studioSidebar.js';
 import { Action, IAction, Separator } from '../../../base/common/actions.js';
 import { $, addDisposableListener, append, clearNode, EventHelper, EventType, getDomNodePagePosition, hide, show } from '../../../base/browser/dom.js';
 import { ICommandService } from '../../../platform/commands/common/commands.js';
@@ -641,7 +642,8 @@ export class CompositeActionViewItem extends CompositeBarActionViewItem {
 			actions.push(createConfigureKeybindingAction(this.commandService, this.keybindingService, this.compositeBarActionItem.keybindingId));
 		}
 
-		actions.push(this.toggleCompositePinnedAction, this.toggleCompositeBadgeAction);
+		if (!isStudioSidebarTab(this.compositeBarActionItem.id)) { actions.push(this.toggleCompositePinnedAction); }
+		actions.push(this.toggleCompositeBadgeAction);
 
 		const compositeContextMenuActions = this.compositeContextMenuActionsProvider(this.compositeBarActionItem.id);
 		if (compositeContextMenuActions.length) {

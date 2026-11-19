@@ -25,6 +25,7 @@ import { Lazy } from '../../../../base/common/lazy.js';
 import { IViewsService } from '../common/viewsService.js';
 import { windowLogGroup } from '../../log/common/logConstants.js';
 import { IWorkbenchEnvironmentService } from '../../environment/common/environmentService.js';
+import { isStudioSidebarTab } from '../../../common/studioSidebar.js';
 
 interface IViewsCustomizations {
 	viewContainerLocations: IStringDictionary<ViewContainerLocation>;
@@ -262,7 +263,7 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
 		const viewsByContainer = new Map<string, IViewDescriptor[]>();
 
 		for (const viewDescriptor of views) {
-			const correctContainerId = this.viewDescriptorsCustomLocations.get(viewDescriptor.id) ?? containerId;
+			const correctContainerId = isStudioSidebarTab(containerId) ? containerId : (this.viewDescriptorsCustomLocations.get(viewDescriptor.id) ?? containerId);
 			let containerViews = viewsByContainer.get(correctContainerId);
 			if (!containerViews) {
 				viewsByContainer.set(correctContainerId, containerViews = []);
@@ -297,20 +298,23 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
 			return null;
 		}
 
+		const defaultContainer = this.getDefaultContainerById(viewId);
+		if (defaultContainer && isStudioSidebarTab(defaultContainer.id)) { return defaultContainer; }
 		const containerId = this.viewDescriptorsCustomLocations.get(viewId);
 
 		return containerId ?
 			this.getViewContainerById(containerId) :
-			this.getDefaultContainerById(viewId);
+			defaultContainer;
 	}
 
 	getViewContainerLocation(viewContainer: ViewContainer): ViewContainerLocation {
+		if (isStudioSidebarTab(viewContainer.id)) { return this.getDefaultViewContainerLocation(viewContainer); }
 		return this.viewContainerLocationOverrides.get(viewContainer.id)?.location ?? this.viewContainersCustomLocations.get(viewContainer.id) ?? this.getDefaultViewContainerLocation(viewContainer);
 	}
 
 	overrideViewContainerLocation(viewContainer: ViewContainer, location: ViewContainerLocation): IDisposable {
 		const from = this.getViewContainerLocation(viewContainer);
-		if (!this.canMoveViews()) { return Disposable.None; }
+		if (!this.canMoveViews() || isStudioSidebarTab(viewContainer.id)) { return Disposable.None; }
 		const override = { location, requestedIndex: viewContainer.requestedIndex };
 		const previousOverride = this.viewContainerLocationOverrides.get(viewContainer.id);
 		const notify = (from: ViewContainerLocation, to: ViewContainerLocation) => {
@@ -513,6 +517,7 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
 	}
 
 	private moveViewsWithoutSaving(views: IViewDescriptor[], from: ViewContainer, to: ViewContainer, visibilityState: ViewVisibilityState = ViewVisibilityState.Expand): void {
+		if (isStudioSidebarTab(from.id) || isStudioSidebarTab(to.id)) { return; }
 		this.removeViews(from, views);
 		this.addViews(to, views, visibilityState);
 
@@ -527,6 +532,7 @@ export class ViewDescriptorService extends Disposable implements IViewDescriptor
 	}
 
 	private moveViewContainerToLocationWithoutSaving(viewContainer: ViewContainer, location: ViewContainerLocation, requestedIndex?: number): void {
+		if (isStudioSidebarTab(viewContainer.id)) { return; }
 		const from = this.getViewContainerLocation(viewContainer);
 		const to = location;
 		const override = this.viewContainerLocationOverrides.get(viewContainer.id);

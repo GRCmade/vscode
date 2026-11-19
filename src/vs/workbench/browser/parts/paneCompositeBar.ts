@@ -18,6 +18,7 @@ import { IStorageService, StorageScope, StorageTarget } from '../../../platform/
 import { IExtensionService } from '../../services/extensions/common/extensions.js';
 import { URI, UriComponents } from '../../../base/common/uri.js';
 import { ToggleCompositePinnedAction, ICompositeBarColors, IActivityHoverOptions, ToggleCompositeBadgeAction, CompositeBarAction, ICompositeBar, ICompositeBarActionItem } from './compositeBarActions.js';
+import { applyStudioSidebarOrder, isStudioSidebarTab, onDidChangeStudioSidebarTabs } from '../../common/studioSidebar.js';
 import { IViewDescriptorService, ViewContainer, IViewContainerModel, ViewContainerLocation } from '../../common/views.js';
 import { IContextKeyService, ContextKeyExpr } from '../../../platform/contextkey/common/contextkey.js';
 import { isString } from '../../../base/common/types.js';
@@ -117,7 +118,7 @@ export class PaneCompositeBar extends Disposable {
 			() => this.compositeBar.getCompositeBarItems(),
 		);
 
-		const cachedItems = this.cachedViewContainers
+		const cachedItems = this.cachedViewContainers.filter(container => !isStudioSidebarTab(container.id))
 			.map(container => ({
 				id: container.id,
 				name: container.name,
@@ -127,6 +128,11 @@ export class PaneCompositeBar extends Disposable {
 			}));
 		this.compositeBar = this.createCompositeBar(cachedItems);
 		this.onDidRegisterViewContainers(this.getViewContainers());
+		if (this.location === ViewContainerLocation.AuxiliaryBar) {
+			const applyOrder = () => this.compositeBar.setCompositeBarItems(applyStudioSidebarOrder(this.compositeBar.getCompositeBarItems()));
+			applyOrder();
+			this._register(onDidChangeStudioSidebarTabs(applyOrder));
+		}
 		this.registerListeners();
 	}
 
@@ -155,6 +161,9 @@ export class PaneCompositeBar extends Disposable {
 	}
 
 	private getContextMenuActionsForComposite(compositeId: string): IAction[] {
+		if (isStudioSidebarTab(compositeId)) {
+			return [];
+		}
 		const actions: IAction[] = [new Separator()];
 
 		const viewContainer = this.viewDescriptorService.getViewContainerById(compositeId)!;
@@ -536,6 +545,7 @@ export class PaneCompositeBar extends Disposable {
 		const compositeItems = this.compositeBar.getCompositeBarItems();
 
 		for (const cachedViewContainer of this.cachedViewContainers) {
+			if (isStudioSidebarTab(cachedViewContainer.id)) { continue; }
 			newCompositeItems.push({
 				id: cachedViewContainer.id,
 				name: cachedViewContainer.name,
@@ -579,7 +589,7 @@ export class PaneCompositeBar extends Disposable {
 			}
 		}
 
-		this.compositeBar.setCompositeBarItems(newCompositeItems);
+		this.compositeBar.setCompositeBarItems(this.location === ViewContainerLocation.AuxiliaryBar ? applyStudioSidebarOrder(newCompositeItems) : newCompositeItems);
 	}
 
 	private saveCachedViewContainers(): void {
@@ -587,6 +597,7 @@ export class PaneCompositeBar extends Disposable {
 
 		const compositeItems = this.compositeBar.getCompositeBarItems();
 		for (const compositeItem of compositeItems) {
+			if (isStudioSidebarTab(compositeItem.id)) { continue; }
 			const viewContainer = this.getViewContainer(compositeItem.id);
 			if (viewContainer) {
 				const viewContainerModel = this.viewDescriptorService.getViewContainerModel(viewContainer);

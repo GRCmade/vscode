@@ -27,6 +27,7 @@ import { ShutdownReason } from '../services/lifecycle/common/lifecycle.js';
 import { NativeWindow } from './window.js';
 import { ModifierKeyEmitter } from '../../base/browser/dom.js';
 import { applicationConfigurationNodeBase, securityConfigurationNodeBase } from '../common/configuration.js';
+import { DEFAULT_RESTORE_WINDOWS_SETTING } from '../../platform/window/common/window.js';
 import { MAX_ZOOM_LEVEL, MIN_ZOOM_LEVEL } from '../../platform/window/electron-browser/window.js';
 import product from '../../platform/product/common/product.js';
 
@@ -190,7 +191,7 @@ import product from '../../platform/product/common/product.js';
 					localize('window.reopenFolders.one', "Reopen the last active window unless a folder, workspace or file is opened (e.g. from the command line). If a file is opened, it will replace any of the editors that were previously opened in a window."),
 					localize('window.reopenFolders.none', "Never reopen a window. Unless a folder or workspace is opened (e.g. from the command line), an empty window will appear.")
 				],
-				'default': 'all',
+				'default': DEFAULT_RESTORE_WINDOWS_SETTING,
 				'scope': ConfigurationScope.APPLICATION,
 				'description': localize('restoreWindows', "Controls how windows and editors within are being restored when opening.")
 			},

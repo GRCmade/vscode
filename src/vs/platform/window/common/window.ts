@@ -272,6 +272,8 @@ export interface IWindowsConfiguration {
 	readonly window: IWindowSettings;
 }
 
+export const DEFAULT_RESTORE_WINDOWS_SETTING: IWindowSettings['restoreWindows'] = 'none';
+
 export interface IWindowSettings {
 	readonly openFilesInNewWindow: 'on' | 'off' | 'default';
 	readonly openFoldersInNewWindow: 'on' | 'off' | 'default';

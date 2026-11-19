@@ -37,7 +37,7 @@ import product from '../../product/common/product.js';
 import { IProtocolMainService } from '../../protocol/electron-main/protocol.js';
 import { getRemoteAuthority } from '../../remote/common/remoteHosts.js';
 import { IStateService } from '../../state/node/state.js';
-import { AgentsWindowOpenSource, IAgentsWindowDraft, IAddRemoveFoldersRequest, INativeOpenFileRequest, INativeWindowConfiguration, IOpenEmptyWindowOptions, IPath, IPathsToWaitFor, isFileToOpen, isFolderToOpen, isWorkspaceToOpen, IWindowOpenable, IWindowSettings } from '../../window/common/window.js';
+import { AgentsWindowOpenSource, DEFAULT_RESTORE_WINDOWS_SETTING, IAgentsWindowDraft, IAddRemoveFoldersRequest, INativeOpenFileRequest, INativeWindowConfiguration, IOpenEmptyWindowOptions, IPath, IPathsToWaitFor, isFileToOpen, isFolderToOpen, isWorkspaceToOpen, IWindowOpenable, IWindowSettings } from '../../window/common/window.js';
 import { CodeWindow } from './windowImpl.js';
 import { IOpenConfiguration, IOpenEmptyConfiguration, IWindowsCountChangedEvent, IWindowsMainService, OpenContext, getLastFocused } from './windows.js';
 import { findWindowOnExtensionDevelopmentPath, findWindowOnFile, findWindowOnWorkspaceOrFolder } from './windowsFinder.js';
@@ -63,8 +63,6 @@ import { resolveAgentsWindowFolder } from './agentsWindow.js';
 import { readStudioReleaseProject } from '../node/studioReleaseProject.js';
 
 //#region Helper Interfaces
-
-type RestoreWindowsSetting = 'preserve' | 'all' | 'folders' | 'one' | 'none';
 
 interface IOpenBrowserWindowOptions {
 	readonly userEnv?: IProcessEnvironment;
@@ -1064,20 +1062,15 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 		}
 	}
 
-	private getRestoreWindowsSetting(): RestoreWindowsSetting {
-		let restoreWindows: RestoreWindowsSetting;
+	private getRestoreWindowsSetting(): IWindowSettings['restoreWindows'] {
 		if (this.lifecycleMainService.wasRestarted) {
-			restoreWindows = 'all'; // always reopen all windows when an update was applied
-		} else {
-			const windowConfig = this.configurationService.getValue<IWindowSettings | undefined>('window');
-			restoreWindows = windowConfig?.restoreWindows || 'all'; // by default restore all windows
-
-			if (!['preserve', 'all', 'folders', 'one', 'none'].includes(restoreWindows)) {
-				restoreWindows = 'all'; // by default restore all windows
-			}
+			return 'all'; // always reopen all windows when an update was applied
 		}
 
-		return restoreWindows;
+		const restoreWindows = this.configurationService.getValue<IWindowSettings | undefined>('window')?.restoreWindows;
+		return restoreWindows && ['preserve', 'all', 'folders', 'one', 'none'].includes(restoreWindows)
+			? restoreWindows
+			: DEFAULT_RESTORE_WINDOWS_SETTING;
 	}
 
 	private async doGetWorkspaceMatchingFoldersFromLastSession(remoteAuthority: string | undefined, folders: ISingleFolderWorkspacePathToOpen[]): Promise<IWorkspaceIdentifier | undefined> {

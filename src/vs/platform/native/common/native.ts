@@ -18,9 +18,11 @@ import { AgentsWindowOpenSource, IAgentsWindowDraft, IColorScheme, IOpenedAuxili
 export interface IToastOptions {
 	readonly id: string;
 	/**
-	 * Prevents another live toast with the same key from being shown.
+	 * Groups live toasts globally. Another toast with this key is suppressed by default.
 	 */
 	readonly dedupeKey?: string;
+	/** Close the existing toast with this key before showing the new one. */
+	readonly replaceExisting?: boolean;
 
 	readonly title: string;
 	readonly body?: string;

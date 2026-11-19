@@ -76,7 +76,7 @@ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async
 	if (background && nativeAllowed()) {
 		native = true;
 		// Use the desktop notification service directly: no browser permission prompt or focus change on delivery.
-		void nativeHost.showToast({ id, dedupeKey: source.id, title, body: message, actions: [actionLabel] }).then(async result => {
+		void nativeHost.showToast({ id, dedupeKey: source.id, replaceExisting: true, title, body: message, actions: [actionLabel] }).then(async result => {
 			const actionable = native;
 			native = false;
 			if (result.clicked && actionable) { await activate(true); }

@@ -1374,7 +1374,8 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 		if (!Notification.isSupported()) {
 			return { supported: false, clicked: false };
 		}
-		if (options.dedupeKey && this.activeToastDedupeKeys.has(options.dedupeKey)) {
+		const previous = options.dedupeKey ? this.activeToastDedupeKeys.get(options.dedupeKey) : undefined;
+		if (this.activeToasts.has(options.id) || (previous && !options.replaceExisting)) {
 			return { supported: true, suppressed: true, clicked: false };
 		}
 
@@ -1388,6 +1389,9 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 			}))
 		});
 
+		if (previous) {
+			this.activeToasts.deleteAndDispose(previous);
+		}
 		const disposables = new DisposableStore();
 		this.activeToasts.set(options.id, disposables);
 		if (options.dedupeKey) {
@@ -1405,6 +1409,13 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 			toast.close();
 			cts.dispose(true);
 		}));
+		if (windowId !== undefined) {
+			disposables.add(this.windowsMainService.onDidDestroyWindow(window => {
+				if (window.id === windowId) {
+					disposables.dispose();
+				}
+			}));
+		}
 
 		return new Promise<IToastResult>(r => {
 			const resolve = (result: IToastResult) => {
@@ -1419,7 +1430,11 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 			toast.on('close', () => resolve({ supported: true, clicked: false }));
 			toast.on('failed', () => resolve({ supported: false, clicked: false }));
 
-			toast.show();
+			try {
+				toast.show();
+			} catch {
+				resolve({ supported: false, clicked: false });
+			}
 		});
 	}
 

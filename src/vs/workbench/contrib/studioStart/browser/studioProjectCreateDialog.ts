@@ -21,6 +21,7 @@ import './media/studioProjectCreateDialog.css';
 
 type ProjectCreationInput = { templateId: string; name: string; parentDirectory: string } | { shareUrl: string };
 export interface ProjectCreationDialogRequest {
+	platform?: boolean;
 	templates: StudioStartState['templates'];
 	labels: Record<string, string>;
 	parentDirectory: string;
@@ -92,7 +93,7 @@ export class StudioProjectCreateDialog extends Disposable {
 		const templates = append(this.localFields, $('fieldset.studio-create-templates'));
 		append(templates, $('legend', undefined, this.text('template')));
 		const options = append(templates, $('.studio-create-options'));
-		for (const type of ['workflow', 'bot', 'kanban', 'link']) {
+		for (const type of ['workflow', 'bot', 'kanban', ...(this.request.platform ? ['link'] : [])]) {
 			const label = append(types, $('label.studio-create-type'));
 			const radio = append(label, $<HTMLInputElement>('input', { type: 'radio', name: 'projectType', value: type }));
 			radio.checked = this.projectType === type;

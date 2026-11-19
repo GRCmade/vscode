@@ -107,7 +107,8 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 	private _footerSignInBtn: HTMLButtonElement | undefined;
 
 	private currentStepIndex = 0;
-	private readonly steps = ONBOARDING_STEPS;
+	private steps = ONBOARDING_STEPS;
+	private platform = false;
 	private readonly disposables = this._register(new DisposableStore());
 	private readonly stepDisposables = this._register(new DisposableStore());
 	private readonly footerDisposables = this._register(new DisposableStore());
@@ -160,6 +161,8 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 			return;
 		}
 
+		this.platform = this.contextKeyService.getContextKeyValue<boolean>('studio.platformAvailable') === true;
+		this.steps = this.platform ? ONBOARDING_STEPS : ONBOARDING_STEPS.filter(step => step !== OnboardingStepId.SignIn);
 		this._userSignedIn = this.contextKeyService.getContextKeyValue<boolean>('studio.authenticated') === true;
 		this._isShowing = true;
 		this.previouslyFocusedElement = getActiveWindow().document.activeElement as HTMLElement | undefined;
@@ -226,7 +229,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 				this._applyStepSelections(this.steps[this.currentStepIndex]);
 				this._logAction('complete');
 				this._dismiss('complete');
-			} else if (this.currentStepIndex === 0) {
+			} else if (this.steps[this.currentStepIndex] === OnboardingStepId.SignIn) {
 				this._logAction(this._userSignedIn ? 'next' : 'continueWithoutSignIn');
 				this._nextStep();
 			} else {
@@ -419,7 +422,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 			this.backButton.style.display = this.currentStepIndex === 0 ? 'none' : '';
 		}
 		if (this.nextButton) {
-			if (this.currentStepIndex === 0) {
+			if (this.steps[this.currentStepIndex] === OnboardingStepId.SignIn) {
 				if (this._userSignedIn) {
 					this.nextButton.className = 'onboarding-a-btn onboarding-a-btn-primary';
 					this.nextButton.textContent = onboardingStrings.continue;
@@ -440,7 +443,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 			// Rebuild the nudge with each step so its listener never outlives its step.
 			this._footerSignInBtn?.remove();
 			this._footerSignInBtn = undefined;
-			if (this._isLastStep() && !this._userSignedIn) {
+			if (this.platform && this._isLastStep() && !this._userSignedIn) {
 				const button = this._footerSignInBtn = append(this.footerLeft, $<HTMLButtonElement>('button.onboarding-a-signin-nudge-btn'));
 				button.type = 'button';
 				button.textContent = onboardingStrings.signIn;
@@ -487,7 +490,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 	}
 
 	private async _handleSignIn(): Promise<void> {
-		if (this.openingAccount) {
+		if (!this.platform || this.openingAccount) {
 			return;
 		}
 		this.openingAccount = true;

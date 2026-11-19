@@ -41,6 +41,7 @@
 .studio-start-action:hover { background:var(--vscode-list-hoverBackground); color:var(--vscode-textLink-activeForeground); }
 .studio-start-action:focus-visible { outline:1px solid var(--vscode-focusBorder); outline-offset:1px; }
 .studio-start-action:disabled { opacity:.5; cursor:default; }
+.studio-start :is(.studio-start-action, dt, dd)[hidden] { display:none; }
 .studio-start-action > .codicon { display:flex; align-items:center; justify-content:center; width:16px; height:20px; font-size:16px; line-height:16px; }
 .studio-start-action-label { min-width:0; overflow-wrap:anywhere; }
 .studio-start-action-icon { display:flex; align-items:center; justify-content:center; flex:none; width:32px; height:32px; padding:8px; }

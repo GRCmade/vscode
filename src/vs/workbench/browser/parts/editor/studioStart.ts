@@ -18,6 +18,7 @@ import './media/studioStart.css';
 /** Versioned, credential-free state supplied by the Studio extension host. */
 export interface StudioStartState {
 	version: 1;
+	platform?: boolean;
 	labels: Record<string, string>;
 	badge?: string;
 	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
@@ -211,7 +212,8 @@ export class StudioStartView extends Disposable {
 		this.element.classList.toggle('loading', !state);
 		this.element.setAttribute('aria-busy', String(!state));
 		if (!state) {
-			for (const action of this.actions) { action.button.disabled = true; }
+			for (const action of this.actions) { action.button.disabled = true; action.button.hidden = ['download', 'versions', 'account'].includes(action.label); }
+			for (const key of ['account', 'server']) { this.stats.get(key)!.hidden = true; this.labels.get(`stat.${key}`)!.hidden = true; }
 			return;
 		}
 		const badge = state.badge?.trim();
@@ -220,12 +222,13 @@ export class StudioStartView extends Disposable {
 		const text = (key: string): string => key === 'current' && state.recommendations ? state.recommendations.title : state.labels[key] ?? key;
 		for (const [key, element] of this.labels) { if (element.textContent !== text(key)) { element.textContent = text(key); } }
 		for (const action of this.actions) {
+			action.button.hidden = !state.platform && ['download', 'versions', 'account'].includes(action.label);
 			action.button.title = text(action.label);
 			action.button.setAttribute('aria-label', text(action.label));
 			if (!action.iconOnly && action.button.lastElementChild!.textContent !== text(action.label)) { action.button.lastElementChild!.textContent = text(action.label); }
 			action.button.disabled = action.creation && (!state.canCreate || state.busy);
 		}
-		const listKey = { labels: state.labels, busy: state.busy, canCreate: state.canCreate };
+		const listKey = { labels: state.labels, busy: state.busy, canCreate: state.canCreate, platform: state.platform };
 		this.list('current', { recommendations: state.recommendations, projects: state.projects, pending: state.pending, installing: state.installing, ...listKey }, (root, store) => {
 			if (!state.recommendations && !state.projects.length && !state.pending.length) { append(root, $('p.studio-start-muted', undefined, text('noCurrent'))); }
 			if (state.recommendations) {
@@ -286,7 +289,7 @@ export class StudioStartView extends Disposable {
 				}
 				const run = this.button(actions, text('run'), 'play', 'studio.openProject', target, false, updateAvailable, store);
 				if (!updateAvailable) { run.classList.add('studio-start-primary'); }
-				this.button(actions, text('upload'), 'cloud-upload', 'studio.uploadProject', { uri: project.uri }, false, true, store);
+				if (state.platform) { this.button(actions, text('upload'), 'cloud-upload', 'studio.uploadProject', { uri: project.uri }, false, true, store); }
 				this.button(actions, text('source'), 'code', 'studio.openProjectSource', target, false, true, store);
 			}
 			for (const project of state.pending) {
@@ -326,6 +329,7 @@ export class StudioStartView extends Disposable {
 		});
 		const environment = state.environment;
 		for (const [key, element] of this.stats) {
+			if (key === 'account' || key === 'server') { element.hidden = !state.platform; this.labels.get(`stat.${key}`)!.hidden = !state.platform; }
 			const value = key === 'studio' ? environment.studio : key === 'vscode' ? environment.vscode
 				: ['projects', 'running', 'waiting'].includes(key) ? state.summary ? String(state.summary[key as 'projects']) : text('unavailable')
 					: environment[key as 'node'] || text('unavailable');

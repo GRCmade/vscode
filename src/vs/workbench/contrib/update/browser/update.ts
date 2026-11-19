@@ -17,7 +17,7 @@ import { INotificationService, NotificationPriority, Severity } from '../../../.
 import { IDialogService } from '../../../../platform/dialogs/common/dialogs.js';
 import { IBrowserWorkbenchEnvironmentService } from '../../../services/environment/browser/environmentService.js';
 import { ReleaseNotesManager } from './releaseNotesEditor.js';
-import { isWeb } from '../../../../base/common/platform.js';
+import { isWeb, language } from '../../../../base/common/platform.js';
 import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { RawContextKey, IContextKey, IContextKeyService, ContextKeyExpr } from '../../../../platform/contextkey/common/contextkey.js';
 import { MenuRegistry, MenuId, registerAction2, Action2 } from '../../../../platform/actions/common/actions.js';
@@ -60,6 +60,10 @@ async function openLatestReleaseNotesInBrowser(accessor: ServicesAccessor) {
 }
 
 async function showReleaseNotes(accessor: ServicesAccessor, version: string) {
+	if (accessor.get(IProductService).studioReleaseNotesBaseUrl) {
+		await openStudioReleaseNotes(accessor, version);
+		return;
+	}
 	const instantiationService = accessor.get(IInstantiationService);
 	try {
 		await showReleaseNotesInEditor(instantiationService, version, false);
@@ -78,6 +82,17 @@ async function showReleaseNotes(accessor: ServicesAccessor, version: string) {
  * update status. The underlying commands (`update.check`, `update.restart`, etc.)
  * must be registered separately.
  */
+export async function openStudioReleaseNotes(accessor: ServicesAccessor, version: string): Promise<void> {
+	const base = accessor.get(IProductService).studioReleaseNotesBaseUrl;
+	const opener = accessor.get(IOpenerService);
+	if (!base || !/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*)?$/.test(version)) {
+		return;
+	}
+	const url = new URL(base);
+	url.pathname = `${/^zh(?:-|$)/i.test(language) ? '' : '/en'}${url.pathname}/v${version}/`;
+	await opener.open(URI.parse(url.href), { openExternal: true });
+}
+
 export function appendUpdateMenuItems(menuId: MenuId, group: string): void {
 	MenuRegistry.appendMenuItem(menuId, {
 		group,
@@ -175,7 +190,7 @@ export class ProductContribution implements IWorkbenchContribution {
 		@IHostService hostService: IHostService,
 		@IProductService productService: IProductService,
 	) {
-		if (isWeb) {
+		if (isWeb || productService.studioReleaseNotesBaseUrl) {
 			return;
 		}
 
@@ -331,7 +346,7 @@ export class UpdateContribution extends Disposable implements IWorkbenchContribu
 
 		appendUpdateMenuItems(MenuId.GlobalActivity, '7_update');
 
-		if (this.productService.quality === 'stable') {
+		if (this.productService.quality === 'stable' || this.productService.studioReleaseNotesBaseUrl) {
 			CommandsRegistry.registerCommand('update.showUpdateReleaseNotes', () => {
 				if (this.updateService.state.type !== StateType.Ready) {
 					return;

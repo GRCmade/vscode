@@ -3,7 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { app, BrowserWindow, desktopCapturer, globalShortcut, powerMonitor, protocol, screen as electronScreen, session, Session, systemPreferences, WebFrameMain } from 'electron';
+import { StudioWebAppMicrophone } from './studioWebAppMicrophone.js';
+import { app, BrowserWindow, desktopCapturer, dialog, globalShortcut, powerMonitor, protocol, screen as electronScreen, session, Session, systemPreferences, WebFrameMain } from 'electron';
 import { addUNCHostToAllowlist, disableUNCAccessRestrictions } from '../../base/node/unc.js';
 import { validatedIpcMain } from '../../base/parts/ipc/electron-main/ipcMain.js';
 import { hostname, release } from 'os';
@@ -27,7 +28,7 @@ import { Server as ElectronIPCServer } from '../../base/parts/ipc/electron-main/
 import { Client as MessagePortClient } from '../../base/parts/ipc/electron-main/ipc.mp.js';
 import { Server as NodeIPCServer } from '../../base/parts/ipc/node/ipc.net.js';
 import { IProxyAuthService, ProxyAuthService } from '../../platform/native/electron-main/auth.js';
-import { localize } from '../../nls.js';
+import { getNLSLanguage, localize } from '../../nls.js';
 import { IBackupMainService } from '../../platform/backup/electron-main/backup.js';
 import { BackupMainService } from '../../platform/backup/electron-main/backupMainService.js';
 import { IConfigurationService } from '../../platform/configuration/common/configuration.js';
@@ -278,7 +279,24 @@ export class CodeApplication extends Disposable {
 			'deprecated-sync-clipboard-read',
 		]);
 
+		const webAppMicrophone = new StudioWebAppMicrophone();
 		session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+			if (permission === 'media' && details.requestingUrl?.startsWith('http://127.0.0.1:')) {
+				void webAppMicrophone.request(webContents, details, async () => {
+					const zh = getNLSLanguage()?.toLowerCase() === 'zh-cn';
+					const options: Electron.MessageBoxOptions = {
+						type: 'question', defaultId: 1, cancelId: 1,
+						message: zh ? '允许此项目的 Web 应用使用麦克风？' : localize('studio.webApp.microphone', "Allow this project's Web application to use your microphone?"),
+						detail: zh ? '录制语音消息时，音频会发送到此应用配置的服务。' : localize('studio.webApp.microphone.detail', "Audio is sent to this application's configured service when you record a voice message."),
+						buttons: [zh ? '允许使用麦克风' : localize('studio.webApp.microphone.allow', "Allow Microphone"), zh ? '不允许' : localize('studio.webApp.microphone.deny', "Don't Allow")]
+					};
+					const owner = webContents && BrowserWindow.fromWebContents(webContents);
+					const result = owner ? await dialog.showMessageBox(owner, options) : await dialog.showMessageBox(options);
+					return result.response === 0;
+				}).then(callback, () => callback(false));
+				return;
+			}
+
 			if (isUrlFromWebview(details.requestingUrl)) {
 				return callback(allowedPermissionsInWebview.has(permission));
 			}
@@ -289,6 +307,9 @@ export class CodeApplication extends Disposable {
 		});
 
 		session.defaultSession.setPermissionCheckHandler((webContents, permission, _origin, details) => {
+			if (permission === 'media' && details.requestingUrl?.startsWith('http://127.0.0.1:')) {
+				return webAppMicrophone.check(webContents, details);
+			}
 			if (isUrlFromWebview(details.requestingUrl)) {
 				return allowedPermissionsInWebview.has(permission);
 			}

@@ -29,9 +29,6 @@ export const studioSteamToolDefinitions = [
 	{ id: 'editor', icon: 'code', editor: true },
 	{ id: 'settings', icon: 'settings-gear', command: 'studio.openSettings' },
 	{ id: 'login', icon: 'sign-in', command: 'studio.openLogin' },
-	{ id: 'databases', icon: 'database', view: 'studio.databases' },
-	{ id: 'kv', icon: 'database', view: 'studio.kv' },
-	{ id: 'knowledge', icon: 'book', view: 'studio.knowledge' },
 	{ id: 'info', icon: 'package', view: 'studio.projectInfo' },
 	{ id: 'assistant', icon: 'hubot', view: 'studio.developerAssistant' },
 	{ id: 'versions', icon: 'versions', view: 'studio.versions' },
@@ -54,6 +51,7 @@ export const studioSteamWorkspaceState = {
 };
 
 export interface StudioModeState {
+	platform?: boolean;
 	project?: { name: string; avatarUrl: string };
 	releaseOnly?: boolean;
 	available: boolean;
@@ -63,6 +61,7 @@ export interface StudioModeState {
 }
 
 export function isStudioSteamToolAvailable(id: string | undefined): boolean {
+	if ((id === 'login' || id === 'versions') && !studioModeState.state.platform) { return false; }
 	return !studioModeState.state.releaseOnly || id !== 'editor' && id !== 'assistant';
 }
 
@@ -281,7 +280,7 @@ export class StudioSteamTabs extends Disposable {
 		this.add = append(this.element, $('button.studio-steam-add-tab.codicon.codicon-add-compact', { type: 'button', 'aria-haspopup': 'menu' })) as HTMLButtonElement;
 		this._register(addDisposableListener(this.add, 'click', () => this.contextMenu.showContextMenu({
 			getAnchor: () => this.add,
-			getActions: () => studioSteamToolDefinitions.map(tool => toAction({
+			getActions: () => studioSteamToolDefinitions.filter(tool => isStudioSteamToolAvailable(tool.id)).map(tool => toAction({
 				id: tool.id, label: studioModeState.state.labels[tool.id] ?? tool.id,
 				class: `codicon codicon-${tool.icon}`,
 				checked: !('command' in tool) ? studioSteamWorkspaceState.tabs.some(tab => tab.id === tool.id) : undefined,

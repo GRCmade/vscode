@@ -11,7 +11,7 @@ import { Categories } from '../../../../platform/action/common/actionCommonCateg
 import { MenuId, registerAction2, Action2 } from '../../../../platform/actions/common/actions.js';
 import { ICommandService } from '../../../../platform/commands/common/commands.js';
 import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
-import { ProductContribution, UpdateContribution, CONTEXT_UPDATE_STATE, SwitchProductQualityContribution, showReleaseNotesInEditor, DefaultAccountUpdateContribution } from './update.js';
+import { ProductContribution, UpdateContribution, CONTEXT_UPDATE_STATE, SwitchProductQualityContribution, showReleaseNotesInEditor, openStudioReleaseNotes, DefaultAccountUpdateContribution } from './update.js';
 import { UpdateTitleBarContribution } from './updateTitleBarEntry.js';
 import { PostUpdateWidgetContribution } from './postUpdateWidget.js';
 import { LifecyclePhase } from '../../../services/lifecycle/common/lifecycle.js';
@@ -44,7 +44,7 @@ AccessibleViewRegistry.register(new ReleaseNotesAccessibilityHelp());
 
 export class ShowReleaseNotesAction extends Action2 {
 
-	static readonly AVAILABLE = !!product.releaseNotesUrl;
+	static readonly AVAILABLE = !!(product.releaseNotesUrl || product.studioReleaseNotesBaseUrl);
 
 	constructor() {
 		super({
@@ -66,6 +66,10 @@ export class ShowReleaseNotesAction extends Action2 {
 	async run(accessor: ServicesAccessor, version?: string): Promise<void> {
 		const instantiationService = accessor.get(IInstantiationService);
 		const productService = accessor.get(IProductService);
+		if (productService.studioReleaseNotesBaseUrl) {
+			await openStudioReleaseNotes(accessor, productService.version);
+			return;
+		}
 		const openerService = accessor.get(IOpenerService);
 		const targetVersion = version ?? productService.version;
 

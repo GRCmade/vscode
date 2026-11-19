@@ -52,7 +52,7 @@ MenuRegistry.appendMenuItem(MenuId.TitleBarAdjacentCenter, {
 		get title() { return MenuRegistry.getCommand('studio.uploadProject')?.title ?? localize('studio.uploadProject', "Upload Project"); },
 		icon: Codicon.cloudUpload
 	},
-	when: ContextKeyExpr.equals('studio.projectUploadAvailable', true),
+	when: ContextKeyExpr.and(ContextKeyExpr.has('studio.platformAvailable'), ContextKeyExpr.has('studio.projectUploadAvailable')),
 	group: '0_studio',
 	order: 1
 });

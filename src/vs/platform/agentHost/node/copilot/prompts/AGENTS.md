@@ -1,5 +1,7 @@
 # Agent host system-prompt customization
 
+After each change, follow the fork's [commit and push rules](../../../../../../../AGENTS.md#commit-and-push).
+
 This directory customizes the system prompt for Copilot CLI **agent host** (ahp+cli) sessions. Read this before changing how the system message is built or adding per-model / per-tool guidance. It mirrors the Copilot extension's `extensions/copilot/.../prompts/node/agent/` (agentPrompts), but the agent host runs in its own process and cannot use prompt-tsx, so contributors return plain data the SDK accepts directly.
 
 ## Files

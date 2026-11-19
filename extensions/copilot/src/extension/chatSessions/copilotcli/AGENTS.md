@@ -1,5 +1,7 @@
 # Copilot CLI Integration
 
+After each change, follow the fork's [commit and push rules](../../../../../../AGENTS.md#commit-and-push).
+
 This folder contains the Copilot CLI integration for VS Code Chat. It enables users to open a new Chat window and interact with a Copilot CLI agent instance directly within VS Code. **VS Code provides the UI, Copilot CLI SDK provides the smarts.**
 
 > **Important:** The Copilot CLI agent functionality is powered by the `@github/copilot/sdk` package. See the SDK package for full type definitions.

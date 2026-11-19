@@ -1,5 +1,7 @@
 # Protocol versioning instructions
 
+After each change, follow the fork's [commit and push rules](../../../../../../AGENTS.md#commit-and-push).
+
 This directory contains the VS Code-facing wrappers around the Agent Host Protocol (AHP) state model. Read this before modifying protocol types.
 
 ## Overview

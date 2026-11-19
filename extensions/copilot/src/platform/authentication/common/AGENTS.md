@@ -1,5 +1,7 @@
 # Authentication Service Usage Guide
 
+After each change, follow the fork's [commit and push rules](../../../../../../AGENTS.md#commit-and-push).
+
 ## Overview
 
 `IAuthenticationService` manages GitHub and Copilot authentication. It provides GitHub sessions (OAuth tokens) and Copilot tokens (CAPI tokens).

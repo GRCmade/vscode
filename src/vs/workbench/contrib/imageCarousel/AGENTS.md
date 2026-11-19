@@ -1,5 +1,7 @@
 # Image Carousel
 
+After each change, follow the fork's [commit and push rules](../../../../../AGENTS.md#commit-and-push).
+
 A generic workbench editor for viewing collections of images in a carousel/slideshow UI. Opens as a modal editor pane with navigation arrows, a caption, and a thumbnail strip.
 
 ## Architecture

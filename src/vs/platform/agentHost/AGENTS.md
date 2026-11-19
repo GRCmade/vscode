@@ -10,6 +10,8 @@
 
 # Multi-Chat Architecture
 
+After each change, follow the fork's [commit and push rules](../../../../AGENTS.md#commit-and-push).
+
 > Node runtime service construction is documented separately in [`node/serviceBootstrapping.md`](node/serviceBootstrapping.md).
 > Host startup timings, process-lifetime correlation, and session workload counts are documented in [`PERFORMANCE.md`](PERFORMANCE.md).
 

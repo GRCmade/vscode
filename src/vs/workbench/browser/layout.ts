@@ -53,6 +53,7 @@ import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/aux
 import { CodeWindow, mainWindow } from '../../base/browser/window.js';
 import { localize } from '../../nls.js';
 import { studioModeState } from './parts/studioMode.js';
+import { isStudioSidebarTab } from '../common/studioSidebar.js';
 
 //#region Layout Implementation
 
@@ -1197,13 +1198,19 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 			// Restoring views could mean that auxbar already
 			// restored, as such we need to test again
 			await restoreDefaultViewsPromise;
-			if (!this.state.initialization.views.containerToRestore.auxiliaryBar) {
+			const id = this.state.initialization.views.containerToRestore.auxiliaryBar;
+			if (!id || !this.isVisible(Parts.AUXILIARYBAR_PART)) {
+				return;
+			}
+			// The sidebar registry restores its own tabs once the extension host supplies them.
+			// Falling back to another container here would overwrite the saved selection.
+			if (isStudioSidebarTab(id) && !this.viewDescriptorService.getViewContainerById(id)) {
 				return;
 			}
 
 			mark('code/willRestoreAuxiliaryBar');
 
-			await this.openViewContainer(ViewContainerLocation.AuxiliaryBar, this.state.initialization.views.containerToRestore.auxiliaryBar);
+			await this.openViewContainer(ViewContainerLocation.AuxiliaryBar, id);
 
 			mark('code/didRestoreAuxiliaryBar');
 		})());

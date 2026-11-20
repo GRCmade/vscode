@@ -3,7 +3,8 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { addDisposableListener } from '../../base/browser/dom.js';
+import { DataTransfers } from '../../base/browser/dnd.js';
+import { addDisposableListener, DragAndDropObserver } from '../../base/browser/dom.js';
 import { mainWindow } from '../../base/browser/window.js';
 import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
 import { CancellationTokenSource } from '../../base/common/cancellation.js';
@@ -12,10 +13,11 @@ import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '..
 import { basenameOrAuthority } from '../../base/common/resources.js';
 import { URI } from '../../base/common/uri.js';
 import { generateUuid } from '../../base/common/uuid.js';
-import { ipcRenderer } from '../../base/parts/sandbox/electron-browser/globals.js';
+import { ipcRenderer, webUtils } from '../../base/parts/sandbox/electron-browser/globals.js';
 import { getNLSLanguage } from '../../nls.js';
 import { CommandsRegistry, ICommandService } from '../../platform/commands/common/commands.js';
 import { IFileDialogService } from '../../platform/dialogs/common/dialogs.js';
+import { containsDragType } from '../../platform/dnd/browser/dnd.js';
 import { IExtensionStorageService } from '../../platform/extensionManagement/common/extensionStorage.js';
 import { FileOperationResult, IFileService, toFileOperationResult } from '../../platform/files/common/files.js';
 import { FocusMode, INativeHostService } from '../../platform/native/common/native.js';
@@ -92,6 +94,26 @@ export class StudioLaunchpad extends Disposable {
 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
 		});
 		layout.mainContainer.append(this.view.element);
+		const clearProjectDrop = () => this.view.setProjectDropActive(false);
+		this._register(new DragAndDropObserver(this.view.element, {
+			onDragOver: event => {
+				const data = event.dataTransfer;
+				if (!this.view.canDropProject || !data || !containsDragType(event, DataTransfers.FILES)) { return; }
+				data.dropEffect = 'copy';
+				this.view.setProjectDropActive(true);
+			},
+			onDragLeave: clearProjectDrop,
+			onDragEnd: clearProjectDrop,
+			onDrop: event => {
+				clearProjectDrop();
+				const data = event.dataTransfer;
+				if (!this.view.canDropProject || !data || !containsDragType(event, DataTransfers.FILES)) { return; }
+				event.preventDefault();
+				event.stopPropagation();
+				const paths = new Set(Array.from(data.files, file => webUtils.getPathForFile(file)).filter(Boolean));
+				if (paths.size) { run(this.openDroppedFolders(Array.from(paths, path => URI.file(path)))); }
+			},
+		}));
 		const resize = () => {
 			const titlebar = layout.getContainer(mainWindow, Parts.TITLEBAR_PART);
 			const root = layout.mainContainer;
@@ -168,6 +190,7 @@ export class StudioLaunchpad extends Disposable {
 		this._register(workspaces.onDidChangeRecentlyOpened(changed));
 		this._register(addDisposableListener(mainWindow, 'focus', () => { changed(); this.refreshInbox.schedule(); }));
 		this._register(addDisposableListener(document, 'visibilitychange', () => {
+			if (document.hidden) { clearProjectDrop(); }
 			start.setVisible('launchpad', !document.hidden && !this.view.element.hidden);
 			const app = this.app.value;
 			if (app && !app.surface.inert) { void app.webview.postMessage({ type: 'studio-launchpad-view', visible: !document.hidden }); }
@@ -199,7 +222,7 @@ export class StudioLaunchpad extends Disposable {
 			app.surface.inert = app.back.hidden = true;
 			void app.webview.postMessage({ type: 'studio-launchpad-view', visible: false });
 		}
-		this.view.element.hidden = false;
+		this.view.setVisible(true);
 		this.view.setInboxBusy(false);
 		this.start.setVisible('launchpad', !document.hidden);
 		if (fromSettings) { this.view.focusAccount(); }
@@ -255,7 +278,7 @@ export class StudioLaunchpad extends Disposable {
 			lifetime.add(webview.onMessage(({ message }) => { if (message?.type === 'ready') { deadline.cancel(); } }));
 			lifetime.add(webview.onFatalError(failed));
 			lifetime.add(addDisposableListener(surface, 'focus', () => webview.focus()));
-			this.view.element.hidden = true;
+			this.view.setVisible(false);
 			this.start.setVisible('launchpad', false);
 			webview.claim(surface, mainWindow, undefined);
 			webview.setAnchorElement(surface);
@@ -348,10 +371,28 @@ export class StudioLaunchpad extends Disposable {
 			return false;
 		}
 		app.surface.inert = app.back.hidden = false;
-		this.view.element.hidden = true;
+		this.view.setVisible(false);
 		this.start.setVisible('launchpad', false);
 		app.webview.focus();
 		return true;
+	}
+
+	private async openDroppedFolders(uris: URI[]): Promise<void> {
+		const folders = (await Promise.all(uris.map(async uri => {
+			try {
+				return (await this.files.stat(uri)).isDirectory ? { folderUri: uri } : undefined;
+			} catch {
+				return undefined; // A dropped path can disappear before it is opened.
+			}
+		}))).filter(folder => folder !== undefined);
+		if (this._store.isDisposed) { return; }
+		if (folders.length) {
+			await this.native.openWindow(folders, { forceNewWindow: true });
+		} else {
+			const zh = this.language.startsWith('zh');
+			await this.native.showMessageBox({ type: 'warning', message: zh ? '没有可打开的项目文件夹' : 'No project folders could be opened',
+				buttons: [zh ? '确定' : 'OK'], noLink: true });
+		}
 	}
 
 	private async openProject(project: LaunchpadProject): Promise<void> {

@@ -49,6 +49,8 @@
 .lp-account .lp-avatar img, .lp-account-identity .lp-avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
 .lp-home, .lp-statusbar, .lp-dialog { pointer-events: auto; }
 .lp-home { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--lp-bg); }
+.lp-project-drop { position: absolute; grid-row: 2 / 3; inset: 0; z-index: 1; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 12px; text-align: center; background: color-mix(in srgb,var(--lp-bg) 88%,transparent); color: var(--lp-strong); font-weight: 600; }
+.lp-project-drop .codicon { font-size: 24px; }
 .lp-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; }
 .lp-scroll:hover { scrollbar-color: var(--lp-edge) transparent; }
 .lp-header { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 87px; padding: 12px var(--lp-pad); border-bottom: 1px solid var(--lp-line); background: var(--lp-head); }

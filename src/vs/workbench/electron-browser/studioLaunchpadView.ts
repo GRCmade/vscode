@@ -59,6 +59,7 @@ function tool(label: string, glyph: string, action: () => void): HTMLButtonEleme
 export class StudioLaunchpadView {
 	readonly element = element('div', 'studio-launchpad');
 	private readonly stateBar = element('footer', 'lp-statusbar');
+	private readonly projectDrop = element('div', 'lp-project-drop');
 	private readonly commandCenter: HTMLButtonElement;
 	private readonly picker: LaunchpadPicker;
 	private readonly accountButton: HTMLButtonElement;
@@ -150,7 +151,9 @@ export class StudioLaunchpadView {
 		const device = element('span', 'lp-device'); device.append(icon('device-desktop'), t('Local', '本机'));
 		const commands = button(t('Command palette', '命令面板'), 'terminal', () => this.search(true, commands));
 		this.stateBar.append(device, commands, this.connection);
-		this.element.append(chrome, main, this.stateBar, this.picker.dialog);
+		this.projectDrop.hidden = true;
+		this.projectDrop.append(icon('folder-opened'), element('span', '', t('Open project folder', '打开项目文件夹')));
+		this.element.append(chrome, main, this.stateBar, this.projectDrop, this.picker.dialog);
 	}
 
 	private openOptions(): void {
@@ -323,6 +326,12 @@ export class StudioLaunchpadView {
 		this.select(rows.find(p => p.uri === this.selection)?.uri);
 	}
 
+	get canDropProject(): boolean { return !this.element.hidden && !this.picker.dialog.open; }
+	setProjectDropActive(active: boolean): void { this.projectDrop.toggleAttribute('hidden', !active); }
+	setVisible(visible: boolean): void {
+		this.element.hidden = !visible;
+		this.setProjectDropActive(false);
+	}
 	setInboxBusy(busy: boolean): void { this.inboxButton.disabled = busy; this.inboxButton.setAttribute('aria-busy', String(busy)); }
 	focusInbox(): void { if (this.state?.platform) { this.inboxButton.focus({ preventScroll: true }); } }
 	focusAccount(): void { (this.state?.platform ? this.accountButton : this.element).focus({ preventScroll: true }); }

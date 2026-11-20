@@ -60,7 +60,6 @@ import { ICSSDevelopmentService } from '../../cssDev/node/cssDevService.js';
 import { ResourceSet } from '../../../base/common/map.js';
 import { VSBuffer } from '../../../base/common/buffer.js';
 import { resolveAgentsWindowFolder } from './agentsWindow.js';
-import { FocusMode } from '../../native/common/native.js';
 import { createStudioTray } from './studioTray.js';
 import { readStudioReleaseProject } from '../node/studioReleaseProject.js';
 
@@ -299,16 +298,14 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 	}
 
 	async openStudioLaunchpad(background = false, page: 'home' | 'inbox' = 'home'): Promise<ICodeWindow> {
-		const existing = this.getWindows().find(window => window.isStudioLaunchpad && !window.win?.isDestroyed());
+		const existing = this.getWindows().find(window => window.isStudioLaunchpad && window.win && !window.win.isDestroyed());
 		const window = existing ?? await (this.launchpadOpening ??= this.openInBrowserWindow({
 			forceNewWindow: true,
 			studioLaunchpad: { background },
 			cli: { _: [], 'folder-uri': undefined, 'file-uri': undefined, wait: false },
 		}).finally(() => this.launchpadOpening = undefined));
 		if (!background && !this.lifecycleMainService.quitRequested && window.win) {
-			if (window.win.isMinimized()) { window.win.restore(); }
-			window.win.show();
-			window.focus({ mode: FocusMode.Force });
+			window.showStudioLaunchpad();
 			if (existing || page === 'inbox') {
 				window.sendWhenReady('vscode:runAction', CancellationToken.None, { id: page === 'inbox' ? 'studio.internalOpenLaunchpadInbox' : 'studio.internalShowLaunchpad', from: 'menu' });
 			}

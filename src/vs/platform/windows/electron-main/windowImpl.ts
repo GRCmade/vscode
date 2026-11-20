@@ -14,7 +14,7 @@ import { join } from '../../../base/common/path.js';
 import { getMarks, mark } from '../../../base/common/performance.js';
 import { isTahoeOrNewer, isLinux, isMacintosh, isWindows } from '../../../base/common/platform.js';
 import { URI } from '../../../base/common/uri.js';
-import { localize } from '../../../nls.js';
+import { getNLSLanguage, localize } from '../../../nls.js';
 import { release } from 'os';
 import { ISerializableCommandAction } from '../../action/common/action.js';
 import { IBackupMainService } from '../../backup/electron-main/backup.js';
@@ -48,6 +48,7 @@ import { VSBuffer } from '../../../base/common/buffer.js';
 import { errorHandler } from '../../../base/common/errors.js';
 import { FocusMode, IApplicationBadge } from '../../native/common/native.js';
 import { Color } from '../../../base/common/color.js';
+import { validatedIpcMain } from '../../../base/parts/ipc/electron-main/ipcMain.js';
 
 export interface IWindowCreationOptions {
 	readonly state: IWindowState;
@@ -710,6 +711,13 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 	get config(): INativeWindowConfiguration | undefined { return this._config; }
 
 	readonly isStudioLaunchpad: boolean;
+	private readonly studioLaunchpadStartup?: {
+		stage: 'loading' | 'painted' | 'failed';
+		revealRequested: boolean;
+		prompting: boolean;
+		readonly timeout: RunOnceScheduler;
+		applyInitialState?: () => void;
+	};
 
 	get isExtensionDevelopmentHost(): boolean { return !!(this._config?.extensionDevelopmentPath); }
 
@@ -794,9 +802,13 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 			if (this.isStudioLaunchpad) {
 				// Keep the console separate even when macOS groups project windows into native tabs.
 				delete options.tabbingIdentifier;
-				if (config.studioLaunchpad?.background) {
-					options.show = false;
-				}
+				options.show = false;
+				options.paintWhenInitiallyHidden = true;
+				this.studioLaunchpadStartup = {
+					stage: 'loading', revealRequested: false, prompting: false,
+					timeout: this._register(new RunOnceScheduler(() => this.failStudioLaunchpadStartup(), 30000)),
+					applyInitialState: config.studioLaunchpad?.background ? undefined : () => this.applyState(this.windowState, hasMultipleDisplays),
+				};
 			}
 
 			// Create the browser window
@@ -808,7 +820,7 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 			this.setWin(this._win, options);
 
 			// Apply some state after window creation
-			if (!config.studioLaunchpad?.background) {
+			if (!this.isStudioLaunchpad) {
 				this.applyState(this.windowState, hasMultipleDisplays);
 				this._lastFocusTime = Date.now();
 			} else {
@@ -877,6 +889,96 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 		return this.readyState === ReadyState.READY;
 	}
 
+	showStudioLaunchpad(): void {
+		const startup = this.studioLaunchpadStartup;
+		if (!startup || !this._win || this._win.isDestroyed() || this.lifecycleMainService.quitRequested) {
+			return;
+		}
+		startup.revealRequested = true;
+		if (startup.prompting) {
+			return;
+		}
+		if (startup.stage === 'failed') {
+			this.failStudioLaunchpadStartup();
+			return;
+		}
+		if (startup.stage === 'loading') {
+			if (!startup.timeout.isScheduled()) {
+				// A resident window can also be reloaded while hidden. Let it paint until it is ready to reveal.
+				this._win.webContents.backgroundThrottling = false;
+				startup.timeout.schedule();
+			}
+			return;
+		}
+
+		startup.revealRequested = false;
+		startup.applyInitialState?.();
+		startup.applyInitialState = undefined;
+		if (this._win.isMinimized()) {
+			this._win.restore();
+		}
+		if (!this._win.isVisible()) {
+			this._win.show();
+		}
+		this.focus({ mode: FocusMode.Force });
+	}
+
+	private onStudioLaunchpadPainted(): void {
+		const startup = this.studioLaunchpadStartup;
+		if (!startup) {
+			return;
+		}
+		startup.stage = 'painted';
+		startup.timeout.cancel();
+		this._win.webContents.backgroundThrottling = true;
+		if (startup.revealRequested && !startup.prompting) {
+			this.showStudioLaunchpad();
+		}
+	}
+
+	private failStudioLaunchpadStartup(): void {
+		const startup = this.studioLaunchpadStartup;
+		const win = this._win;
+		if (!startup || !win || win.isDestroyed() || this.lifecycleMainService.quitRequested) {
+			return;
+		}
+		startup.stage = 'failed';
+		startup.timeout.cancel();
+		win.webContents.backgroundThrottling = true;
+		if (startup.prompting || (!startup.revealRequested && !win.isVisible())) {
+			return;
+		}
+
+		startup.prompting = true;
+		const chinese = getNLSLanguage()?.toLowerCase() === 'zh-cn';
+		// Do not attach the recovery dialog to a window that has not been shown yet.
+		void this.dialogMainService.showMessageBox({
+			type: 'error',
+			message: chinese ? '无法打开启动台' : 'Could not open Launchpad',
+			buttons: chinese ? ['重试', '关闭'] : ['Retry', 'Close'],
+			cancelId: 1,
+		}, win.isVisible() ? win : undefined).then(({ response }) => {
+			startup.prompting = false;
+			startup.revealRequested = false;
+			if (win.isDestroyed() || this.lifecycleMainService.quitRequested) {
+				return;
+			}
+			if (response === 0) {
+				if (startup.stage === 'failed' && this._config) {
+					win.hide();
+					this.load(this._config, { isReload: true });
+				}
+				this.showStudioLaunchpad();
+			} else {
+				win.hide();
+			}
+		}).catch(error => {
+			startup.prompting = false;
+			startup.revealRequested = false;
+			this.logService.error(error);
+		});
+	}
+
 	get whenClosedOrLoaded(): Promise<void> {
 		return new Promise<void>(resolve => {
 
@@ -893,12 +995,24 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 	}
 
 	private registerListeners(): void {
+		if (this.isStudioLaunchpad) {
+			this._register(Event.fromNodeEventEmitter<electron.IpcMainEvent>(validatedIpcMain, 'vscode:studioLaunchpadPainted')(event => {
+				if (event.sender === this._win.webContents) {
+					this.onStudioLaunchpadPainted();
+				}
+			}));
+		}
 
 		// Window error conditions to handle
 		this._register(Event.fromNodeEventEmitter(this._win, 'unresponsive')(() => this.onWindowError(WindowError.UNRESPONSIVE)));
 		this._register(Event.fromNodeEventEmitter(this._win, 'responsive')(() => this.onWindowError(WindowError.RESPONSIVE)));
 		this._register(Event.fromNodeEventEmitter(this._win.webContents, 'render-process-gone', (event, details) => details)(details => this.onWindowError(WindowError.PROCESS_GONE, { ...details })));
-		this._register(Event.fromNodeEventEmitter(this._win.webContents, 'did-fail-load', (event, exitCode, reason) => ({ exitCode, reason }))(({ exitCode, reason }) => this.onWindowError(WindowError.LOAD, { reason, exitCode })));
+		this._register(Event.fromNodeEventEmitter(this._win.webContents, 'did-fail-load', (_event, exitCode, reason, _url, isMainFrame) => ({ exitCode, reason, isMainFrame }))(({ exitCode, reason, isMainFrame }) => {
+			void this.onWindowError(WindowError.LOAD, { reason, exitCode });
+			if (this.isStudioLaunchpad && isMainFrame && exitCode !== -3 /* ERR_ABORTED during navigation */) {
+				this.failStudioLaunchpadStartup();
+			}
+		}));
 
 		// Prevent windows/iframes from blocking the unload
 		// through DOM events. We have our own logic for
@@ -1014,6 +1128,15 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 			reason: details?.reason,
 			code: details?.exitCode
 		});
+		if (this.isStudioLaunchpad && type === WindowError.PROCESS_GONE) {
+			this.readyState = ReadyState.NAVIGATING;
+			this.failStudioLaunchpadStartup();
+			return;
+		}
+		if (this.isStudioLaunchpad && type === WindowError.UNRESPONSIVE && !this._win.isVisible()) {
+			// Background warmup must never prompt. A pending reveal has its own startup timeout.
+			return;
+		}
 
 		// Inform User if non-recoverable
 		switch (type) {
@@ -1133,6 +1256,10 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 		try {
 			// ask the windows service to open a new fresh window if specified
 			if (reopen && this._config) {
+				if (this.isStudioLaunchpad) {
+					await this.windowsMainService.openStudioLaunchpad();
+					return;
+				}
 
 				// We have to reconstruct a openable from the current workspace
 				let uriToOpen: IWorkspaceToOpen | IFolderToOpen | undefined = undefined;
@@ -1303,7 +1430,12 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 		} else {
 			windowUrl = FileAccess.asBrowserUri(`vs/code/electron-browser/workbench/workbench${this.environmentMainService.isBuilt ? '' : '-dev'}.html`).toString(true);
 		}
-		this._win.loadURL(windowUrl);
+		if (this.studioLaunchpadStartup) {
+			this.studioLaunchpadStartup.stage = 'loading';
+			void this._win.loadURL(windowUrl).catch(error => this.logService.error(error));
+		} else {
+			this._win.loadURL(windowUrl);
+		}
 
 		// Remember that we did load
 		const wasLoaded = this.wasLoaded;
@@ -1369,7 +1501,8 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 		configuration.maximized = this._win.isMaximized();
 		configuration.partsSplash = this.themeMainService.getWindowSplash(configuration.workspace);
 		if (this.isStudioLaunchpad) {
-			configuration.studioLaunchpadReduceMotion = this.configurationService.getValue('workbench.reduceMotion') === 'on';
+			const reduceMotion = this.configurationService.getValue<'auto' | 'on' | 'off'>('workbench.reduceMotion');
+			configuration.studioLaunchpadReduceMotion = reduceMotion === 'auto' || reduceMotion === undefined ? undefined : reduceMotion === 'on';
 		}
 		configuration.zoomLevel = this.getZoomLevel();
 		configuration.isCustomZoomLevel = typeof this.customZoomLevel === 'number';

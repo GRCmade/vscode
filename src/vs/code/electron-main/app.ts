@@ -706,7 +706,15 @@ export class CodeApplication extends Disposable {
 		validatedIpcMain.on('vscode:toggleDevTools', event => event.sender.toggleDevTools());
 		validatedIpcMain.on('vscode:openDevTools', event => event.sender.openDevTools());
 
-		validatedIpcMain.on('vscode:reloadWindow', event => event.sender.reload());
+		validatedIpcMain.on('vscode:reloadWindow', event => {
+			const window = this.windowsMainService?.getWindowByWebContents(event.sender);
+			if (window?.isStudioLaunchpad) {
+				// Retry via the launchpad's normal reload path so it resets the first-paint gate.
+				void this.lifecycleMainService.reload(window).catch(error => this.logService.error(error));
+			} else {
+				event.sender.reload();
+			}
+		});
 
 		validatedIpcMain.handle('vscode:notifyZoomLevel', async (event, zoomLevel: number | undefined) => {
 			const window = this.windowsMainService?.getWindowByWebContents(event.sender);

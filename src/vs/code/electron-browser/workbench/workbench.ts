@@ -23,6 +23,9 @@ import { showStudioLaunchpadSplash } from '../../../workbench/electron-browser/s
 
 	const preloadGlobals = (window as unknown as { vscode: IMainWindowSandboxGlobals }).vscode; // defined by preload.ts
 	const safeProcess = preloadGlobals.process;
+	let launchpad = false;
+	let launchpadSplash: ReturnType<typeof showStudioLaunchpadSplash> | undefined;
+	let launchpadTimeout: number | undefined;
 
 	//#region Splash Screen Helpers
 
@@ -94,12 +97,19 @@ import { showStudioLaunchpadSplash } from '../../../workbench/electron-browser/s
 
 		// The launchpad owns its first paint instead of restoring editor chrome.
 		if (configuration.isStudioLaunchpad) {
-			showStudioLaunchpadSplash(window.document, {
+			launchpadSplash = showStudioLaunchpadSplash(window.document, {
 				baseTheme,
 				background: data?.colorInfo.background ?? shellBackground,
 				foreground: shellForeground,
 				language: configuration.nls.language,
 				reduceMotion: configuration.studioLaunchpadReduceMotion,
+				retry: () => preloadGlobals.ipcRenderer.send('vscode:reloadWindow'),
+			});
+			void launchpadSplash.logoReady.then(() => {
+				// Let Chromium paint the branded frame before asking the native window to show.
+				window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+					preloadGlobals.ipcRenderer.send('vscode:studioLaunchpadPainted');
+				}));
 			});
 			return;
 		}
@@ -534,7 +544,9 @@ import { showStudioLaunchpadSplash } from '../../../workbench/electron-browser/s
 
 			return { result, configuration };
 		} catch (error) {
-			onUnexpectedError(error, enableDeveloperKeybindings && !forceDisableShowDevtoolsOnError);
+			if (!launchpad) {
+				onUnexpectedError(error, enableDeveloperKeybindings && !forceDisableShowDevtoolsOnError);
+			}
 
 			throw error;
 		}
@@ -718,9 +730,9 @@ import { showStudioLaunchpadSplash } from '../../../workbench/electron-browser/s
 
 	//#endregion
 
-	const { result, configuration } = await load<IDesktopMain, INativeWindowConfiguration>(
-		{
-			configureDeveloperSettings: function (windowConfig) {
+	async function start(): Promise<void> {
+		const { result, configuration } = await load<IDesktopMain, INativeWindowConfiguration>({
+			configureDeveloperSettings: windowConfig => {
 				return {
 					// disable automated devtools opening on error when running extension tests
 					// as this can lead to nondeterministic test execution (devtools steals focus)
@@ -730,7 +742,12 @@ import { showStudioLaunchpadSplash } from '../../../workbench/electron-browser/s
 					removeDeveloperKeybindingsAfterLoad: true
 				};
 			},
-			beforeImport: function (windowConfig) {
+			beforeImport: windowConfig => {
+
+				if (windowConfig.isStudioLaunchpad) {
+					launchpad = true;
+					launchpadTimeout = window.setTimeout(() => launchpadSplash?.showError(true), 30000);
+				}
 
 				// Show our splash as early as possible
 				showSplash(windowConfig);
@@ -756,12 +773,22 @@ import { showStudioLaunchpadSplash } from '../../../workbench/electron-browser/s
 				// Track import() perf
 				performance.mark('code/willLoadWorkbenchMain');
 			}
+		});
+
+		// Mark start of workbench
+		performance.mark('code/didLoadWorkbenchMain');
+		await result.main(configuration);
+	}
+
+	try {
+		await start();
+	} catch (error) {
+		if (!launchpad) {
+			throw error;
 		}
-	);
-
-	// Mark start of workbench
-	performance.mark('code/didLoadWorkbenchMain');
-
-	// Load workbench
-	result.main(configuration);
+		console.error('[Studio Launchpad] Failed to start', error);
+		launchpadSplash?.showError(false);
+	} finally {
+		window.clearTimeout(launchpadTimeout);
+	}
 }());

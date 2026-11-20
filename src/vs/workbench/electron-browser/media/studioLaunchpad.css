@@ -4,7 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 .studio-launchpad, .studio-launchpad-back { position: absolute; z-index: 24; }
 .studio-launchpad { inset: 0; bottom: 22px; overflow: auto; color: var(--vscode-foreground); background: var(--vscode-editor-background); font: 13px/1.45 var(--vscode-font-family, system-ui); user-select: text; -webkit-user-select: text; scrollbar-width: thin; scrollbar-color: transparent transparent; }
-.studio-launchpad:focus { outline: none; }
+.monaco-workbench .studio-launchpad[tabindex]:focus,
+.monaco-workbench .studio-launchpad[tabindex]:focus-visible { outline: none; }
 .studio-launchpad:hover, .studio-launchpad:focus-within { scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; }
 .studio-launchpad *, .studio-launchpad { box-sizing: border-box; }
 .studio-launchpad [hidden], .studio-launchpad[hidden], .studio-launchpad-back[hidden] { display: none !important; }
@@ -17,6 +18,9 @@
 .studio-launchpad button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 5px 8px; border: 1px solid transparent; border-radius: 5px; color: inherit; background: transparent; font: inherit; cursor: pointer; }
 .studio-launchpad button:hover, .studio-launchpad button[aria-pressed=true] { background: var(--vscode-list-hoverBackground); }
 .studio-launchpad button:focus-visible, .lp-search:focus-visible, .studio-launchpad-back:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.monaco-workbench .studio-launchpad button:focus:not(:focus-visible),
+.monaco-workbench .studio-launchpad input:focus:not(:focus-visible),
+.monaco-workbench .studio-launchpad-back:focus:not(:focus-visible) { outline: none; }
 .studio-launchpad button:disabled { opacity: .55; cursor: default; }
 .lp-links button, .lp-link { font-size: 12px; }
 .studio-launchpad .lp-outline, .lp-search { border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }

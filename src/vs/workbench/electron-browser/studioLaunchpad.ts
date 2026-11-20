@@ -172,7 +172,11 @@ export class StudioLaunchpad extends Disposable {
 		const state = this.start.state;
 		const metadata = new Map(state?.recent.map(row => [row.uri, row]));
 		const live = new Map(this.windows.map(row => [row.uri, row.windowId]));
-		const recent = this.recent.map(row => ({ ...row, name: metadata.get(row.uri)?.label || row.name, lastOpened: metadata.get(row.uri)?.lastOpened, windowId: live.get(row.uri) }));
+		const recent = this.recent.map(row => {
+			const info = metadata.get(row.uri);
+			return { ...row, name: info?.label || row.name, projectType: info?.projectType, avatarUrl: info?.avatarUrl,
+				lastOpened: info?.lastOpened, windowId: live.get(row.uri) };
+		});
 		this.view.update({ windows: this.windows, recent, canCreate: !!state?.canCreate && !state.busy, platform: !!state?.platform, store: state?.recommendations, inbox: this.inbox });
 	}
 }

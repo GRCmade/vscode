@@ -10,6 +10,8 @@ export interface LaunchpadProject {
 	uri: string;
 	name: string;
 	path: string;
+	projectType?: string;
+	avatarUrl?: string;
 	windowId?: number;
 	lastOpened?: number;
 }
@@ -140,6 +142,29 @@ export class StudioLaunchpadView {
 
 	private readonly label: (en: string, zh: string) => string;
 
+	private typeLabel(projectType: string | undefined): string | undefined {
+		switch (projectType) {
+			case 'workflow': return this.label('Workflow', '工作流');
+			case 'bot': return this.label('Bot', 'Bot');
+			case 'kanban': return this.label('Kanban', '看板');
+			case 'conversation': return this.label('Conversation', '对话');
+			case 'aggregate': return this.label('Aggregate Project', '聚合项目');
+			case 'link': return this.label('Import from Link', '链接导入');
+			default: return undefined;
+		}
+	}
+
+	private projectIcon(row: LaunchpadProject): HTMLElement {
+		if (row.kind === 'folder' && row.avatarUrl?.startsWith('data:image/svg+xml,')) {
+			const image = element('img', 'lp-project-avatar');
+			image.src = row.avatarUrl;
+			image.alt = '';
+			image.setAttribute('aria-hidden', 'true');
+			return image;
+		}
+		return icon(row.kind === 'workspace' ? 'project' : studioProjectIcon(row.projectType) ?? 'folder');
+	}
+
 	private list<T>(root: HTMLElement, rows: T[], empty: string, render: (row: T) => HTMLElement): void {
 		const signature = JSON.stringify([rows, empty]);
 		if (this.signatures.get(root) === signature) { return; }
@@ -164,8 +189,12 @@ export class StudioLaunchpadView {
 			action.title = row.path;
 			const name = element('span', 'lp-project-name');
 			const pair = element('span', 'lp-pair');
-			pair.append(element('strong', '', row.name), element('small', '', row.path));
-			name.append(icon(row.kind === 'workspace' ? 'project' : 'folder'), pair);
+			const heading = element('span', 'lp-project-heading');
+			heading.append(element('strong', '', row.name));
+			const type = row.kind === 'folder' ? this.typeLabel(row.projectType) : undefined;
+			if (type) { heading.append(element('span', 'lp-project-type', type)); }
+			pair.append(heading, element('small', '', row.path));
+			name.append(this.projectIcon(row), pair);
 			const status = element('span', row.windowId === undefined ? 'lp-idle' : 'lp-running', row.windowId === undefined ? this.label('Closed', '已关闭') : this.label('Open', '已打开'));
 			action.append(name, status, element('time', '', row.lastOpened ? this.date.format(row.lastOpened) : '—'));
 			return action;

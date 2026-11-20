@@ -37,7 +37,12 @@
 .studio-launchpad .lp-live-project:hover { background: var(--vscode-list-hoverBackground); }
 .lp-live-project .codicon:last-child, .lp-card .codicon:last-child { margin-inline-start: auto; color: var(--vscode-descriptionForeground); font-size: 13px; }
 .lp-live-project .codicon:first-child, .lp-project-name .codicon { color: var(--vscode-symbolIcon-folderForeground, var(--vscode-charts-yellow)); }
-.lp-live-project .codicon-project, .lp-project-name .codicon-project { color: var(--vscode-textLink-foreground); }
+.lp-live-project .codicon-project, .lp-project-name .codicon-project,
+.lp-project-name .codicon-run-all, .lp-project-name .codicon-hubot, .lp-project-name .codicon-layout { color: var(--vscode-textLink-foreground); }
+.lp-project-avatar { width: 22px; height: 22px; flex: 0 0 22px; border-radius: 4px; object-fit: cover; }
+.lp-project-heading { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.lp-project-heading > strong { min-width: 0; }
+.lp-project-type { flex: none; padding: 0 6px; border-radius: 999px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 10px; line-height: 16px; white-space: nowrap; }
 .lp-store-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
 .lp-live-list, .lp-history-list { scrollbar-width: thin; scrollbar-color: transparent transparent; }
 .lp-live-list:hover, .lp-history-list:hover { scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; }

@@ -52,7 +52,7 @@
 .lp-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; }
 .lp-scroll:hover { scrollbar-color: var(--lp-edge) transparent; }
 .lp-header { flex: none; display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 87px; padding: 12px var(--lp-pad); border-bottom: 1px solid var(--lp-line); background: var(--lp-head); }
-.lp-identity, .lp-actions, .lp-local, .lp-section-head, .lp-history-tools, .lp-project-name, .lp-project-heading, .lp-spread, .lp-foot, .lp-window-status { display: flex; align-items: center; min-width: 0; }
+.lp-identity, .lp-actions, .lp-local, .lp-section-head, .lp-project-name, .lp-project-heading, .lp-spread, .lp-foot, .lp-window-status { display: flex; align-items: center; min-width: 0; }
 .lp-identity { gap: 13px; } .lp-app-mark { flex: none; display: grid; place-items: center; width: 44px; height: 44px; background: var(--lp-panel); border: 1px solid var(--lp-edge); border-radius: 8px; }
 .lp-app-mark img { width: 32px; height: 32px; object-fit: contain; }
 .lp-identity h1 { font-size: 25px; line-height: 1.17; font-weight: 650; color: var(--lp-strong); }
@@ -69,11 +69,11 @@
 .lp-section-head { gap: 8px; min-height: 27px; margin-block-end: 10px; }
 .lp-section-head h2, .lp-dialog h2 { font-size: 17px; font-weight: 610; line-height: 1.4; color: var(--lp-strong); }
 .lp-count { min-width: 19px; padding: 0 4px; text-align: center; border: 1px solid var(--lp-edge); border-radius: 5px; color: var(--lp-muted); font: 11px/17px var(--lp-mono); }
-.lp-history-tools, .lp-section-head > .lp-link { margin-inline-start: auto; }
+.lp-section-head > :is(.lp-find,.lp-link) { margin-inline-start: auto; }
 .studio-launchpad .lp-link { min-height: 26px; color: var(--lp-accent); font-size: 12px; }
 .lp-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 .lp-tool { flex: none; width: 26px; height: 26px; border-radius: 4px; }
-.lp-history-tools { gap: 4px; } .studio-launchpad .lp-find { height: 26px; border: 1px solid var(--lp-edge); border-radius: 4px; padding-inline: 7px; color: var(--lp-muted); font-size: 11.5px; }
+.studio-launchpad .lp-find { height: 26px; border: 1px solid var(--lp-edge); border-radius: 4px; padding-inline: 7px; color: var(--lp-muted); font-size: 11.5px; }
 .lp-find .codicon { font-size: 13px; }
 .lp-live-list { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; max-height: 320px; }
 .studio-launchpad .lp-live-project { flex-direction: column; align-items: stretch; gap: 0; overflow: hidden; min-width: 0; text-align: start; background: var(--lp-panel); border: 1px solid var(--lp-edge); border-radius: 7px; }

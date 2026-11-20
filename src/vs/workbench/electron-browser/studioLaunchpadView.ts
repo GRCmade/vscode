@@ -73,7 +73,6 @@ export class StudioLaunchpadView {
 	private readonly recentCount = element('span', 'lp-count');
 	private readonly tableHead = element('div', 'lp-table-head');
 	private readonly shown = element('span');
-	private readonly sort: HTMLButtonElement;
 	private readonly more: HTMLButtonElement;
 	private readonly side = element('aside', 'lp-side');
 	private readonly chats = element('div', 'lp-chat-list');
@@ -86,7 +85,6 @@ export class StudioLaunchpadView {
 	private readonly label: LaunchpadLabel;
 	private readonly date: Intl.DateTimeFormat;
 	private readonly clock: Intl.DateTimeFormat;
-	private alphabetical = false;
 	private expanded = false;
 	private selection?: string;
 	private state?: LaunchpadState;
@@ -133,9 +131,7 @@ export class StudioLaunchpadView {
 		const projects = element('div', 'lp-projects');
 		const live = element('section', 'lp-live'); live.append(sectionHead(element('h2', '', t('Open projects', '已打开的项目')), this.liveCount), this.live);
 		const recent = element('section', 'lp-history');
-		const tools = element('div', 'lp-history-tools');
 		const search = button(t('Search projects', '搜索项目'), 'search', () => this.search(false, search), 'lp-find');
-		this.sort = tool(t('Sort open history', '打开记录排序'), 'list-ordered', () => this.sortOptions()); tools.append(search, this.sort);
 		const grid = element('div'); grid.setAttribute('role', 'grid'); grid.setAttribute('aria-label', t('Project history', '项目打开记录'));
 		this.tableHead.setAttribute('role', 'row');
 		for (const label of [t('Name and local path', '名称与本地路径'), t('Status', '状态'), t('Last opened', '最后打开'), t('Actions', '操作')]) {
@@ -144,7 +140,7 @@ export class StudioLaunchpadView {
 		this.history.setAttribute('role', 'rowgroup'); grid.append(this.tableHead, this.history);
 		this.more = button('', '', () => this.setScope(!this.expanded), 'lp-link');
 		const foot = element('footer', 'lp-foot'); this.shown.setAttribute('role', 'status'); foot.append(this.shown, this.more);
-		recent.append(sectionHead(this.historyTitle, this.recentCount, tools), grid, foot); projects.append(live, recent);
+		recent.append(sectionHead(this.historyTitle, this.recentCount, search), grid, foot); projects.append(live, recent);
 		const inbox = element('section', 'lp-inbox');
 		this.inboxButton = button(t('Open IM', '打开 IM'), '', () => actions.inbox(), 'lp-link'); this.inboxButton.append(icon('chevron-right'));
 		inbox.append(sectionHead(element('h2', '', t('Recent chats', '最近会话')), this.unread, this.inboxButton), this.chats);
@@ -213,13 +209,6 @@ export class StudioLaunchpadView {
 	}
 
 	private setScope(all: boolean): void { this.expanded = all; this.renderHistory(); this.history.scrollTop = 0; }
-	private sortOptions(): void {
-		const name = this.label('Project name', '按项目名称'), time = this.label('Most recent first', '最近打开优先');
-		this.picker.choices(this.label('Sort open history', '打开记录排序'), [false, true].map(byName => ({
-			label: byName ? name : time, glyph: this.alphabetical === byName ? 'check' : byName ? 'case-sensitive' : 'clock',
-			run: () => { this.alphabetical = byName; this.renderHistory(); },
-		})), this.sort);
-	}
 	private kind(p: LaunchpadProject): string { return p.kind === 'workspace' ? this.label('Workspace', '工作区') : this.label('Folder', '文件夹'); }
 	private projectLabel(p: LaunchpadProject): string { return (p.kind === 'folder' ? this.typeLabel(p.projectType) : undefined) ?? this.kind(p); }
 	private glyph(p: LaunchpadProject): string { return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? 'folder'; }
@@ -323,14 +312,13 @@ export class StudioLaunchpadView {
 	}
 	private renderHistory(): void {
 		const t = this.label; const records = this.state?.recent ?? [];
-		const rows = records.slice(0, this.expanded ? undefined : 5);
-		if (this.alphabetical) { rows.sort((a, b) => a.name.localeCompare(b.name, this.date.resolvedOptions().locale, { numeric: true })); }
+		// Native history is already most-recent-first, even for entries without a cached timestamp.
+		const rows = this.expanded ? records : records.slice(0, 5);
 		this.historyTitle.textContent = this.expanded ? t('All open history', '全部打开记录') : t('Recently opened', '最近打开');
 		this.recentCount.textContent = String(rows.length); this.tableHead.hidden = !rows.length;
 		this.shown.textContent = rows.length ? t(`Showing ${rows.length} of ${records.length}`, `显示 ${rows.length} 条，共 ${records.length} 条`) : '';
 		this.more.hidden = !this.expanded && records.length <= 5; this.more.setAttribute('aria-expanded', String(this.expanded));
 		this.more.replaceChildren(...(this.expanded ? [icon('chevron-left'), t('Back to recent', '返回最近打开')] : [t(`All ${records.length} records`, `全部 ${records.length} 条记录`), icon('chevron-right')]));
-		this.sort.title = this.alphabetical ? t('Sort: project name', '排序：项目名称') : t('Sort: most recent first', '排序：最近打开优先');
 		this.list(this.history, rows, t('No open history yet.', '还没有打开记录。'), p => this.historyRow(p), 'folder-opened');
 		this.select(rows.find(p => p.uri === this.selection)?.uri);
 	}

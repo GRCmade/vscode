@@ -201,6 +201,15 @@ export class StudioLaunchpadView {
 		});
 	}
 
+	setInboxBusy(busy: boolean): void {
+		this.inboxButton.disabled = busy;
+		this.inboxButton.setAttribute('aria-busy', String(busy));
+	}
+
+	focusInbox(): void {
+		if (!this.inboxButton.hidden) { this.inboxButton.focus({ preventScroll: true }); }
+	}
+
 	update(state: LaunchpadState): void {
 		this.state = state;
 		const t = this.label;

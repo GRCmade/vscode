@@ -298,7 +298,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 		}
 	}
 
-	async openStudioLaunchpad(background = false): Promise<ICodeWindow> {
+	async openStudioLaunchpad(background = false, page: 'home' | 'inbox' = 'home'): Promise<ICodeWindow> {
 		const existing = this.getWindows().find(window => window.isStudioLaunchpad && !window.win?.isDestroyed());
 		const window = existing ?? await (this.launchpadOpening ??= this.openInBrowserWindow({
 			forceNewWindow: true,
@@ -309,8 +309,8 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 			if (window.win.isMinimized()) { window.win.restore(); }
 			window.win.show();
 			window.focus({ mode: FocusMode.Force });
-			if (existing) {
-				window.sendWhenReady('vscode:runAction', CancellationToken.None, { id: 'studio.internalShowLaunchpad', from: 'menu' });
+			if (existing || page === 'inbox') {
+				window.sendWhenReady('vscode:runAction', CancellationToken.None, { id: page === 'inbox' ? 'studio.internalOpenLaunchpadInbox' : 'studio.internalShowLaunchpad', from: 'menu' });
 			}
 		}
 		return window;

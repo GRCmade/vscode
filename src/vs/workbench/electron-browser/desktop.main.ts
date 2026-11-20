@@ -145,7 +145,7 @@ export class DesktopMain extends Disposable {
 
 		// Create Workbench
 		const workbench = new Workbench(mainWindow.document.body, {
-			extraClasses: [...this.getExtraClasses(), ...(release ? ['studio-steam-mode'] : [])],
+			extraClasses: [...this.getExtraClasses(), ...(release ? ['studio-steam-mode'] : []), ...(this.configuration.isStudioLaunchpad ? ['studio-launchpad-window'] : [])],
 			resetLayout: this.configuration['disable-layout-restore'] === true
 		}, services.serviceCollection, services.logService);
 

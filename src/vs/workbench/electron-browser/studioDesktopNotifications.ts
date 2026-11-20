@@ -54,10 +54,15 @@ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async
 		native = false;
 	};
 	const activate = async (focus: boolean) => {
-		if (!closed && await commands.executeCommand<boolean>('studio.internalDesktopNotificationAction', id) && !closed) {
-			if (focus) { await host.focus(mainWindow, { mode: FocusMode.Force }); }
-			handle.close();
+		if (closed) { return; }
+		const target = await commands.executeCommand<boolean | 'launchpadInbox'>('studio.internalDesktopNotificationAction', id);
+		if (!target || closed) { return; }
+		if (target === 'launchpadInbox') {
+			if (!await nativeHost.openStudioLaunchpadInbox()) { return; }
+		} else if (focus) {
+			await host.focus(mainWindow, { mode: FocusMode.Force });
 		}
+		handle.close();
 	};
 	const handle = notifications.notify({
 		id, source, message: NotificationText.concat(message), severity: Severity.Info,

@@ -35,6 +35,9 @@ import { studioModeState, studioWindowChrome } from '../../../browser/parts/stud
 
 export class NativeTitlebarPart extends BrowserTitlebarPart {
 
+	private readonly isStudioLaunchpad: boolean;
+	protected override get hasStudioModeSwitcher(): boolean { return !this.isStudioLaunchpad && super.hasStudioModeSwitcher; }
+
 	//#region IView
 
 	override get minimumHeight(): number {
@@ -86,6 +89,7 @@ export class NativeTitlebarPart extends BrowserTitlebarPart {
 	) {
 		super(id, targetWindow, editorGroupsContainer, contextMenuService, configurationService, environmentService, instantiationService, themeService, storageService, layoutService, contextKeyService, hostService, editorService, menuService, keybindingService, actionViewItemService, productService);
 
+		this.isStudioLaunchpad = !!environmentService.window.isStudioLaunchpad;
 		this.tahoeOrNewer = isTahoeOrNewer(environmentService.os.release);
 
 		this.handleWindowsAlwaysOnTop(targetWindow.vscodeWindowId);

@@ -523,7 +523,8 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		this.createTitle();
 
 		// Center-Adjacent Toolbar
-		if (hasCustomTitlebar(this.configurationService, this.titleBarStyle)) {
+		const showWorkbenchToolbars = this.hasWorkbenchTitlebarActions && hasCustomTitlebar(this.configurationService, this.titleBarStyle);
+		if (showWorkbenchToolbars) {
 			const centerAdjacentToolBarElement = append(this.rightContent, $('div.center-adjacent-toolbar-container'));
 			this.centerAdjacentToolBarElement = centerAdjacentToolBarElement;
 			const centerAdjacentToolBar = this.centerAdjacentToolBarDisposable.add(this.instantiationService.createInstance(MenuWorkbenchToolBar, centerAdjacentToolBarElement, MenuId.TitleBarAdjacentCenter, {
@@ -543,7 +544,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		}
 
 		// Update Toolbar (before the right-aligned toolbar actions)
-		if (hasCustomTitlebar(this.configurationService, this.titleBarStyle)) {
+		if (showWorkbenchToolbars) {
 			const updateToolBarElement = append(this.rightContent, $('div.update-toolbar-container'));
 			this.updateToolBarElement = updateToolBarElement;
 			const updateToolBar = this.updateToolBarDisposable.add(this.instantiationService.createInstance(MenuWorkbenchToolBar, updateToolBarElement, MenuId.TitleBarUpdate, {
@@ -560,7 +561,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		}
 
 		// Create Toolbar Actions
-		if (hasCustomTitlebar(this.configurationService, this.titleBarStyle)) {
+		if (showWorkbenchToolbars) {
 			this.actionToolBarElement = append(this.rightContent, $('div.action-toolbar-container'));
 			this.createActionToolBar();
 			this.createActionToolBarMenus();
@@ -934,6 +935,8 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 	protected get isCommandCenterVisible() {
 		return !this.isCompact && this.configurationService.getValue<boolean>(LayoutSettings.COMMAND_CENTER) !== false;
 	}
+
+	protected get hasWorkbenchTitlebarActions(): boolean { return true; }
 
 	protected get hasStudioModeSwitcher(): boolean {
 		return !this.isAuxiliary && hasCustomTitlebar(this.configurationService, this.titleBarStyle);

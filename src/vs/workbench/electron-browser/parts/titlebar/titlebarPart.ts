@@ -36,11 +36,13 @@ import { studioModeState, studioWindowChrome } from '../../../browser/parts/stud
 export class NativeTitlebarPart extends BrowserTitlebarPart {
 
 	private readonly isStudioLaunchpad: boolean;
+	protected override get hasWorkbenchTitlebarActions(): boolean { return !this.isStudioLaunchpad; }
 	protected override get hasStudioModeSwitcher(): boolean { return !this.isStudioLaunchpad && super.hasStudioModeSwitcher; }
 
 	//#region IView
 
 	override get minimumHeight(): number {
+		if (this.isStudioLaunchpad) { return 44; }
 		if (!isMacintosh || this.hasStudioModeSwitcher) {
 			return super.minimumHeight;
 		}

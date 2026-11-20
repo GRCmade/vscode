@@ -250,10 +250,12 @@ export class StudioLaunchpadView {
 			(active?.classList.contains('lp-row-more') ? row?.querySelector('button') : row)?.focus({ preventScroll: true });
 		}
 	}
-	private select(uri: string, focus = false): void {
+	private select(uri: string | undefined, focus = false): void {
 		this.selection = uri;
 		for (const row of this.history.querySelectorAll<HTMLElement>('.lp-project-row')) {
-			const selected = row.dataset.key === uri; row.setAttribute('aria-selected', String(selected)); row.tabIndex = selected ? 0 : -1;
+			const selected = row.dataset.key === uri;
+			row.setAttribute('aria-selected', String(selected));
+			row.tabIndex = selected || (uri === undefined && row === this.history.firstElementChild) ? 0 : -1;
 			row.querySelector('button')!.tabIndex = row.tabIndex;
 			if (selected && focus) { row.focus({ preventScroll: true }); row.scrollIntoView({ block: 'nearest' }); }
 		}
@@ -261,6 +263,7 @@ export class StudioLaunchpadView {
 	private historyRow(p: LaunchpadProject): HTMLElement {
 		const t = this.label;
 		const row = element('div', 'lp-project-row'); row.dataset.key = p.uri; row.setAttribute('role', 'row'); row.title = p.path;
+		row.tabIndex = -1;
 		const name = element('span', 'lp-project-name'); const tile = element('span', `lp-tile lp-${p.kind}`); tile.title = this.projectLabel(p); tile.append(this.projectIcon(p));
 		const pair = element('span', 'lp-pair'); const heading = element('span', 'lp-project-heading'); heading.append(element('strong', 'lp-ellipsis', p.name));
 		const type = p.kind === 'folder' ? this.typeLabel(p.projectType) : undefined; if (type) { heading.append(element('span', 'lp-project-type', type)); }
@@ -296,7 +299,7 @@ export class StudioLaunchpadView {
 		this.more.replaceChildren(...(this.expanded ? [icon('chevron-left'), t('Back to recent', '返回最近打开')] : [t(`All ${records.length} records`, `全部 ${records.length} 条记录`), icon('chevron-right')]));
 		this.sort.title = this.alphabetical ? t('Sort: project name', '排序：项目名称') : t('Sort: most recent first', '排序：最近打开优先');
 		this.list(this.history, rows, t('No open history yet.', '还没有打开记录。'), p => this.historyRow(p), 'folder-opened');
-		if (rows.length) { this.select(rows.find(p => p.uri === this.selection)?.uri ?? rows[0].uri); }
+		this.select(rows.find(p => p.uri === this.selection)?.uri);
 	}
 
 	setInboxBusy(busy: boolean): void { this.inboxButton.disabled = busy; this.inboxButton.setAttribute('aria-busy', String(busy)); }

@@ -14,6 +14,7 @@ import { ipcRenderer } from '../../base/parts/sandbox/electron-browser/globals.j
 import { getNLSLanguage } from '../../nls.js';
 import { CommandsRegistry, ICommandService } from '../../platform/commands/common/commands.js';
 import { IFileDialogService } from '../../platform/dialogs/common/dialogs.js';
+import { IExtensionStorageService } from '../../platform/extensionManagement/common/extensionStorage.js';
 import { FileOperationResult, IFileService, toFileOperationResult } from '../../platform/files/common/files.js';
 import { FocusMode, INativeHostService } from '../../platform/native/common/native.js';
 import { INotificationService } from '../../platform/notification/common/notification.js';
@@ -21,20 +22,22 @@ import { IOpenerService } from '../../platform/opener/common/opener.js';
 import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../platform/workspace/common/workspace.js';
 import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
 import { IStudioStartService } from '../browser/parts/editor/studioStart.js';
-import { IWebviewService } from '../contrib/webview/browser/webview.js';
+import { IWebviewElement, IWebviewService } from '../contrib/webview/browser/webview.js';
 import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layoutService.js';
 import { LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
 import './media/studioLaunchpad.css';
 
 interface LaunchpadApp { title: string; html: string; port: number; accountUrl?: string }
+interface ResidentApp { key: string; surface: HTMLElement; back: HTMLButtonElement; webview: IWebviewElement; ready: DeferredPromise<boolean>; dispose(): void }
 interface LaunchpadMenuAccount { status: string; name: string; avatarUrl?: string }
 
 export class StudioLaunchpad extends Disposable {
 	private readonly view: StudioLaunchpadView;
-	private readonly app = this._register(new MutableDisposable<DisposableStore>());
+	private readonly app = this._register(new MutableDisposable<ResidentApp>());
 	private requestId?: string;
 	private windows: LaunchpadProject[] = [];
 	private recent: LaunchpadProject[] = [];
+	private readonly savedProjects = new Map<string, Pick<LaunchpadProject, 'name' | 'projectType' | 'avatarUrl' | 'lastOpened'>>();
 	private readonly missing = new Set<string>();
 	private inbox?: LaunchpadInbox;
 	private account?: LaunchpadState['account'];
@@ -54,8 +57,20 @@ export class StudioLaunchpad extends Disposable {
 		@IOpenerService private readonly opener: IOpenerService,
 		@IWebviewService private readonly webviews: IWebviewService,
 		@IFileService private readonly files: IFileService,
+		@IExtensionStorageService extensionStorage: IExtensionStorageService,
 	) {
 		super();
+		// Read the extension's profile memento synchronously; native history still owns membership and ordering.
+		const saved = extensionStorage.getExtensionState('studio.studio-workstation', true)?.['studio.recentProjects'];
+		if (Array.isArray(saved)) {
+			for (const row of saved.slice(0, 50)) {
+				if (typeof row?.uri === 'string' && typeof row.label === 'string' && Number.isFinite(row.lastOpened)) {
+					this.savedProjects.set(row.uri, { name: row.label, lastOpened: row.lastOpened,
+						projectType: ['bot', 'workflow', 'kanban'].includes(row.projectType) ? row.projectType : undefined,
+						avatarUrl: typeof row.avatarUrl === 'string' && row.avatarUrl.startsWith('data:image/svg+xml,') ? row.avatarUrl : undefined });
+				}
+			}
+		}
 		const run = (action: Promise<unknown>) => { void action.catch(error => notifications.error(error)); };
 		this.view = new StudioLaunchpadView(this.language, {
 			open: () => run(dialogs.pickFolderAndOpen({ forceNewWindow: true })),
@@ -86,9 +101,10 @@ export class StudioLaunchpad extends Disposable {
 		this._register(addDisposableListener(mainWindow, 'keydown', event => this.view.shortcut(event), true));
 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpad', () => this.showHome()));
 		this._register(CommandsRegistry.registerCommand('studio.internalOpenLaunchpadInbox', () => run(this.openInbox())));
-		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, id: string, app: LaunchpadApp) => this.showApp(id, app)));
-		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, id: string) => {
-			if (id === this.requestId) { this.showHome(); }
+		this._register(CommandsRegistry.registerCommand('studio.internalPrepareLaunchpadApp', (_accessor, key: string, app: LaunchpadApp) => this.prepareApp(key, app)));
+		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, requestId: string, conversation?: string) => this.showApp(key, requestId, conversation)));
+		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => {
+			if (key === this.app.value?.key) { if (this.view.element.hidden) { this.showHome(); } this.app.clear(); }
 		}));
 		this._register(CommandsRegistry.registerCommand('studio.internalLaunchpadInboxChanged', (_accessor, reset?: boolean) => {
 			++this.inboxRevision;
@@ -132,6 +148,7 @@ export class StudioLaunchpad extends Disposable {
 		this._register(addDisposableListener(mainWindow, 'focus', () => { changed(); this.refreshInbox.schedule(); }));
 		this._register(addDisposableListener(document, 'visibilitychange', () => {
 			start.setVisible('launchpad', !document.hidden && !this.view.element.hidden);
+			if (this.view.element.hidden) { void this.app.value?.webview.postMessage({ type: 'studio-launchpad-view', visible: !document.hidden }); }
 			if (!document.hidden) { changed(); this.refreshInbox.schedule(); }
 		}));
 		// The resident window never becomes an editor, including while an app is opening or closing.
@@ -153,7 +170,11 @@ export class StudioLaunchpad extends Disposable {
 		const fromApp = this.view.element.hidden;
 		this.view.closePicker();
 		this.requestId = undefined;
-		this.app.clear();
+		const app = this.app.value;
+		if (app && fromApp) {
+			app.surface.inert = app.back.hidden = true;
+			void app.webview.postMessage({ type: 'studio-launchpad-view', visible: false });
+		}
 		this.view.element.hidden = false;
 		this.view.setInboxBusy(false);
 		this.start.setVisible('launchpad', !document.hidden);
@@ -172,25 +193,29 @@ export class StudioLaunchpad extends Disposable {
 			try {
 				reason = await this.commands.executeCommand<string | undefined>('studio.openLaunchpadInbox', id, conversation);
 			} catch { /* An unavailable extension or webview gets the same modal, never an editor fallback. */ }
-			if (id === this.requestId) {
+			if (id === this.requestId && !this.view.element.hidden) {
 				await this.native.showMessageBox({ type: 'warning', message: zh ? '无法打开 IM' : 'Could not open IM', detail: reason,
 					buttons: [zh ? '确定' : 'OK'], noLink: true });
 			}
 		} finally {
-			if (id === this.requestId) { this.showHome(); this.view.focusInbox(); }
+			if (id === this.requestId && !this.view.element.hidden) { this.showHome(); this.view.focusInbox(); }
 		}
 	}
 
-	/** The extension holds the hosted preview until this surface is dismissed. */
-	private async showApp(id: string, app: LaunchpadApp): Promise<void> {
-		if (!this.requestId || this.requestId !== id || this.app.value) { return; }
-		const lifetime = this.app.value = new DisposableStore();
-		const closed = new DeferredPromise<void>();
-		lifetime.add(toDisposable(() => { void closed.complete(); }));
+	/** A hidden, full-size surface can initialize without stealing focus or mounting the editor. */
+	private async prepareApp(key: string, app: LaunchpadApp): Promise<boolean> {
+		if (this.app.value?.key === key) { return this.app.value.ready.p; }
+		if (this.view.element.hidden) { this.showHome(); }
+		this.app.clear();
+		const lifetime = new DisposableStore();
+		const ready = new DeferredPromise<boolean>();
+		lifetime.add(toDisposable(() => { void ready.complete(false); }));
 		const surface = document.createElement('div');
 		surface.className = 'studio-launchpad-app';
+		surface.inert = true;
 		const close = document.createElement('button');
 		close.type = 'button';
+		close.hidden = true;
 		close.className = 'studio-launchpad-app-close';
 		const arrow = document.createElement('span'); arrow.className = 'codicon codicon-chevron-left';
 		close.append(arrow, this.language.startsWith('zh') ? '返回启动台' : 'Back to Launchpad');
@@ -202,26 +227,48 @@ export class StudioLaunchpad extends Disposable {
 		try {
 			const webview = lifetime.add(this.webviews.createWebviewElement({ title: app.title, options: {}, extension: undefined,
 				contentOptions: { allowScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: app.port, extensionHostPort: app.port }] } }));
+			this.app.value = { key, surface, back: close, webview, ready, dispose: () => lifetime.dispose() };
+			const deadline = lifetime.add(new RunOnceScheduler(() => { void ready.complete(false); }, 20_000));
 			lifetime.add(webview.onMessage(({ message }) => {
-				if (message?.type === 'studio-sidebar-account' && app.accountUrl) {
+				if (message?.type === 'studio-launchpad-ready') {
+					deadline.cancel();
+					void webview.postMessage({ type: 'studio-launchpad-view', visible: !surface.inert && !document.hidden });
+					void ready.complete(true);
+				}
+				if (message?.type === 'studio-sidebar-account' && !surface.inert && app.accountUrl) {
 					const uri = URI.parse(app.accountUrl);
 					if (uri.scheme === 'https' || uri.scheme === 'http') { void this.opener.open(uri, { openExternal: true }); }
 				}
 			}));
-			lifetime.add(webview.onFatalError(() => { void closed.error(new Error('Webview unavailable')); }));
+			lifetime.add(webview.onFatalError(() => {
+				if (this.view.element.hidden) { this.showHome(); }
+				this.app.clear();
+				void this.commands.executeCommand('studio.internalReleaseHostedLaunchpadApp', key).catch(() => undefined);
+			}));
 			webview.mountTo(surface, mainWindow);
 			webview.setHtml(app.html);
-			this.view.element.hidden = true;
-			this.start.setVisible('launchpad', false);
-			webview.focus();
-			await closed.p;
+			deadline.schedule();
+			return await ready.p;
 		} finally {
-			if (this.app.value === lifetime) {
-				this.app.clear();
-				this.view.element.hidden = false;
-				this.start.setVisible('launchpad', !document.hidden);
+			if (!ready.value) {
+				if (this.app.value?.key === key) { this.app.clear(); } else { lifetime.dispose(); }
 			}
 		}
+	}
+
+	private async showApp(key: string, requestId: string, conversation?: string): Promise<boolean> {
+		const app = this.app.value;
+		if (!app || !app.ready.value || app.key !== key || this.requestId !== requestId) { return false; }
+		if (!await app.webview.postMessage({ type: 'studio-launchpad-view', visible: true, conversation })) { return false; }
+		if (this.app.value !== app || this.requestId !== requestId) {
+			if (this.app.value === app && !this.requestId) { void app.webview.postMessage({ type: 'studio-launchpad-view', visible: false }); }
+			return false;
+		}
+		app.surface.inert = app.back.hidden = false;
+		this.view.element.hidden = true;
+		this.start.setVisible('launchpad', false);
+		app.webview.focus();
+		return true;
 	}
 
 	private async openProject(project: LaunchpadProject): Promise<void> {
@@ -279,6 +326,8 @@ export class StudioLaunchpad extends Disposable {
 			return isWorkspaceIdentifier(window.workspace) ? [{ ...project(window.workspace.configPath, 'workspace'), windowId: window.id }] : [];
 		});
 		this.recent = recent.workspaces.map(row => isRecentFolder(row) ? project(row.folderUri, 'folder', row.label) : project(row.workspace.configPath, 'workspace', row.label));
+		const members = new Set([...this.recent, ...this.windows].map(row => row.uri));
+		for (const uri of this.savedProjects.keys()) { if (!members.has(uri)) { this.savedProjects.delete(uri); } }
 		for (const uri of this.missing) { if (!this.recent.some(row => row.uri === uri)) { this.missing.delete(uri); } }
 		this.paint();
 	}
@@ -303,8 +352,8 @@ export class StudioLaunchpad extends Disposable {
 		const live = new Map(this.windows.map(row => [row.uri, row.windowId]));
 		const enrich = (row: LaunchpadProject): LaunchpadProject => {
 			const info = metadata.get(row.uri);
-			return { ...row, name: info?.label || row.name, projectType: info?.projectType, avatarUrl: info?.avatarUrl,
-				lastOpened: info?.lastOpened, windowId: row.windowId ?? live.get(row.uri), missing: this.missing.has(row.uri) };
+			const details = info ? { name: info.label || row.name, projectType: info.projectType, avatarUrl: info.avatarUrl, lastOpened: info.lastOpened } : this.savedProjects.get(row.uri);
+			return { ...row, ...details, windowId: row.windowId ?? live.get(row.uri), missing: this.missing.has(row.uri) };
 		};
 		this.view.update({ windows: this.windows.map(enrich), recent: this.recent.map(enrich), canCreate: !!state?.canCreate && !state.busy,
 			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox });

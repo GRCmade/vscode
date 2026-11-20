@@ -137,6 +137,8 @@
 .studio-launchpad-app { position: absolute; inset: var(--studio-launchpad-bar,44px) 0 0; overflow: hidden; z-index: 24; background: var(--vscode-editor-background); }
 .studio-launchpad-app-close { position: absolute; z-index: 25; inset-inline-start: calc(var(--lp-controls-left,0px) + 12px); top: calc((var(--studio-launchpad-bar,44px) - 26px)/2); display: flex; align-items: center; gap: 4px; height: 26px; border: 0; border-radius: 4px; background: var(--lp-chrome); color: var(--lp-text); cursor: pointer; -webkit-app-region: no-drag; }
 .studio-launchpad-app-close:hover { background: var(--lp-hover); }
+.studio-launchpad-app[inert] { visibility: hidden; pointer-events: none; }
+.studio-launchpad-app-close[hidden] { display: none; }
 @media (max-width: 1250px) { .lp-columns { grid-template-columns: minmax(0,1.85fr) minmax(248px,1fr); } .lp-table-head,.lp-project-row { grid-template-columns: minmax(0,1fr) 62px 74px 24px; gap: 4px; } }
 .lp-titlebar.lp-tight .lp-links { display: none; } .lp-titlebar.lp-tight .lp-compact-resources { display: inline-flex; }
 @media (max-width: 1000px) { .lp-links { display: none; } .studio-launchpad .lp-compact-resources { display: inline-flex; } }

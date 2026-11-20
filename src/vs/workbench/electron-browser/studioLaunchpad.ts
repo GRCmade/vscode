@@ -39,6 +39,7 @@ export class StudioLaunchpad extends Disposable {
 	private recent: LaunchpadProject[] = [];
 	private readonly savedProjects = new Map<string, Pick<LaunchpadProject, 'name' | 'projectType' | 'avatarUrl' | 'lastOpened'>>();
 	private readonly missing = new Set<string>();
+	private readonly editsSinceSnapshot = new Map<number, boolean>();
 	private inbox?: LaunchpadInbox;
 	private account?: LaunchpadState['account'];
 	private windowRevision = 0;
@@ -140,6 +141,15 @@ export class StudioLaunchpad extends Disposable {
 			this.paint();
 		};
 		this._register(start.onDidChange(updateStart));
+		const repaintStatus = this._register(new RunOnceScheduler(() => this.paint(), 80));
+		this._register(native.onDidChangeWindowDirty(({ windowId, dirty }) => {
+			this.editsSinceSnapshot.set(windowId, dirty);
+			const project = this.windows.find(row => row.windowId === windowId);
+			if (project && project.dirty !== dirty) {
+				project.dirty = dirty;
+				repaintStatus.schedule();
+			}
+		}));
 		const refresh = this._register(new RunOnceScheduler(() => run(this.readProjects()), 100));
 		const changed = () => { ++this.windowRevision; refresh.schedule(); };
 		ipcRenderer.on('vscode:studioProjectWindowsChanged', changed);
@@ -272,7 +282,7 @@ export class StudioLaunchpad extends Disposable {
 	}
 
 	private async openProject(project: LaunchpadProject): Promise<void> {
-		const live = this.windows.find(row => row.uri === project.uri);
+		const live = this.windows.find(row => row.uri === project.uri && row.windowId === project.windowId) ?? this.windows.find(row => row.uri === project.uri);
 		if (live?.windowId !== undefined) {
 			await this.native.focusWindow({ targetWindowId: live.windowId, mode: FocusMode.Force }); return;
 		}
@@ -313,6 +323,8 @@ export class StudioLaunchpad extends Disposable {
 
 	private async readProjects(): Promise<void> {
 		const revision = ++this.windowRevision;
+		// An edit/save can arrive after getWindows takes its snapshot but before history returns.
+		this.editsSinceSnapshot.clear();
 		const [windows, recent] = await Promise.all([this.native.getWindows({ includeAuxiliaryWindows: false }), this.workspaces.getRecentlyOpened()]);
 		if (this.windowRevision !== revision) { return; }
 		const project = (raw: URI, kind: LaunchpadProject['kind'], label?: string): LaunchpadProject => {
@@ -320,10 +332,11 @@ export class StudioLaunchpad extends Disposable {
 			return { kind, uri: uri.toString(), name: label || basenameOrAuthority(uri), path: uri.scheme === 'file' ? uri.fsPath : uri.toString(true) };
 		};
 		this.windows = windows.flatMap(window => {
+			const dirty = this.editsSinceSnapshot.get(window.id) ?? window.dirty;
 			if (isSingleFolderWorkspaceIdentifier(window.workspace)) {
-				return [{ ...project(window.workspace.uri, 'folder'), windowId: window.id }];
+				return [{ ...project(window.workspace.uri, 'folder'), windowId: window.id, dirty }];
 			}
-			return isWorkspaceIdentifier(window.workspace) ? [{ ...project(window.workspace.configPath, 'workspace'), windowId: window.id }] : [];
+			return isWorkspaceIdentifier(window.workspace) ? [{ ...project(window.workspace.configPath, 'workspace'), windowId: window.id, dirty }] : [];
 		});
 		this.recent = recent.workspaces.map(row => isRecentFolder(row) ? project(row.folderUri, 'folder', row.label) : project(row.workspace.configPath, 'workspace', row.label));
 		const members = new Set([...this.recent, ...this.windows].map(row => row.uri));
@@ -349,13 +362,16 @@ export class StudioLaunchpad extends Disposable {
 	private paint(): void {
 		const state = this.start.state;
 		const metadata = new Map(state?.recent.map(row => [row.uri, row]));
-		const live = new Map(this.windows.map(row => [row.uri, row.windowId]));
-		const enrich = (row: LaunchpadProject): LaunchpadProject => {
+		const live = new Map<string, LaunchpadProject>();
+		for (const window of this.windows) {
+			if (!live.has(window.uri) || window.dirty) { live.set(window.uri, window); }
+		}
+		const enrich = (row: LaunchpadProject, window?: LaunchpadProject): LaunchpadProject => {
 			const info = metadata.get(row.uri);
 			const details = info ? { name: info.label || row.name, projectType: info.projectType, avatarUrl: info.avatarUrl, lastOpened: info.lastOpened } : this.savedProjects.get(row.uri);
-			return { ...row, ...details, windowId: row.windowId ?? live.get(row.uri), missing: this.missing.has(row.uri) };
+			return { ...row, ...details, windowId: row.windowId ?? window?.windowId, dirty: window?.dirty, missing: !window && this.missing.has(row.uri) };
 		};
-		this.view.update({ windows: this.windows.map(enrich), recent: this.recent.map(enrich), canCreate: !!state?.canCreate && !state.busy,
+		this.view.update({ windows: this.windows.map(row => enrich(row)), recent: this.recent.map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
 			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox });
 	}
 }

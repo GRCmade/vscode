@@ -198,6 +198,8 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 	readonly onDidFocusMainOrAuxiliaryWindow: Event<number>;
 
 	readonly onDidChangeWindowAlwaysOnTop: Event<{ readonly windowId: number; readonly alwaysOnTop: boolean }>;
+	private readonly _onDidChangeWindowDirty = this._register(new Emitter<{ windowId: number; dirty: boolean }>());
+	readonly onDidChangeWindowDirty = this._onDidChangeWindowDirty.event;
 
 	readonly onDidSuspendOS: Event<void>;
 	readonly onDidResumeOS: Event<void>;
@@ -669,7 +671,10 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 
 	async setDocumentEdited(windowId: number | undefined, edited: boolean, options?: INativeHostOptions): Promise<void> {
 		const window = this.windowById(options?.targetWindowId, windowId);
-		window?.setDocumentEdited(edited);
+		if (window) {
+			window.setDocumentEdited(edited);
+			this._onDidChangeWindowDirty.fire({ windowId: window.id, dirty: edited });
+		}
 	}
 
 	async setApplicationBadge(windowId: number | undefined, badge: IApplicationBadge | undefined, options?: INativeHostOptions): Promise<void> {

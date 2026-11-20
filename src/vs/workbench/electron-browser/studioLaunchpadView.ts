@@ -9,7 +9,7 @@ import { button, element, icon, LaunchpadLabel, LaunchpadOption, LaunchpadPicker
 
 export interface LaunchpadProject {
 	kind: 'folder' | 'workspace'; uri: string; name: string; path: string;
-	projectType?: string; avatarUrl?: string; windowId?: number; lastOpened?: number; missing?: boolean;
+	projectType?: string; avatarUrl?: string; windowId?: number; dirty?: boolean; lastOpened?: number; missing?: boolean;
 }
 export interface LaunchpadInbox {
 	connection?: 'connected' | 'offline' | 'connecting' | 'guest'; message?: string;
@@ -200,8 +200,25 @@ export class StudioLaunchpadView {
 	private projectIcon(p: LaunchpadProject): HTMLElement {
 		return p.kind === 'folder' && p.avatarUrl?.startsWith('data:image/') ? image(p.avatarUrl, 'lp-project-avatar') : icon(this.glyph(p));
 	}
-	private status(p: LaunchpadProject): HTMLElement {
-		return p.windowId !== undefined ? element('span', 'lp-open', this.label('Open', '已打开')) : element('span', 'lp-idle', this.label('Not open', '未打开'));
+	private historyStatus(p: LaunchpadProject) {
+		const t = this.label;
+		if (p.windowId !== undefined) {
+			return { state: 'open', glyph: 'window', label: t('Open', '已打开'), action: t('Switch to window', '切换到项目窗口'), actionGlyph: 'window' };
+		}
+		if (p.missing) {
+			return { state: 'missing', glyph: 'warning', label: t('Not found', '路径失效'), action: t('Open or locate project…', '打开或重新定位…'), actionGlyph: 'search' };
+		}
+		return { state: 'closed', glyph: 'history', label: t('Not open', '未打开'), action: t('Open in new window', '在新窗口打开'), actionGlyph: 'open-in-window' };
+	}
+	private historyStatusCell(p: LaunchpadProject): HTMLElement {
+		const t = this.label, status = this.historyStatus(p);
+		const cell = element('span', 'lp-history-status'); cell.dataset.state = status.state;
+		const badge = element('span', 'lp-state-label'); badge.append(icon(status.glyph), status.label); cell.append(badge);
+		if (status.state === 'open' && p.dirty) {
+			const detail = element('small', 'lp-state-detail'); detail.append(icon('edit'), t('Unsaved', '未保存')); cell.append(detail);
+		}
+		cell.title = t(`Double-click or press Enter: ${status.action}`, `双击或按 Enter：${status.action}`);
+		return cell;
 	}
 	private stamp(time?: number, compact = false): string {
 		if (!time || !Number.isFinite(new Date(time).valueOf())) { return compact ? '' : '—'; }
@@ -212,9 +229,9 @@ export class StudioLaunchpadView {
 		return this.date.format(time);
 	}
 	private manage(p: LaunchpadProject, origin: HTMLElement): void {
-		const t = this.label;
+		const t = this.label, status = this.historyStatus(p);
 		this.picker.choices(p.name, [
-			{ label: t('Open project', '打开项目'), glyph: 'go-to-file', run: () => this.actions.project(p) },
+			{ label: status.action, glyph: status.actionGlyph, run: () => this.actions.project(p) },
 			{ label: t('Project information', '显示项目信息'), glyph: 'info', run: () => this.picker.choices(p.name, [], origin, [p.path, this.projectLabel(p), this.stamp(p.lastOpened)].join('\n')) },
 			{ label: t('Remove from history…', '移除打开记录…'), glyph: 'trash', run: () => this.actions.remove(p) },
 		], origin, p.path);
@@ -251,7 +268,7 @@ export class StudioLaunchpadView {
 		const more = tool(t(`Manage ${p.name}`, `管理「${p.name}」的打开记录`), 'ellipsis', () => { this.select(p.uri); this.manage(p, more); });
 		more.classList.add('lp-row-more'); more.setAttribute('aria-haspopup', 'dialog');
 		const actions = element('span'); actions.append(more);
-		const cells = [name, this.status(p), element('time', p.missing ? 'lp-missing' : '', p.missing ? t('Location changed', '位置已变更') : this.stamp(p.lastOpened)), actions];
+		const cells = [name, this.historyStatusCell(p), element('time', '', this.stamp(p.lastOpened)), actions];
 		for (const cell of cells) { cell.setAttribute('role', 'gridcell'); } row.append(...cells);
 		row.addEventListener('click', e => { if (!(e.target instanceof Element && e.target.closest('button'))) { this.select(p.uri, true); } });
 		row.addEventListener('dblclick', e => { if (!(e.target instanceof Element && e.target.closest('button'))) { this.actions.project(p); } });
@@ -300,7 +317,7 @@ export class StudioLaunchpadView {
 			const plate = element('span', 'lp-plate'); plate.dataset.tone = p.kind === 'workspace' ? 'workspace' : p.projectType ?? 'folder';
 			const kind = element('small', 'lp-plate-kind'); kind.append(icon(this.glyph(p)), this.projectLabel(p));
 			const art = element('span', 'lp-plate-art'); art.append(this.projectIcon(p)); plate.append(kind, art);
-			const body = element('span', 'lp-window-body'); const status = element('span', 'lp-window-status'); status.append(this.status(p), icon('arrow-right'));
+			const body = element('span', 'lp-window-body'); const status = element('span', 'lp-window-status'); status.append(element('span', 'lp-open', t('Open', '已打开')), icon('arrow-right'));
 			body.append(element('strong', 'lp-ellipsis', p.name), status); item.append(plate, body); return item;
 		}, 'window');
 		this.renderHistory();

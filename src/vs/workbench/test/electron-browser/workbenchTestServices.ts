@@ -87,6 +87,7 @@ export class TestNativeHostService implements INativeHostService {
 	readonly onDidTriggerWindowSystemContextMenu: Event<{ windowId: number; x: number; y: number }> = Event.None;
 	onDidChangeWindowFullScreen = Event.None;
 	onDidChangeWindowAlwaysOnTop = Event.None;
+	onDidChangeWindowDirty = Event.None;
 	onDidChangeDisplay = Event.None;
 	onDidChangeGPUCompositing = Event.None;
 

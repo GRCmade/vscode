@@ -245,6 +245,7 @@ export interface ICommonNativeHostService {
 
 	readonly onDidChangeWindowFullScreen: Event<{ windowId: number; fullscreen: boolean }>;
 	readonly onDidChangeWindowAlwaysOnTop: Event<{ windowId: number; alwaysOnTop: boolean }>;
+	readonly onDidChangeWindowDirty: Event<{ windowId: number; dirty: boolean }>;
 
 	readonly onDidFocusMainOrAuxiliaryWindow: Event<number>;
 	readonly onDidBlurMainOrAuxiliaryWindow: Event<number>;

@@ -1482,7 +1482,9 @@ export class CodeApplication extends Disposable {
 				// This event has main-process consumers but no IPC consumer, so its buffer would never drain.
 				'onDidBlurMainWindow',
 				// GPU subscribers read current state explicitly; do not replay obsolete capabilities.
-				'onDidChangeGPUCompositing'
+				'onDidChangeGPUCompositing',
+				// Launchpad reads a window snapshot on startup and only needs live edits after that.
+				'onDidChangeWindowDirty'
 			]
 		});
 		mainProcessElectronServer.registerChannel('nativeHost', nativeHostChannel);

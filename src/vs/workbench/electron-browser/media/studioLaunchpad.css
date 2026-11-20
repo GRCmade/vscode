@@ -70,6 +70,7 @@
 .lp-empty { margin: 10px 0; font-size: 12px; }
 .lp-chat { display: flex; align-items: center; gap: 10px; min-height: 55px; padding: 4px; border-bottom: 1px solid var(--vscode-panel-border); }
 .lp-avatar { text-align: center; border-radius: 50%; min-width: 30px; line-height: 30px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
+.lp-chat-avatar { width: 30px; height: 30px; flex: 0 0 30px; object-fit: cover; }
 .lp-chat .lp-count { margin-left: auto; }
 .lp-store { margin-top: auto; border-top: 1px solid var(--vscode-panel-border); padding-top: 10px; }
 .studio-launchpad .lp-card { min-height: 56px; min-width: 0; gap: 10px; background: var(--vscode-sideBar-background); justify-content: flex-start; border: 1px solid var(--vscode-panel-border); padding: 12px; }

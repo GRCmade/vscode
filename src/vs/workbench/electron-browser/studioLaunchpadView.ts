@@ -16,7 +16,7 @@ export interface LaunchpadProject {
 	lastOpened?: number;
 }
 
-export interface LaunchpadInbox { message?: string; items: { name: string; preview: string; unread: number }[] }
+export interface LaunchpadInbox { message?: string; items: { name: string; preview: string; unread: number; avatarUrl?: string }[] }
 export interface LaunchpadState {
 	windows: LaunchpadProject[];
 	recent: LaunchpadProject[];
@@ -224,7 +224,16 @@ export class StudioLaunchpadView {
 			const item = element('div', 'lp-chat');
 			const pair = element('span', 'lp-pair');
 			pair.append(element('strong', '', row.name), element('small', '', row.preview));
-			item.append(element('span', 'lp-avatar', Array.from(row.name)[0]), pair);
+			if (row.avatarUrl?.startsWith('data:image/')) {
+				const avatar = element('img', 'lp-avatar lp-chat-avatar');
+				avatar.src = row.avatarUrl;
+				avatar.alt = '';
+				avatar.setAttribute('aria-hidden', 'true');
+				item.append(avatar);
+			} else {
+				item.append(element('span', 'lp-avatar', Array.from(row.name)[0]));
+			}
+			item.append(pair);
 			if (row.unread) { item.append(element('span', 'lp-count', String(row.unread))); }
 			return item;
 		});

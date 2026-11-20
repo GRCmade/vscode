@@ -15,9 +15,13 @@ export interface LaunchpadInbox {
 	connection?: 'connected' | 'offline' | 'connecting' | 'guest'; message?: string;
 	items: { id?: string; name: string; preview: string; unread: number; avatarUrl?: string; time?: number; group?: boolean }[];
 }
+export interface LaunchpadAccount {
+	name: string; email?: string | null; avatarUrl?: string; serverUrl?: string; statusLabel?: string;
+	hasAccount: boolean; signedIn: boolean;
+}
 export interface LaunchpadState {
 	windows: LaunchpadProject[]; recent: LaunchpadProject[]; platform: boolean; canCreate: boolean;
-	account?: { name: string; avatarUrl?: string; signedIn: boolean };
+	account?: LaunchpadAccount;
 	inbox?: LaunchpadInbox;
 	store?: { message?: string; items: { id: string; name: string; description?: string; projectType?: string; avatarUrl?: string }[] };
 }
@@ -25,11 +29,22 @@ export interface LaunchpadActions {
 	open(): void; workspace(): void; create(): void;
 	project(project: LaunchpadProject): void; remove(project: LaunchpadProject): void;
 	resource(resource: 'docs' | 'github' | 'server'): void;
-	signIn(): void; inbox(id?: string): void; store(id?: string): void;
+	signIn(): void; settings(): void; inbox(id?: string): void; store(id?: string): void;
 }
 
 function image(src: string, className = ''): HTMLImageElement {
 	const img = element('img', className); img.alt = ''; img.draggable = false; img.src = src; img.referrerPolicy = 'no-referrer'; return img;
+}
+
+function accountAvatar(src?: string): HTMLElement {
+	const avatar = element('span', 'lp-avatar'); avatar.setAttribute('aria-hidden', 'true');
+	const fallback = icon('account'); avatar.append(fallback);
+	if (src && /^(https?:\/\/|data:image\/)/i.test(src)) {
+		const img = image(src);
+		img.addEventListener('error', () => { img.remove(); fallback.hidden = false; }, { once: true });
+		fallback.hidden = true; avatar.append(img);
+	}
+	return avatar;
 }
 
 function sectionHead(title: HTMLElement, ...tools: HTMLElement[]): HTMLElement {
@@ -47,6 +62,7 @@ export class StudioLaunchpadView {
 	private readonly commandCenter: HTMLButtonElement;
 	private readonly picker: LaunchpadPicker;
 	private readonly accountButton: HTMLButtonElement;
+	private readonly accountProfile = element('div', 'lp-account-profile');
 	private readonly openButton: HTMLButtonElement;
 	private readonly createButton: HTMLButtonElement;
 	private readonly serverButton: HTMLButtonElement;
@@ -101,6 +117,7 @@ export class StudioLaunchpadView {
 		this.serverButton = resourceButtons[2]; links.append(...resourceButtons);
 		const compact = button(t('Resources', '资源'), 'chevron-down', () => this.picker.choices(t('Online resources', '在线资源'), this.state?.platform ? resources : resources.slice(0, 2), compact), 'lp-compact-resources');
 		this.accountButton = tool(t('Studio account', 'Studio 账号'), 'account', () => this.account()); this.accountButton.classList.add('lp-account');
+		this.accountButton.setAttribute('aria-haspopup', 'dialog');
 		utilities.append(links, compact, this.accountButton); chrome.append(brand, this.commandCenter, utilities);
 		const main = element('main', 'lp-home lp-scroll');
 		const header = element('header', 'lp-header');
@@ -149,10 +166,26 @@ export class StudioLaunchpadView {
 	}
 	private account(): void {
 		const t = this.label;
+		this.renderAccountProfile();
+		this.picker.choices(t('Studio account', 'Studio 账号'), [
+			{ label: t('Open Studio Settings', '打开 Studio 设置'), glyph: 'settings-gear', run: this.actions.settings },
+			{ label: t('Open Web console', '打开 Web 控制台'), glyph: 'link-external', visible: () => !!this.state?.account?.signedIn, run: () => this.actions.resource('server') },
+			{ label: t('Sign in with browser', '在浏览器中登录'), glyph: 'sign-in', visible: () => !this.state?.account?.signedIn, run: this.actions.signIn },
+		], this.accountButton, this.accountProfile);
+	}
+	private renderAccountProfile(): void {
+		const t = this.label;
 		const account = this.state?.account;
-		this.picker.choices(t('Studio account', 'Studio 账号'), account?.signedIn ? [
-			{ label: t('Open Web console', '打开 Web 控制台'), glyph: 'link-external', run: () => this.actions.resource('server') },
-		] : [{ label: t('Sign in with browser', '在浏览器中登录'), glyph: 'sign-in', run: this.actions.signIn }], this.accountButton, account?.signedIn ? account.name : t('Not signed in', '尚未登录'));
+		const identity = element('div', 'lp-account-identity');
+		const name = account?.hasAccount ? account.name : t('Not signed in', '尚未登录');
+		const text = element('div'); text.append(element('strong', '', name));
+		if (account?.hasAccount && account.email && account.email !== name) { text.append(element('p', 'lp-account-email', account.email)); }
+		identity.append(accountAvatar(account?.hasAccount ? account.avatarUrl : undefined), text);
+		this.accountProfile.replaceChildren(identity);
+		const details = element('dl', 'lp-account-details');
+		if (account?.serverUrl) { details.append(element('dt', '', t('Server', '服务器')), element('dd', '', account.serverUrl)); }
+		if (account?.statusLabel) { details.append(element('dt', '', t('Status', '状态')), element('dd', '', account.statusLabel)); }
+		if (details.childElementCount) { this.accountProfile.append(details); }
 	}
 	private search(commands: boolean, origin: HTMLElement): void {
 		const t = this.label;
@@ -304,15 +337,16 @@ export class StudioLaunchpadView {
 
 	setInboxBusy(busy: boolean): void { this.inboxButton.disabled = busy; this.inboxButton.setAttribute('aria-busy', String(busy)); }
 	focusInbox(): void { if (this.state?.platform) { this.inboxButton.focus({ preventScroll: true }); } }
+	focusAccount(): void { (this.state?.platform ? this.accountButton : this.element).focus({ preventScroll: true }); }
 	closePicker(): void { this.picker.close(); }
 
 	update(state: LaunchpadState): void {
 		const previous = this.state; this.state = state; const t = this.label;
 		this.createButton.disabled = !state.canCreate; this.serverButton.hidden = this.accountButton.hidden = this.connection.hidden = this.side.hidden = !state.platform;
 		if (JSON.stringify(state.account) !== JSON.stringify(previous?.account)) {
-			const src = state.account?.avatarUrl;
-			this.accountButton.replaceChildren(src && /^(https:\/\/|data:image\/)/.test(src) ? image(src) : icon('account'));
-			this.accountButton.title = state.account?.name || t('Studio account', 'Studio 账号');
+			this.accountButton.replaceChildren(accountAvatar(state.account?.hasAccount ? state.account.avatarUrl : undefined));
+			this.accountButton.title = state.account?.hasAccount ? state.account.name : t('Studio account', 'Studio 账号');
+			if (this.accountProfile.isConnected) { this.renderAccountProfile(); }
 		}
 		this.liveCount.textContent = String(state.windows.length);
 		this.list(this.live, state.windows, t('No project windows are open.', '当前没有打开的项目窗口。'), p => {

@@ -29,7 +29,7 @@
 .studio-launchpad button:disabled { opacity: .55; cursor: default; }
 .monaco-workbench .studio-launchpad[tabindex]:focus, .monaco-workbench .studio-launchpad :focus:not(:focus-visible), .monaco-workbench .studio-launchpad-app-close:focus:not(:focus-visible) { outline: none; }
 .monaco-workbench .studio-launchpad :is(button,input,[tabindex]):focus-visible, .monaco-workbench .studio-launchpad-app-close:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
-.monaco-workbench .studio-launchpad.lp-pointer :is(button,input,[tabindex]):focus { outline: none; }
+.monaco-workbench .studio-launchpad.lp-pointer :is(button,input,[tabindex]):focus, .monaco-workbench .studio-launchpad-app-close.lp-pointer:focus { outline: none; }
 .studio-launchpad .codicon { flex: none; }
 .lp-titlebar { display: grid; grid-template-columns: minmax(0,1fr) min(39%,464px) minmax(0,1fr); align-items: center; padding-inline: 12px; gap: 6px; border-bottom: 1px solid var(--lp-line); }
 .lp-titlebar button { pointer-events: auto; -webkit-app-region: no-drag; }
@@ -45,7 +45,8 @@
 .lp-links button:hover, .lp-compact-resources:hover, .lp-tool:hover, .lp-command-center:hover { background: var(--lp-hover); color: var(--lp-strong); }
 .lp-utilities:has(.lp-account:not([hidden])) .lp-links { padding-inline-end: 7px; border-inline-end: 1px solid var(--lp-edge); }
 .studio-launchpad .lp-compact-resources, .lp-compact-label { display: none; }
-.lp-account img { width: 24px; height: 24px; object-fit: cover; border-radius: 50%; }
+.lp-account .lp-avatar { width: 24px; height: 24px; }
+.lp-account .lp-avatar img, .lp-account-identity .lp-avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
 .lp-home, .lp-statusbar, .lp-dialog { pointer-events: auto; }
 .lp-home { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--lp-bg); }
 .lp-scroll { overflow: auto; scrollbar-width: thin; scrollbar-color: transparent transparent; }
@@ -130,6 +131,14 @@
 .lp-dialog { width: min(400px,calc(100% - 20px)); max-height: calc(100% - 20px); padding: 16px; margin: auto; background: var(--lp-panel); color: var(--lp-text); border: 1px solid var(--lp-edge); border-radius: 8px; box-shadow: 0 12px 38px #0005; }
 .lp-dialog::backdrop { background: #0006; } .lp-dialog.lp-quick::backdrop { background: transparent; }
 .lp-dialog-detail { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--lp-muted); font-size: 12px; padding-block: 6px; }
+.lp-account-profile { padding-block: 12px; margin-block-end: 5px; border-bottom: 1px solid var(--lp-line); overflow-wrap: anywhere; }
+.lp-account-identity { display: flex; align-items: center; gap: 10px; }
+.lp-account-identity .lp-avatar { width: 40px; height: 40px; }
+.lp-account-identity .lp-avatar .codicon { font-size: 21px; }
+.lp-account-identity > div { min-width: 0; }
+.lp-account-email, .lp-account-details dt { color: var(--lp-muted); }
+.lp-account-details { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 3px 12px; margin: 10px 0 0; font-size: 12px; }
+.lp-account-details dd { margin: 0; }
 .lp-dialog .lp-choice { display: flex; width: 100%; justify-content: flex-start; gap: 10px; min-height: 34px; padding-inline: 8px; border-radius: 4px; }
 .lp-choice:hover, .lp-dismiss:hover { background: var(--lp-hover); } .lp-dialog .lp-dismiss { margin-block-start: 7px; padding: 4px 8px; color: var(--lp-muted); }
 .lp-dialog.lp-quick { width: min(560px,calc(100% - 16px)); max-height: calc(100% - 52px); margin: 0 auto; top: calc(var(--studio-launchpad-bar,44px) / 2 + 17px); padding: 0; }
@@ -140,7 +149,7 @@
 .lp-option { display: grid; grid-template-columns: 16px fit-content(60%) minmax(0,1fr); align-items: center; gap: 8px; min-height: 32px; padding: 4px 8px; border-radius: 3px; cursor: pointer; }
 .lp-option strong { font-weight: 550; } .lp-option small { color: var(--lp-muted); font: 11px var(--lp-mono); } .lp-option:hover { background: var(--lp-hover); } .lp-option[aria-selected=true] { background: var(--lp-selection); }
 .lp-quick-foot { margin-top: 4px; border-top: 1px solid var(--lp-edge); padding-block: 3px; }
-.studio-launchpad-app { position: absolute; inset: var(--studio-launchpad-bar,44px) 0 0; overflow: hidden; z-index: 24; background: var(--vscode-editor-background); }
+.studio-launchpad-app, .studio-launchpad-settings { position: absolute; inset: var(--studio-launchpad-bar,44px) 0 0; overflow: hidden; z-index: 24; background: var(--vscode-editor-background); }
 .studio-launchpad-app-close { position: absolute; z-index: 25; inset-inline-start: calc(var(--lp-controls-left,0px) + 12px); top: calc((var(--studio-launchpad-bar,44px) - 26px)/2); display: flex; align-items: center; gap: 4px; height: 26px; border: 0; border-radius: 4px; background: var(--lp-chrome); color: var(--lp-text); cursor: pointer; -webkit-app-region: no-drag; }
 .studio-launchpad-app-close:hover { background: var(--lp-hover); }
 .studio-launchpad-app[inert] { visibility: hidden; pointer-events: none; }

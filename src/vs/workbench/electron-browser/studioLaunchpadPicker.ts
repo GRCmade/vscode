@@ -25,12 +25,12 @@ export function button(text: string, glyph: string, action: () => void, classNam
 	return node;
 }
 
-export interface LaunchpadOption { label: string; glyph: string; detail?: string; run(): void }
+export interface LaunchpadOption { label: string; glyph: string; detail?: string; visible?(): boolean; run(): void }
 export type LaunchpadLabel = (en: string, zh: string) => string;
 
 /** Only launchpad actions are offered here; the workbench command palette belongs to project windows. */
 export class LaunchpadPicker {
-	readonly dialog = element('dialog', 'lp-dialog');
+	readonly dialog = element('dialog', 'lp-dialog lp-scroll');
 	private origin?: HTMLElement;
 	private refresh?: () => void;
 	private toggleMode?: (commands: boolean) => void;
@@ -64,16 +64,24 @@ export class LaunchpadPicker {
 		this.dialog.showModal();
 	}
 
-	choices(title: string, options: LaunchpadOption[], origin: HTMLElement, detail?: string): void {
+	choices(title: string, options: LaunchpadOption[], origin: HTMLElement, detail?: string | HTMLElement): void {
 		this.open(title, origin, false);
 		this.dialog.append(element('h2', '', title));
-		if (detail) { this.dialog.append(element('p', 'lp-dialog-detail', detail)); }
-		for (const item of options) {
-			this.dialog.append(button(item.label, item.glyph, () => { this.close(); item.run(); }, 'lp-choice'));
-		}
+		if (detail) { this.dialog.append(typeof detail === 'string' ? element('p', 'lp-dialog-detail', detail) : detail); }
+		const choices = options.map(item => button(item.label, item.glyph, () => { this.close(); item.run(); }, 'lp-choice'));
+		this.dialog.append(...choices);
 		const close = button(this.t('Close', '关闭'), 'close', () => this.close(), 'lp-dismiss');
 		this.dialog.append(close);
-		(this.dialog.querySelector('button') ?? close).focus();
+		const first = () => choices.find(choice => !choice.hidden) ?? close;
+		this.refresh = () => {
+			const active = document.activeElement;
+			for (const [index, choice] of choices.entries()) {
+				choice.hidden = options[index].visible?.() === false;
+			}
+			if (choices.some(choice => choice === active && choice.hidden)) { first().focus({ preventScroll: true }); }
+		};
+		this.refresh();
+		first().focus({ preventScroll: true });
 	}
 
 	search(commands: boolean, origin: HTMLElement, options: (commands: boolean) => LaunchpadOption[]): void {

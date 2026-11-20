@@ -6,6 +6,8 @@
 import { addDisposableListener } from '../../base/browser/dom.js';
 import { mainWindow } from '../../base/browser/window.js';
 import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
+import { CancellationTokenSource } from '../../base/common/cancellation.js';
+import { Event } from '../../base/common/event.js';
 import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
 import { basenameOrAuthority } from '../../base/common/resources.js';
 import { URI } from '../../base/common/uri.js';
@@ -22,18 +24,21 @@ import { IOpenerService } from '../../platform/opener/common/opener.js';
 import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../platform/workspace/common/workspace.js';
 import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
 import { IStudioStartService } from '../browser/parts/editor/studioStart.js';
-import { IWebviewElement, IWebviewService } from '../contrib/webview/browser/webview.js';
+import { IOverlayWebview, IWebviewElement, IWebviewService } from '../contrib/webview/browser/webview.js';
+import { IWebviewViewService } from '../contrib/webviewView/browser/webviewViewService.js';
 import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layoutService.js';
-import { LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
+import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
 import './media/studioLaunchpad.css';
 
 interface LaunchpadApp { title: string; html: string; port: number; accountUrl?: string }
 interface ResidentApp { key: string; surface: HTMLElement; back: HTMLButtonElement; webview: IWebviewElement; ready: DeferredPromise<boolean>; dispose(): void }
-interface LaunchpadMenuAccount { status: string; name: string; avatarUrl?: string }
+type LaunchpadMenuAccount = Omit<LaunchpadAccount, 'signedIn'> & { status: string };
+const launchpadSettingsViewType = 'studio.launchpadSettings';
 
 export class StudioLaunchpad extends Disposable {
 	private readonly view: StudioLaunchpadView;
 	private readonly app = this._register(new MutableDisposable<ResidentApp>());
+	private readonly settings = this._register(new MutableDisposable<{ webview: IOverlayWebview; dispose(): void }>());
 	private requestId?: string;
 	private windows: LaunchpadProject[] = [];
 	private recent: LaunchpadProject[] = [];
@@ -59,6 +64,7 @@ export class StudioLaunchpad extends Disposable {
 		@IWebviewService private readonly webviews: IWebviewService,
 		@IFileService private readonly files: IFileService,
 		@IExtensionStorageService extensionStorage: IExtensionStorageService,
+		@IWebviewViewService private readonly webviewViews: IWebviewViewService,
 	) {
 		super();
 		// Read the extension's profile memento synchronously; native history still owns membership and ordering.
@@ -80,6 +86,7 @@ export class StudioLaunchpad extends Disposable {
 			project: project => run(this.openProject(project)),
 			remove: project => run(this.removeProject(project)),
 			signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
+			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
 			inbox: conversation => run(this.openInbox(conversation)),
 			store: id => run(commands.executeCommand('studio.openStartRecommendation', id)),
 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
@@ -101,11 +108,14 @@ export class StudioLaunchpad extends Disposable {
 		this._register(layout.onDidLayoutMainContainer(resize));
 		this._register(addDisposableListener(mainWindow, 'keydown', event => this.view.shortcut(event), true));
 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpad', () => this.showHome()));
+		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadSettings', (_accessor, title: string) => this.showSettings(title)));
+		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadSettings', () => { if (this.settings.value) { this.showHome(); } }));
 		this._register(CommandsRegistry.registerCommand('studio.internalOpenLaunchpadInbox', () => run(this.openInbox())));
 		this._register(CommandsRegistry.registerCommand('studio.internalPrepareLaunchpadApp', (_accessor, key: string, app: LaunchpadApp) => this.prepareApp(key, app)));
 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, requestId: string, conversation?: string) => this.showApp(key, requestId, conversation)));
 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => {
-			if (key === this.app.value?.key) { if (this.view.element.hidden) { this.showHome(); } this.app.clear(); }
+			const app = this.app.value;
+			if (app?.key === key) { if (!app.surface.inert) { this.showHome(); } this.app.clear(); }
 		}));
 		this._register(CommandsRegistry.registerCommand('studio.internalLaunchpadInboxChanged', (_accessor, reset?: boolean) => {
 			++this.inboxRevision;
@@ -117,7 +127,8 @@ export class StudioLaunchpad extends Disposable {
 		}));
 		let platform = false, accountRevision = 0;
 		const setAccount = (state?: LaunchpadMenuAccount) => {
-			this.account = state && { name: state.name, avatarUrl: state.avatarUrl, signedIn: state.status === 'authenticated' };
+			this.account = state && { name: state.name, email: state.email, avatarUrl: state.avatarUrl, hasAccount: state.hasAccount,
+				serverUrl: state.serverUrl, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
 		};
 		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
 			if (commandId === 'studio.internalUpdateAccountMenuState' && platform) {
@@ -158,7 +169,8 @@ export class StudioLaunchpad extends Disposable {
 		this._register(addDisposableListener(mainWindow, 'focus', () => { changed(); this.refreshInbox.schedule(); }));
 		this._register(addDisposableListener(document, 'visibilitychange', () => {
 			start.setVisible('launchpad', !document.hidden && !this.view.element.hidden);
-			if (this.view.element.hidden) { void this.app.value?.webview.postMessage({ type: 'studio-launchpad-view', visible: !document.hidden }); }
+			const app = this.app.value;
+			if (app && !app.surface.inert) { void app.webview.postMessage({ type: 'studio-launchpad-view', visible: !document.hidden }); }
 			if (!document.hidden) { changed(); this.refreshInbox.schedule(); }
 		}));
 		// The resident window never becomes an editor, including while an app is opening or closing.
@@ -177,23 +189,91 @@ export class StudioLaunchpad extends Disposable {
 	}
 
 	private showHome(): void {
-		const fromApp = this.view.element.hidden;
+		const fromSettings = !!this.settings.value;
+		this.settings.clear();
 		this.view.closePicker();
 		this.requestId = undefined;
 		const app = this.app.value;
-		if (app && fromApp) {
+		const fromApp = !!app && !app.surface.inert;
+		if (fromApp) {
 			app.surface.inert = app.back.hidden = true;
 			void app.webview.postMessage({ type: 'studio-launchpad-view', visible: false });
 		}
 		this.view.element.hidden = false;
 		this.view.setInboxBusy(false);
 		this.start.setVisible('launchpad', !document.hidden);
-		if (fromApp) { this.view.focusInbox(); } else { this.view.element.focus({ preventScroll: true }); }
+		if (fromSettings) { this.view.focusAccount(); }
+		else if (fromApp) { this.view.focusInbox(); }
+		else { this.view.element.focus({ preventScroll: true }); }
 		this.refreshInbox.schedule();
 	}
 
+	private createBackButton(title: string, lifetime: DisposableStore): HTMLButtonElement {
+		const close = document.createElement('button');
+		close.type = 'button';
+		close.className = 'studio-launchpad-app-close';
+		const arrow = document.createElement('span'); arrow.className = 'codicon codicon-chevron-left'; arrow.setAttribute('aria-hidden', 'true');
+		close.append(arrow, this.language.startsWith('zh') ? '返回启动台' : 'Back to Launchpad');
+		close.title = this.language.startsWith('zh') ? `关闭 ${title}` : `Close ${title}`;
+		close.setAttribute('aria-label', close.title);
+		lifetime.add(addDisposableListener(close, 'click', () => this.showHome()));
+		return close;
+	}
+
+	/** Mount the extension's Settings view without opening an editor or evicting the resident IM. */
+	private async showSettings(title: string): Promise<void> {
+		if (this.settings.value) { this.settings.value.webview.focus(); return; }
+		this.showHome();
+		const lifetime = new DisposableStore();
+		const source = new CancellationTokenSource();
+		lifetime.add(toDisposable(() => source.dispose(true)));
+		const surface = document.createElement('div');
+		surface.className = 'studio-launchpad-settings';
+		surface.setAttribute('role', 'document');
+		surface.setAttribute('aria-label', title);
+		surface.tabIndex = 0;
+		const back = this.createBackButton(title, lifetime);
+		if (this.view.element.classList.contains('lp-pointer')) {
+			back.classList.add('lp-pointer');
+			const reset = () => back.classList.remove('lp-pointer');
+			lifetime.add(addDisposableListener(back, 'blur', reset));
+			lifetime.add(addDisposableListener(back, 'keydown', reset));
+		}
+		const failed = () => {
+			if (lifetime.isDisposed) { return; }
+			this.showHome();
+			const zh = this.language.startsWith('zh');
+			void this.native.showMessageBox({ type: 'warning', message: zh ? '无法打开 Studio 设置' : 'Could not open Studio Settings',
+				buttons: [zh ? '确定' : 'OK'], noLink: true });
+		};
+		try {
+			const webview = lifetime.add(this.webviews.createWebviewOverlay({ providedViewType: launchpadSettingsViewType, title, options: {}, contentOptions: {}, extension: undefined }));
+			this.settings.value = { webview, dispose: () => lifetime.dispose() };
+			this.layout.mainContainer.append(back, surface);
+			lifetime.add(toDisposable(() => { surface.remove(); back.remove(); }));
+			const deadline = lifetime.add(new RunOnceScheduler(failed, 15_000));
+			lifetime.add(webview.onMessage(({ message }) => { if (message?.type === 'ready') { deadline.cancel(); } }));
+			lifetime.add(webview.onFatalError(failed));
+			lifetime.add(addDisposableListener(surface, 'focus', () => webview.focus()));
+			this.view.element.hidden = true;
+			this.start.setVisible('launchpad', false);
+			webview.claim(surface, mainWindow, undefined);
+			webview.setAnchorElement(surface);
+			back.focus({ preventScroll: true });
+			deadline.schedule();
+			await this.webviewViews.resolve(launchpadSettingsViewType, {
+				title, webview, onDidChangeVisibility: Event.None, onDispose: webview.onDidDispose,
+				dispose: () => { if (!lifetime.isDisposed) { this.showHome(); } },
+				show: preserveFocus => { if (!preserveFocus && !lifetime.isDisposed) { webview.focus(); } },
+			}, source.token);
+		} catch {
+			failed();
+			lifetime.dispose();
+		}
+	}
+
 	private async openInbox(conversation?: string): Promise<void> {
-		if (this.requestId) { return; }
+		if (this.requestId || this.settings.value) { return; }
 		const id = this.requestId = generateUuid();
 		this.view.closePicker();
 		this.view.setInboxBusy(true);
@@ -215,7 +295,7 @@ export class StudioLaunchpad extends Disposable {
 	/** A hidden, full-size surface can initialize without stealing focus or mounting the editor. */
 	private async prepareApp(key: string, app: LaunchpadApp): Promise<boolean> {
 		if (this.app.value?.key === key) { return this.app.value.ready.p; }
-		if (this.view.element.hidden) { this.showHome(); }
+		if (this.app.value && !this.app.value.surface.inert) { this.showHome(); }
 		this.app.clear();
 		const lifetime = new DisposableStore();
 		const ready = new DeferredPromise<boolean>();
@@ -223,15 +303,8 @@ export class StudioLaunchpad extends Disposable {
 		const surface = document.createElement('div');
 		surface.className = 'studio-launchpad-app';
 		surface.inert = true;
-		const close = document.createElement('button');
-		close.type = 'button';
+		const close = this.createBackButton(app.title, lifetime);
 		close.hidden = true;
-		close.className = 'studio-launchpad-app-close';
-		const arrow = document.createElement('span'); arrow.className = 'codicon codicon-chevron-left';
-		close.append(arrow, this.language.startsWith('zh') ? '返回启动台' : 'Back to Launchpad');
-		close.title = this.language.startsWith('zh') ? `关闭 ${app.title}` : `Close ${app.title}`;
-		close.setAttribute('aria-label', close.title);
-		lifetime.add(addDisposableListener(close, 'click', () => this.showHome()));
 		this.layout.mainContainer.append(surface, close);
 		lifetime.add(toDisposable(() => { surface.remove(); close.remove(); }));
 		try {
@@ -251,7 +324,7 @@ export class StudioLaunchpad extends Disposable {
 				}
 			}));
 			lifetime.add(webview.onFatalError(() => {
-				if (this.view.element.hidden) { this.showHome(); }
+				if (!surface.inert) { this.showHome(); }
 				this.app.clear();
 				void this.commands.executeCommand('studio.internalReleaseHostedLaunchpadApp', key).catch(() => undefined);
 			}));

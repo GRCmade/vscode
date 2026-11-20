@@ -68,6 +68,7 @@ export function isStudioSteamToolAvailable(id: string | undefined): boolean {
 const stateChange = new Emitter<StudioModeState>();
 const modeChange = new Emitter<void>();
 export const studioModeState = {
+	openedFromLibrary: false,
 	releaseProject: undefined as IStudioReleaseProject | undefined,
 	state: { available: false, labels: {} } as StudioModeState,
 	steam: false,
@@ -84,7 +85,8 @@ export const studioModeState = {
 };
 
 /** Establish the release shell before layout, title controls, or editor restoration. */
-export function initializeStudioReleaseProject(project: IStudioReleaseProject | undefined): void {
+export function initializeStudioReleaseProject(project: IStudioReleaseProject | undefined, openedFromLibrary = false): void {
+	studioModeState.openedFromLibrary = openedFromLibrary;
 	if (!project) { return; }
 	studioModeState.releaseProject = project;
 	studioModeState.state = { available: false, releaseOnly: true, projectUri: project.projectUri, project,

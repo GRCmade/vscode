@@ -34,7 +34,8 @@ export interface StudioStartState {
 	hasWorkspace: boolean;
 	recommendations?: { title: string; openLabel: string; browseLabel: string; message?: string; items: { id: string; name: string; description?: string; projectType?: string; version?: string; avatarUrl?: string }[] };
 	projects: StudioOverviewProject[];
-	recent: { uri: string; label: string; kind: string; lastOpened: number; current?: boolean; projectType?: string; version?: string; avatarUrl?: string }[];
+	recent: { uri: string; label: string; kind: string; lastOpened: number; current?: boolean; projectType?: string; version?: string; avatarUrl?: string;
+		distribution?: 'source' | 'release' | 'download'; artwork?: { cover?: { name: string; mtime: number }; entries?: string[]; files?: string[] } }[];
 	pending: { id: string; name: string; directory: string; status: string; stage?: string; error?: string }[];
 	busy: boolean;
 	installing?: string;

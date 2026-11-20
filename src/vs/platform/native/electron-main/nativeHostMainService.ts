@@ -284,6 +284,12 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 		return true;
 	}
 
+	async openStudioLaunchpadStore(): Promise<boolean> {
+		if (!this.windowsMainService.hasStudioLaunchpad) { return false; }
+		await this.windowsMainService.openStudioLaunchpad(false, 'store');
+		return true;
+	}
+
 	openWindow(windowId: number | undefined, options?: IOpenEmptyWindowOptions): Promise<void>;
 	openWindow(windowId: number | undefined, toOpen: IWindowOpenable[], options?: IOpenWindowOptions): Promise<void>;
 	openWindow(windowId: number | undefined, arg1?: IOpenEmptyWindowOptions | IWindowOpenable[], arg2?: IOpenWindowOptions): Promise<void> {

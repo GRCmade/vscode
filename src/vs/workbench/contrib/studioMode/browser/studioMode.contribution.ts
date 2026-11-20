@@ -130,7 +130,7 @@ export class StudioModeContribution extends Disposable {
 		this.workspace = this._register(instantiation.createInstance(StudioSteamWorkspace, tools));
 		toolsTitle.value = studioModeState.state.labels.tools ?? toolsTitle.original;
 		this.snapshot = studioModeState.state.releaseOnly ? undefined : storage.getObject<IdeLayout>(SNAPSHOT_KEY, StorageScope.WORKSPACE);
-		this.requested = !!studioModeState.state.releaseOnly || storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
+		this.requested = !!studioModeState.state.releaseOnly || !studioModeState.openedFromLibrary && storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
 		if (studioModeState.state.releaseOnly) {
 			this.contextKeys.createKey<boolean>('studio.steamMode', false).set(true);
 			this.layout.mainContainer.classList.add('studio-steam-mode');

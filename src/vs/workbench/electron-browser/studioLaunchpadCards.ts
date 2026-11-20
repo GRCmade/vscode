@@ -1,0 +1,68 @@
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+import { studioProjectIcon } from '../common/studioProjectIcons.js';
+import { element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
+
+export interface LibraryArtwork {
+	cover?: { name: string; mtime: number };
+	entries?: string[];
+	files?: string[];
+	entryTypes?: string[];
+}
+
+export interface LaunchpadProject {
+	kind: 'folder' | 'workspace'; uri: string; name: string; path: string;
+	projectId?: string; projectType?: string; avatarUrl?: string; windowId?: number; dirty?: boolean; lastOpened?: number; missing?: boolean;
+	distribution?: 'source' | 'release' | 'download'; artwork?: LibraryArtwork; version?: string;
+}
+
+export interface StoreListing {
+	id: string; name: string; description?: string; version?: string; projectType?: string; avatarUrl?: string; images?: string[]; entries?: string[]; entryTypes?: string[];
+}
+
+export function picture(src: string, className = ''): HTMLImageElement {
+	const img = element('img', className); img.alt = ''; img.draggable = false; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; img.src = src; return img;
+}
+
+export function glyph(p: LaunchpadProject): string { return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? 'folder'; }
+export function projectMark(p: LaunchpadProject): HTMLElement { return p.avatarUrl?.startsWith('data:image/') ? picture(p.avatarUrl) : icon(glyph(p)); }
+export function typeLabel(type: string | undefined, t: LaunchpadLabel): string {
+	switch (type) {
+		case 'bot': return 'Bot'; case 'kanban': return t('Kanban', '看板'); case 'workflow': return t('Workflow', '工作流'); case 'aggregate': return t('Multi-entry', '多入口'); default: return t('Folder', '文件夹');
+	}
+}
+export function edition(p: LaunchpadProject, t: LaunchpadLabel): string {
+	switch (p.distribution) {
+		case 'download': return t('Downloaded · Steam', '已下载 · Steam'); case 'release': return t('Release · Steam', '发行版 · Steam'); case 'source': return t('Source · IDE', '源码 · IDE');
+		default: return p.kind === 'workspace' ? t('Workspace', '工作区') : p.projectType ? t('Project', '项目') : t('Folder', '文件夹');
+	}
+}
+
+/** Use real entry identities or file names; never fetch a URL supplied by a local manifest. */
+export function artwork(key: string, art: LibraryArtwork | undefined, fallback: HTMLElement, cover?: string | Promise<string | undefined>): HTMLElement {
+	const surface = element('span', 'lp-artwork'); surface.setAttribute('aria-hidden', 'true');
+	let hash = 0; for (const ch of key) { hash = (31 * hash + ch.charCodeAt(0)) | 0; }
+	surface.dataset.ink = String(Math.abs(hash) % 5);
+	const stack = element('span', 'lp-art-stack');
+	const marks = art?.entries?.filter(src => src.startsWith('data:image/')).slice(0, 3).map(src => picture(src));
+	if (marks?.length) { stack.append(...marks); }
+	else if (art?.entryTypes?.length) { stack.append(...art.entryTypes.slice(0, 3).map(type => icon(studioProjectIcon(type) ?? 'extensions'))); }
+	else if (art?.files?.length) {
+		for (const filename of art.files.slice(0, 3)) {
+			const sheet = element('span', 'lp-art-file'); sheet.title = filename;
+			sheet.append(icon('file'), element('small', '', (filename.split('.').pop() || filename).slice(0, 6)), element('span', 'lp-file-lines')); stack.append(sheet);
+		}
+	} else { stack.append(fallback); }
+	surface.append(stack);
+	if (cover) {
+		void Promise.resolve(cover).then(src => {
+			if (!src) { return; }
+			const img = picture(src, 'lp-cover'); img.addEventListener('load', () => { stack.hidden = true; }, { once: true });
+			img.addEventListener('error', () => img.remove(), { once: true }); surface.append(img);
+		}, () => undefined);
+	}
+	return surface;
+}

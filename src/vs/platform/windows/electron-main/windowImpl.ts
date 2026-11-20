@@ -1545,6 +1545,7 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 
 		configuration.accessibilitySupport = electron.app.isAccessibilitySupportEnabled();
 		configuration.isInitialStartup = false; // since this is a reload
+		configuration.studioOpenedFromLibrary = false; // reload preserves the user's current mode
 		configuration.policiesData = this.policyService.serialize(); // set policies data again
 		configuration.continueOn = this.environmentMainService.continueOn;
 		configuration.profiles = {

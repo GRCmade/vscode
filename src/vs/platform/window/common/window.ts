@@ -516,6 +516,7 @@ export interface IOSConfiguration {
 
 export interface INativeWindowConfiguration extends IWindowConfiguration, NativeParsedArgs, ISandboxConfiguration {
 	readonly isStudioLaunchpad?: boolean;
+	studioOpenedFromLibrary?: boolean;
 	studioLaunchpadReduceMotion?: boolean;
 	studioReleaseProject?: import('./studioReleaseProject.js').IStudioReleaseProject;
 	studioReleasePending?: boolean;

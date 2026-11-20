@@ -3,20 +3,24 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { readFile, stat } from 'fs/promises';
+import { lstat, readFile } from 'fs/promises';
 import { join } from '../../../base/common/path.js';
 import { Schemas } from '../../../base/common/network.js';
 import { URI } from '../../../base/common/uri.js';
-import { IStudioReleaseProject, parseStudioReleaseProject } from '../../window/common/studioReleaseProject.js';
+import { downloadedStudioProject, IStudioReleaseProject, parseStudioReleaseProject } from '../../window/common/studioReleaseProject.js';
 
 /** Detect local release folders before creating their window; never execute project code. */
 export async function readStudioReleaseProject(folder: URI | undefined, locale = 'en'): Promise<IStudioReleaseProject | undefined> {
 	if (folder?.scheme !== Schemas.file) { return undefined; }
 	try {
-		const files = ['steamharness.json', 'steamharness.release.json'].map(name => join(folder.fsPath, name));
-		const stats = await Promise.all(files.map(file => stat(file)));
-		if (stats.some(value => !value.isFile() || value.size > 2_000_000)) { return undefined; }
-		const [project, release] = await Promise.all(files.map(file => readFile(file, 'utf8')));
-		return parseStudioReleaseProject(folder.toString(), project, release, locale);
+		const read = async (name: string, limit: number) => {
+			const file = join(folder.fsPath, name);
+			const stat = await lstat(file).catch(() => undefined);
+			return stat?.isFile() && stat.size <= limit ? readFile(file, 'utf8') : undefined;
+		};
+		const [release, receipt] = await Promise.all([read('steamharness.release.json', 2_000_000), read('.steamharness/download.json', 2048)]);
+		if (!release && !receipt) { return undefined; }
+		const project = await read('steamharness.json', 2_000_000);
+		return project ? (release && parseStudioReleaseProject(folder.toString(), project, release, locale)) || downloadedStudioProject(folder.toString(), project, undefined, receipt) : undefined;
 	} catch { return undefined; }
 }

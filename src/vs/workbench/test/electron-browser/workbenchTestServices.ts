@@ -99,6 +99,7 @@ export class TestNativeHostService implements INativeHostService {
 	async getActiveWindowPosition(): Promise<IRectangle | undefined> { return undefined; }
 	async getNativeWindowHandle(windowId: number): Promise<VSBuffer | undefined> { return undefined; }
 	async openStudioLaunchpadInbox(): Promise<boolean> { return false; }
+	async openStudioLaunchpadStore(): Promise<boolean> { return false; }
 
 	openWindow(options?: IOpenEmptyWindowOptions): Promise<void>;
 	openWindow(toOpen: IWindowOpenable[], options?: IOpenWindowOptions): Promise<void>;

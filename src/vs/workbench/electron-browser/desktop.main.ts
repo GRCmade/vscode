@@ -8,10 +8,12 @@ import product from '../../platform/product/common/product.js';
 import { INativeWindowConfiguration, IWindowsConfiguration } from '../../platform/window/common/window.js';
 import { Workbench } from '../browser/workbench.js';
 import { initializeStudioReleaseProject } from '../browser/parts/studioMode.js';
-import { parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
+import { downloadedStudioProject, parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
 import { joinPath } from '../../base/common/resources.js';
 import { CommandsRegistry } from '../../platform/commands/common/commands.js';
 import { StudioLaunchpad } from './studioLaunchpad.js';
+import { StudioNotificationInbox } from './studioNotificationInbox.js';
+import { INativeHostService } from '../../platform/native/common/native.js';
 import { NativeWindow } from './window.js';
 import { setFullscreen } from '../../base/browser/browser.js';
 import { domContentLoaded } from '../../base/browser/dom.js';
@@ -24,7 +26,7 @@ import { ILoggerService, ILogService, LogLevel } from '../../platform/log/common
 import { NativeWorkbenchStorageService } from '../services/storage/electron-browser/storageService.js';
 import { IWorkspaceContextService, isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier, IAnyWorkspaceIdentifier, reviveIdentifier, toWorkspaceIdentifier } from '../../platform/workspace/common/workspace.js';
 import { IWorkbenchConfigurationService } from '../services/configuration/common/configuration.js';
-import { IStorageService } from '../../platform/storage/common/storage.js';
+import { IStorageService, StorageScope } from '../../platform/storage/common/storage.js';
 import { Disposable } from '../../base/common/lifecycle.js';
 import { ISharedProcessService } from '../../platform/ipc/electron-browser/services.js';
 import { IMainProcessService } from '../../platform/ipc/common/mainProcessService.js';
@@ -136,12 +138,19 @@ export class DesktopMain extends Disposable {
 		if (!release && isSingleFolderWorkspaceIdentifier(this.configuration.workspace)) {
 			const folder = this.configuration.workspace.uri;
 			const fileService = services.serviceCollection.get(IFileService) as IFileService;
+			const state = services.storageService.getObject('studio.studio-workstation', StorageScope.PROFILE) as Record<string, unknown> | undefined;
+			const imports = state?.['studio.importedProjects'];
+			// Main already checked local marker files. Re-read only a legacy installation or a remote folder.
+			const legacy = Array.isArray(imports) && imports.some(row => row?.uri === folder.toString());
 			try {
-				const [project, manifest] = await Promise.all(['steamharness.json', 'steamharness.release.json'].map(name => fileService.readFile(joinPath(folder, name), { limits: { size: 2_000_000 } })));
-				release = parseStudioReleaseProject(folder.toString(), project.value.toString(), manifest.value.toString(), this.configuration.nls.language);
+				if (legacy || folder.scheme !== Schemas.file) {
+					const read = (name: string, size: number) => fileService.readFile(joinPath(folder, name), { limits: { size } }).then(file => file.value.toString(), () => undefined);
+					const [project, manifest, receipt] = await Promise.all([read('steamharness.json', 2_000_000), folder.scheme !== Schemas.file && read('steamharness.release.json', 2_000_000), folder.scheme !== Schemas.file ? read('.steamharness/download.json', 2048) : undefined]);
+					if (project) { release = (manifest && parseStudioReleaseProject(folder.toString(), project, manifest, this.configuration.nls.language)) || downloadedStudioProject(folder.toString(), project, imports, receipt); }
+				}
 			} catch { /* Ordinary folders have no release identity. */ }
 		}
-		initializeStudioReleaseProject(release);
+		initializeStudioReleaseProject(release, !!this.configuration.studioOpenedFromLibrary);
 
 		// Create Workbench
 		const workbench = new Workbench(mainWindow.document.body, {
@@ -158,8 +167,11 @@ export class DesktopMain extends Disposable {
 		// Window
 		this._register(instantiationService.createInstance(NativeWindow));
 		this._register(CommandsRegistry.registerCommand('studio.internalIsLaunchpad', () => !!this.configuration.isStudioLaunchpad));
+		this._register(CommandsRegistry.registerCommand('studio.internalRevealStore', accessor => accessor.get(INativeHostService).openStudioLaunchpadStore()));
+		this._register(CommandsRegistry.registerCommand('studio.internalRevealChat', accessor => accessor.get(INativeHostService).openStudioLaunchpadInbox()));
+		const inbox = this._register(instantiationService.createInstance(StudioNotificationInbox));
 		if (this.configuration.isStudioLaunchpad) {
-			this._register(instantiationService.createInstance(StudioLaunchpad));
+			this._register(instantiationService.createInstance(StudioLaunchpad, inbox));
 		}
 	}
 

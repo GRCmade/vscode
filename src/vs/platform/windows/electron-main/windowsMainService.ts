@@ -66,6 +66,7 @@ import { readStudioReleaseProject } from '../node/studioReleaseProject.js';
 //#region Helper Interfaces
 
 interface IOpenBrowserWindowOptions {
+	readonly studioOpenedFromLibrary?: boolean;
 	readonly studioLaunchpad?: { background: boolean };
 	readonly userEnv?: IProcessEnvironment;
 	readonly cli?: NativeParsedArgs;
@@ -297,7 +298,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 		}
 	}
 
-	async openStudioLaunchpad(background = false, page: 'home' | 'inbox' = 'home'): Promise<ICodeWindow> {
+	async openStudioLaunchpad(background = false, page: 'home' | 'inbox' | 'store' = 'home'): Promise<ICodeWindow> {
 		const existing = this.getWindows().find(window => window.isStudioLaunchpad && window.win && !window.win.isDestroyed());
 		const window = existing ?? await (this.launchpadOpening ??= this.openInBrowserWindow({
 			forceNewWindow: true,
@@ -306,8 +307,8 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 		}).finally(() => this.launchpadOpening = undefined));
 		if (!background && !this.lifecycleMainService.quitRequested && window.win) {
 			window.showStudioLaunchpad();
-			if (existing || page === 'inbox') {
-				window.sendWhenReady('vscode:runAction', CancellationToken.None, { id: page === 'inbox' ? 'studio.internalOpenLaunchpadInbox' : 'studio.internalShowLaunchpad', from: 'menu' });
+			if (existing || page !== 'home') {
+				window.sendWhenReady('vscode:runAction', CancellationToken.None, { id: page === 'store' ? 'studio.internalOpenStoreTab' : page === 'inbox' ? 'studio.internalOpenLaunchpadInbox' : 'studio.internalShowLaunchpad', from: 'menu' });
 			}
 		}
 		return window;
@@ -857,6 +858,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 
 		return this.openInBrowserWindow({
 			workspace: folderOrWorkspace.workspace,
+			studioOpenedFromLibrary: typeof openConfig.contextWindowId === 'number' && this.getWindowById(openConfig.contextWindowId)?.isStudioLaunchpad,
 			userEnv: openConfig.userEnv,
 			cli: openConfig.cli,
 			initialStartup: openConfig.initialStartup,
@@ -1610,6 +1612,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 			remoteAuthority: options.remoteAuthority,
 			workspace: options.workspace,
 			isStudioLaunchpad: !!options.studioLaunchpad,
+			studioOpenedFromLibrary: options.studioOpenedFromLibrary,
 			studioReleaseProject: await readStudioReleaseProject(isSingleFolderWorkspaceIdentifier(options.workspace) ? options.workspace.uri : undefined, getNLSLanguage()),
 			studioReleasePending: !!options.remoteAuthority && isSingleFolderWorkspaceIdentifier(options.workspace),
 			userEnv: { ...this.initialUserEnv, ...options.userEnv },

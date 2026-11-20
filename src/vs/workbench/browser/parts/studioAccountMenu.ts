@@ -21,7 +21,6 @@ import { INotificationService } from '../../../platform/notification/common/noti
 interface AccountMenuState {
 	status: 'signed-out' | 'checking' | 'authenticated' | 'expired' | 'error';
 	statusLabel: string;
-	serverUrl: string;
 	name: string;
 	email?: string;
 	avatarUrl?: string;
@@ -112,9 +111,6 @@ export class StudioAccountMenu extends Disposable {
 		const name = append(details, $('.studio-account-name'));
 		const email = append(details, $('.studio-account-email'));
 		const status = append(details, $('.studio-account-status', { role: 'status', 'aria-live': 'polite' }));
-		const server = append(root, $('.studio-account-server'));
-		append(server, $('span', { class: ThemeIcon.asClassName(Codicon.server), 'aria-hidden': 'true' }));
-		const serverText = append(server, $('span'));
 		const error = append(root, $('.studio-account-error', { role: 'status' }));
 		const actions = append(root, $('.studio-account-actions'));
 		let refreshing = false;
@@ -160,8 +156,6 @@ export class StudioAccountMenu extends Disposable {
 			email.hidden = !state.email;
 			text(status, state.statusLabel);
 			status.dataset.status = state.status;
-			text(serverText, state.serverUrl);
-			server.setAttribute('aria-label', `${state.labels.server}: ${state.serverUrl}`);
 			text(error, state.error ?? '');
 			error.hidden = !state.error;
 			text(profile.querySelector('.studio-account-action-label')!, state.hasAccount ? state.labels.profile : state.labels.signIn);

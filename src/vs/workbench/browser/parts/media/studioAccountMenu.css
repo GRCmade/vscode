@@ -65,9 +65,6 @@
 .studio-account-status[data-status='authenticated']::before { background: var(--vscode-testing-iconPassed); }
 .studio-account-status[data-status='checking']::before { background: var(--vscode-progressBar-background); }
 .studio-account-status[data-status='expired']::before, .studio-account-status[data-status='error']::before { background: var(--vscode-editorWarning-foreground); }
-.studio-account-server { display: flex; align-items: flex-start; gap: 8px; margin: 0 16px 12px; color: var(--vscode-descriptionForeground); line-height: 18px; }
-.studio-account-server > .codicon { flex: 0 0 16px; margin-top: 1px; }
-.studio-account-server > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .studio-account-error { margin: 0 16px 12px; color: var(--vscode-errorForeground); line-height: 18px; overflow-wrap: anywhere; }
 .studio-account-actions { padding: 6px; border-top: 1px solid var(--vscode-menu-separatorBackground); }
 .studio-account-action { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 36px; padding: 8px 10px; border: 0; border-radius: 4px; background: transparent; text-align: left; }

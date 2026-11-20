@@ -14,7 +14,6 @@ import { IKeybindingService } from '../../../../platform/keybinding/common/keybi
 import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
 import { defaultInputBoxStyles } from '../../../../platform/theme/browser/defaultStyles.js';
 import { createWorkbenchDialogOptions } from '../../../browser/parts/dialogs/dialog.js';
-import { StudioStartState } from '../../../browser/parts/editor/studioStart.js';
 import { studioProjectIcon } from '../../../common/studioProjectIcons.js';
 import { IHostService } from '../../../services/host/browser/host.js';
 import './media/studioProjectCreateDialog.css';
@@ -22,14 +21,14 @@ import './media/studioProjectCreateDialog.css';
 type ProjectCreationInput = { templateId: string; name: string; parentDirectory: string } | { shareUrl: string };
 export interface ProjectCreationDialogRequest {
 	platform?: boolean;
-	templates: StudioStartState['templates'];
+	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
 	labels: Record<string, string>;
 	parentDirectory: string;
 	templateId?: string;
 	projectType?: string;
 }
 
-/** Native form shared by the Start action and project creation commands. */
+/** Native form used by project creation commands. */
 export class StudioProjectCreateDialog extends Disposable {
 	private readonly dialog: Dialog;
 	private readonly choices = this._register(new DisposableStore());

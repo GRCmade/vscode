@@ -28,9 +28,13 @@ class StudioStartInput extends EditorInput {
 	get resource(): URI { return URI.from({ scheme: 'studio-start', path: '/start' }); }
 	constructor(@IStudioStartService private readonly start: IStudioStartService) {
 		super();
-		this._register(start.onDidChange(() => this._onDidChangeLabel.fire()));
+		let label = this.getName();
+		this._register(start.onDidChange(() => {
+			const next = this.getName();
+			if (next !== label) { label = next; this._onDidChangeLabel.fire(); }
+		}));
 	}
-	override getName(): string { return this.start.state?.labels.start ?? 'Start'; }
+	override getName(): string { return this.start.state?.labels.overview ?? 'SteamHarness'; }
 	override matches(other: EditorInput | IUntypedEditorInput): boolean { return other instanceof StudioStartInput || super.matches(other); }
 }
 

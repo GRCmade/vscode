@@ -29,6 +29,7 @@ import { IStudioStartService } from '../browser/parts/editor/studioStart.js';
 import { IOverlayWebview, IWebviewElement, IWebviewService } from '../contrib/webview/browser/webview.js';
 import { IWebviewViewService } from '../contrib/webviewView/browser/webviewViewService.js';
 import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layoutService.js';
+import { removeStudioLaunchpadSplash } from './studioLaunchpadSplash.js';
 import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
 import './media/studioLaunchpad.css';
 
@@ -208,6 +209,7 @@ export class StudioLaunchpad extends Disposable {
 		}));
 		this.showHome();
 		updateStart();
+		removeStudioLaunchpadSplash(mainWindow.document);
 		run(this.readProjects());
 	}
 

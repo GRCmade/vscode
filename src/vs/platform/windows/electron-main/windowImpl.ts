@@ -1368,6 +1368,9 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 		configuration.fullscreen = this.isFullScreen;
 		configuration.maximized = this._win.isMaximized();
 		configuration.partsSplash = this.themeMainService.getWindowSplash(configuration.workspace);
+		if (this.isStudioLaunchpad) {
+			configuration.studioLaunchpadReduceMotion = this.configurationService.getValue('workbench.reduceMotion') === 'on';
+		}
 		configuration.zoomLevel = this.getZoomLevel();
 		configuration.isCustomZoomLevel = typeof this.customZoomLevel === 'number';
 		if (configuration.isCustomZoomLevel && configuration.partsSplash) {

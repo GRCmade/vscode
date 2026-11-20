@@ -6,6 +6,7 @@
 /* eslint-disable no-restricted-globals */
 
 import { getPartsSplashColors, getPartsSplashLayoutMetrics } from './partsSplash.js';
+import { showStudioLaunchpadSplash } from '../../../workbench/electron-browser/studioLaunchpadSplash.js';
 
 (async function () {
 
@@ -89,6 +90,18 @@ import { getPartsSplashColors, getPartsSplashLayoutMetrics } from './partsSplash
 		// set zoom level as soon as possible
 		if (typeof data?.zoomLevel === 'number' && typeof preloadGlobals?.webFrame?.setZoomLevel === 'function') {
 			preloadGlobals.webFrame.setZoomLevel(data.zoomLevel);
+		}
+
+		// The launchpad owns its first paint instead of restoring editor chrome.
+		if (configuration.isStudioLaunchpad) {
+			showStudioLaunchpadSplash(window.document, {
+				baseTheme,
+				background: data?.colorInfo.background ?? shellBackground,
+				foreground: shellForeground,
+				language: configuration.nls.language,
+				reduceMotion: configuration.studioLaunchpadReduceMotion,
+			});
+			return;
 		}
 
 		// restore parts if possible (we might not always store layout info)

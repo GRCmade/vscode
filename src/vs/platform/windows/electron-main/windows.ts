@@ -36,6 +36,9 @@ export interface IWindowsMainService {
 	readonly onDidTriggerSystemContextMenu: Event<{ readonly window: ICodeWindow; readonly x: number; readonly y: number }>;
 	readonly onDidDestroyWindow: Event<ICodeWindow>;
 
+	readonly hasStudioLaunchpad: boolean;
+	enableStudioLaunchpad(): void;
+	openStudioLaunchpad(background?: boolean): Promise<ICodeWindow>;
 	open(openConfig: IOpenConfiguration): Promise<ICodeWindow[]>;
 	openEmptyWindow(openConfig: IOpenEmptyConfiguration, options?: IOpenEmptyWindowOptions): Promise<ICodeWindow[]>;
 	openExtensionDevelopmentHostWindow(extensionDevelopmentPath: string[], openConfig: IOpenConfiguration): Promise<ICodeWindow[]>;

@@ -60,11 +60,14 @@ import { ICSSDevelopmentService } from '../../cssDev/node/cssDevService.js';
 import { ResourceSet } from '../../../base/common/map.js';
 import { VSBuffer } from '../../../base/common/buffer.js';
 import { resolveAgentsWindowFolder } from './agentsWindow.js';
+import { FocusMode } from '../../native/common/native.js';
+import { createStudioTray } from './studioTray.js';
 import { readStudioReleaseProject } from '../node/studioReleaseProject.js';
 
 //#region Helper Interfaces
 
 interface IOpenBrowserWindowOptions {
+	readonly studioLaunchpad?: { background: boolean };
 	readonly userEnv?: IProcessEnvironment;
 	readonly cli?: NativeParsedArgs;
 
@@ -246,6 +249,11 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 
 	private registerListeners(): void {
 
+		this._register(Event.any(this.onDidSignalReadyWindow, Event.map(this.onDidChangeWindowsCount, () => undefined))(() => {
+			const launchpad = this.getWindows().find(window => window.isStudioLaunchpad && window.isReady);
+			launchpad?.send('vscode:studioProjectWindowsChanged');
+		}));
+
 		// Signal a window is ready after having entered a workspace
 		this._register(this.workspacesManagementMainService.onDidEnterWorkspace(event => this._onDidSignalReadyWindow.fire(event.window)));
 
@@ -268,6 +276,44 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 				}
 			}
 		}));
+	}
+
+	private studioLaunchpadEnabled = false;
+	private launchpadOpening?: Promise<ICodeWindow>;
+	get hasStudioLaunchpad(): boolean { return this.studioLaunchpadEnabled; }
+
+	enableStudioLaunchpad(): void {
+		const args = this.environmentMainService.args;
+		if (this.studioLaunchpadEnabled || args.extensionDevelopmentPath || args.extensionTestsPath || args['enable-smoke-test-driver'] || args['agents'] || args['profile-temp']) {
+			return;
+		}
+		this.studioLaunchpadEnabled = true;
+		try {
+			this._register(createStudioTray(
+				() => { void this.openStudioLaunchpad().catch(error => this.logService.error(error)); },
+				() => { void this.lifecycleMainService.quit(); },
+			));
+		} catch (error) {
+			this.logService.warn('Studio could not install its tray icon', error);
+		}
+	}
+
+	async openStudioLaunchpad(background = false): Promise<ICodeWindow> {
+		const existing = this.getWindows().find(window => window.isStudioLaunchpad && !window.win?.isDestroyed());
+		const window = existing ?? await (this.launchpadOpening ??= this.openInBrowserWindow({
+			forceNewWindow: true,
+			studioLaunchpad: { background },
+			cli: { _: [], 'folder-uri': undefined, 'file-uri': undefined, wait: false },
+		}).finally(() => this.launchpadOpening = undefined));
+		if (!background && !this.lifecycleMainService.quitRequested && window.win) {
+			if (window.win.isMinimized()) { window.win.restore(); }
+			window.win.show();
+			window.focus({ mode: FocusMode.Force });
+			if (existing) {
+				window.sendWhenReady('vscode:runAction', CancellationToken.None, { id: 'studio.internalShowLaunchpad', from: 'menu' });
+			}
+		}
+		return window;
 	}
 
 	openEmptyWindow(openConfig: IOpenEmptyConfiguration, options?: IOpenEmptyWindowOptions): Promise<ICodeWindow[]> {
@@ -583,7 +629,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 			const fileToCheck: IPath<IEditorOptions> | undefined = filesToOpen.filesToOpenOrCreate[0] || filesToOpen.filesToDiff[0] || filesToOpen.filesToMerge[3] /* [3] is the resulting merge file */;
 
 			// only look at the windows with correct authority
-			const windows = this.getWindows().filter(window => filesToOpen && isEqualAuthority(window.remoteAuthority, filesToOpen.remoteAuthority));
+			const windows = this.getWindows().filter(window => !window.isStudioLaunchpad && filesToOpen && isEqualAuthority(window.remoteAuthority, filesToOpen.remoteAuthority));
 
 			// figure out a good window to open the files in if any
 			// with a fallback to the last active window.
@@ -771,8 +817,8 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 	private resolveContextWindow(openConfig: IOpenConfiguration, forceNewWindow: boolean): { windowToUse: ICodeWindow | undefined; forceNewWindow: boolean } {
 		if (!forceNewWindow && typeof openConfig.contextWindowId === 'number') {
 			const contextWindow = this.getWindowById(openConfig.contextWindowId);
-			if (contextWindow?.config?.isSessionsWindow) {
-				return { windowToUse: undefined, forceNewWindow: true }; // do not replace the agents window
+			if (contextWindow?.isStudioLaunchpad || contextWindow?.config?.isSessionsWindow) {
+				return { windowToUse: undefined, forceNewWindow: true }; // dedicated windows cannot host projects
 			}
 			return { windowToUse: contextWindow, forceNewWindow };
 		}
@@ -781,6 +827,10 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 
 	private doOpenEmpty(openConfig: IOpenConfiguration, forceNewWindow: boolean, remoteAuthority: string | undefined, filesToOpen: IFilesToOpen | undefined, emptyWindowBackupInfo?: IEmptyWindowBackupInfo): Promise<ICodeWindow> {
 		this.logService.trace('windowsManager#doOpenEmpty', { restore: !!emptyWindowBackupInfo, remoteAuthority, filesToOpen, forceNewWindow });
+
+		if (this.hasStudioLaunchpad && openConfig.initialStartup && !filesToOpen && !emptyWindowBackupInfo && !remoteAuthority && !openConfig.forceEmpty && !openConfig.forceProfile && !openConfig.cli.wait) {
+			return this.openStudioLaunchpad();
+		}
 
 		const resolved = this.resolveContextWindow(openConfig, forceNewWindow);
 
@@ -1514,7 +1564,8 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 
 		let window: ICodeWindow | undefined;
 		if (!options.forceNewWindow && !options.forceNewTabbedWindow) {
-			window = options.windowToUse || (lastActiveWindow?.config?.isSessionsWindow ? undefined : lastActiveWindow);
+			const candidate = options.windowToUse ?? lastActiveWindow;
+			window = candidate?.isStudioLaunchpad || candidate?.config?.isSessionsWindow ? undefined : candidate;
 			if (window) {
 				window.focus();
 			}
@@ -1561,6 +1612,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 
 			remoteAuthority: options.remoteAuthority,
 			workspace: options.workspace,
+			isStudioLaunchpad: !!options.studioLaunchpad,
 			studioReleaseProject: await readStudioReleaseProject(isSingleFolderWorkspaceIdentifier(options.workspace) ? options.workspace.uri : undefined, getNLSLanguage()),
 			studioReleasePending: !!options.remoteAuthority && isSingleFolderWorkspaceIdentifier(options.workspace),
 			userEnv: { ...this.initialUserEnv, ...options.userEnv },
@@ -1606,6 +1658,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 				state,
 				extensionDevelopmentPath: configuration.extensionDevelopmentPath,
 				isExtensionTestHost: !!configuration.extensionTestsPath,
+				studioLaunchpad: options.studioLaunchpad,
 				isSessionsWindow: configuration.isSessionsWindow
 			});
 			mark('code/didCreateCodeWindow');
@@ -1613,7 +1666,9 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 			// Add as window tab if configured (macOS only)
 			if (options.forceNewTabbedWindow) {
 				const activeWindow = this.getLastActiveWindow();
-				activeWindow?.addTabbedWindow(createdWindow);
+				if (activeWindow && !activeWindow.isStudioLaunchpad) {
+					activeWindow.addTabbedWindow(createdWindow);
+				}
 			}
 
 			// Add to our list of windows
@@ -1786,7 +1841,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 	}
 
 	private getLastActiveWindowForAuthority(remoteAuthority: string | undefined): ICodeWindow | undefined {
-		return this.doGetLastActiveWindow(this.getWindows().filter(window => isEqualAuthority(window.remoteAuthority, remoteAuthority)));
+		return this.doGetLastActiveWindow(this.getWindows().filter(window => !window.isStudioLaunchpad && isEqualAuthority(window.remoteAuthority, remoteAuthority)));
 	}
 
 	private doGetLastActiveWindow(windows: ICodeWindow[]): ICodeWindow | undefined {

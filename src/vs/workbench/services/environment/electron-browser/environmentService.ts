@@ -32,6 +32,7 @@ export interface INativeWorkbenchEnvironmentService extends IBrowserWorkbenchEnv
 		maximized?: boolean;
 		accessibilitySupport?: boolean;
 		isInitialStartup?: boolean;
+		isStudioLaunchpad?: boolean;
 		isCodeCaching?: boolean;
 		perfMarks: PerformanceMark[];
 	};
@@ -89,6 +90,7 @@ export class NativeWorkbenchEnvironmentService extends AbstractNativeEnvironment
 	get window() {
 		return {
 			id: this.configuration.windowId,
+			isStudioLaunchpad: this.configuration.isStudioLaunchpad,
 			handle: this.configuration.handle,
 			colorScheme: this.configuration.colorScheme,
 			maximized: this.configuration.maximized,

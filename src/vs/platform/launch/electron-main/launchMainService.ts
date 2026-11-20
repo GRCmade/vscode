@@ -148,6 +148,10 @@ export class LaunchMainService implements ILaunchMainService {
 			usedWindows = await this.windowsMainService.openAgentsWindow(baseConfig);
 		}
 
+		else if (this.windowsMainService.hasStudioLaunchpad && !args._.length && !args['folder-uri'] && !args['file-uri'] && !args['new-window'] && !args['reuse-window'] && !args.wait && !args.profile && !args['profile-temp'] && !args.remote && !args.chat) {
+			usedWindows = [await this.windowsMainService.openStudioLaunchpad()];
+		}
+
 		// Start without file/folder arguments
 		else if (!args._.length && !args['folder-uri'] && !args['file-uri']) {
 			let openNewWindow = false;

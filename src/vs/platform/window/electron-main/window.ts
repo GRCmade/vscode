@@ -66,6 +66,7 @@ export interface ICodeWindow extends IBaseWindow {
 
 	readonly iconPath?: URI;
 
+	readonly isStudioLaunchpad?: boolean;
 	readonly isExtensionDevelopmentHost: boolean;
 	readonly isExtensionTestHost: boolean;
 

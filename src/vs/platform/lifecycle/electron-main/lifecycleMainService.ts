@@ -240,6 +240,9 @@ export class LifecycleMainService extends Disposable implements ILifecycleMainSe
 	private readonly windowToCloseRequest = new Set<number>();
 	private oneTimeListenerTokenGenerator = 0;
 	private windowCounter = 0;
+	private studioResident = false;
+
+	private get keepAliveWithoutWindows(): boolean { return isMacintosh || this.studioResident; }
 
 	private pendingQuitPromise: Promise<boolean> | undefined = undefined;
 	private pendingQuitPromiseResolve: { (veto: boolean): void } | undefined = undefined;
@@ -288,10 +291,10 @@ export class LifecycleMainService extends Disposable implements ILifecycleMainSe
 			this.trace('Lifecycle#onBeforeShutdown.fire()');
 			this._onBeforeShutdown.fire();
 
-			// macOS: can run without any window open. in that case we fire
+			// Resident apps can run without any window open. In that case we fire
 			// the onWillShutdown() event directly because there is no veto
 			// to be expected.
-			if (isMacintosh && this.windowCounter === 0) {
+			if (this.keepAliveWithoutWindows && this.windowCounter === 0) {
 				this.fireOnWillShutdown(ShutdownReason.QUIT);
 			}
 		};
@@ -303,9 +306,8 @@ export class LifecycleMainService extends Disposable implements ILifecycleMainSe
 		const windowAllClosedListener = () => {
 			this.trace('Lifecycle#app.on(window-all-closed)');
 
-			// Windows/Linux: we quit when all windows have closed
-			// Mac: we only quit when quit was requested
-			if (this._quitRequested || !isMacintosh) {
+			// A resident Studio can recreate its launchpad from the tray, even after a window was destroyed.
+			if (this._quitRequested || !this.keepAliveWithoutWindows) {
 				electron.app.quit();
 			}
 		};
@@ -423,6 +425,7 @@ export class LifecycleMainService extends Disposable implements ILifecycleMainSe
 
 		// track window count
 		this.windowCounter++;
+		this.studioResident ||= !!window.isStudioLaunchpad;
 
 		// Window Will Load
 		windowListeners.add(window.onWillLoad(e => this._onWillLoadWindow.fire({ window, workspace: e.workspace, reason: e.reason })));
@@ -430,6 +433,12 @@ export class LifecycleMainService extends Disposable implements ILifecycleMainSe
 		// Window Before Closing: Main -> Renderer
 		const win = assertReturnsDefined(window.win);
 		windowListeners.add(Event.fromNodeEventEmitter<electron.Event>(win, 'close')(e => {
+
+			if (window.isStudioLaunchpad && !this.quitRequested) {
+				e.preventDefault();
+				win.hide();
+				return;
+			}
 
 			// The window already acknowledged to be closed
 			const windowId = window.id;
@@ -469,7 +478,7 @@ export class LifecycleMainService extends Disposable implements ILifecycleMainSe
 			// if there are no more code windows opened, fire the onWillShutdown event, unless
 			// we are on macOS where it is perfectly fine to close the last window and
 			// the application continues running (unless quit was actually requested)
-			if (this.windowCounter === 0 && (!isMacintosh || this._quitRequested)) {
+			if (this.windowCounter === 0 && (!this.keepAliveWithoutWindows || this._quitRequested)) {
 				this.fireOnWillShutdown(ShutdownReason.QUIT);
 			}
 		}));

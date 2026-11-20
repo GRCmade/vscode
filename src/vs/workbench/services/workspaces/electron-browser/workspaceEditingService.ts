@@ -38,6 +38,8 @@ import { ILogService } from '../../../../platform/log/common/log.js';
 
 export class NativeWorkspaceEditingService extends AbstractWorkspaceEditingService {
 
+	private readonly isStudioLaunchpad: boolean;
+
 	constructor(
 		@IJSONEditingService jsonEditingService: IJSONEditingService,
 		@IWorkspaceContextService contextService: WorkspaceService,
@@ -65,6 +67,7 @@ export class NativeWorkspaceEditingService extends AbstractWorkspaceEditingServi
 	) {
 		super(jsonEditingService, contextService, configurationService, notificationService, commandService, fileService, textFileService, workspacesService, environmentService, fileDialogService, dialogService, hostService, uriIdentityService, workspaceTrustManagementService, userDataProfilesService, userDataProfileService, logService);
 
+		this.isStudioLaunchpad = !!environmentService.window.isStudioLaunchpad;
 		this.registerListeners();
 	}
 
@@ -176,6 +179,11 @@ export class NativeWorkspaceEditingService extends AbstractWorkspaceEditingServi
 	}
 
 	async enterWorkspace(workspaceUri: URI): Promise<void> {
+		if (this.isStudioLaunchpad) {
+			await this.nativeHostService.openWindow([{ workspaceUri }], { forceNewWindow: true });
+			return;
+		}
+
 		const stopped = await this.extensionService.stopExtensionHosts(localize('restartExtensionHost.reason', "Opening a multi-root workspace"));
 		if (!stopped) {
 			return;

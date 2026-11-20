@@ -582,7 +582,9 @@ export class CodeApplication extends Disposable {
 			this.logService.trace('app#activate');
 
 			// Mac only event: open new window when we get activated
-			if (!hasVisibleWindows) {
+			if (this.windowsMainService?.hasStudioLaunchpad && !hasVisibleWindows) {
+				await this.windowsMainService.openStudioLaunchpad();
+			} else if (!hasVisibleWindows) {
 				await this.windowsMainService?.openEmptyWindow({ context: OpenContext.DOCK });
 			}
 		});
@@ -816,6 +818,9 @@ export class CodeApplication extends Disposable {
 		// Open Windows
 		mark('code/willOpenFirstWindow');
 		const windows = await appInstantiationService.invokeFunction(accessor => this.openFirstWindow(accessor, initialProtocolUrls));
+		if (this.windowsMainService?.hasStudioLaunchpad && !windows.some(window => window.isStudioLaunchpad)) {
+			await this.windowsMainService.openStudioLaunchpad(true).catch(error => this.logService.error(error));
+		}
 		mark('code/didOpenFirstWindow');
 
 		// Signal phase: after window open
@@ -1557,6 +1562,8 @@ export class CodeApplication extends Disposable {
 
 		const context = isLaunchedFromCli(process.env) ? OpenContext.CLI : OpenContext.DESKTOP;
 		const args = this.environmentMainService.args;
+
+		windowsMainService.enableStudioLaunchpad();
 
 		// Handle agents window first based on context
 		if (args['agents']) {

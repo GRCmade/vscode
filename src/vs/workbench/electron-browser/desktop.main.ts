@@ -10,6 +10,8 @@ import { Workbench } from '../browser/workbench.js';
 import { initializeStudioReleaseProject } from '../browser/parts/studioMode.js';
 import { parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
 import { joinPath } from '../../base/common/resources.js';
+import { CommandsRegistry } from '../../platform/commands/common/commands.js';
+import { StudioLaunchpad } from './studioLaunchpad.js';
 import { NativeWindow } from './window.js';
 import { setFullscreen } from '../../base/browser/browser.js';
 import { domContentLoaded } from '../../base/browser/dom.js';
@@ -155,6 +157,10 @@ export class DesktopMain extends Disposable {
 
 		// Window
 		this._register(instantiationService.createInstance(NativeWindow));
+		this._register(CommandsRegistry.registerCommand('studio.internalIsLaunchpad', () => !!this.configuration.isStudioLaunchpad));
+		if (this.configuration.isStudioLaunchpad) {
+			this._register(instantiationService.createInstance(StudioLaunchpad));
+		}
 	}
 
 	private applyWindowZoomLevel(configurationService: IConfigurationService) {

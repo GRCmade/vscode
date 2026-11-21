@@ -18,6 +18,7 @@ import { onDidChangeFullscreen, onDidChangeZoomLevel } from '../../../base/brows
 import { getIconRegistry } from '../../../platform/theme/common/iconRegistry.js';
 import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
 import { IStudioReleaseProject } from '../../../platform/window/common/studioReleaseProject.js';
+import { IStorageService, StorageScope } from '../../../platform/storage/common/storage.js';
 import { studioLocaleStrings } from '../../services/localization/common/studioLocaleStrings.js';
 
 /** Space reserved by the embedded project for the retained native workbench controls. */
@@ -67,6 +68,7 @@ export function isStudioSteamToolAvailable(id: string | undefined): boolean {
 
 const stateChange = new Emitter<StudioModeState>();
 const modeChange = new Emitter<void>();
+export const studioModeStorageKeys = { mode: 'studio.workbenchMode', ideLayout: 'studio.ideLayout' } as const;
 export const studioModeState = {
 	openedFromLibrary: false,
 	releaseProject: undefined as IStudioReleaseProject | undefined,
@@ -83,6 +85,12 @@ export const studioModeState = {
 		modeChange.fire();
 	}
 };
+
+/** Only a locked Steam window leaves a persisted Steam mode without capturing an IDE layout. */
+export function shouldRecoverStudioIdeVisibility(storage: IStorageService): boolean {
+	return studioModeState.openedFromLibrary && !studioModeState.state.releaseOnly
+		&& storage.get(studioModeStorageKeys.mode, StorageScope.WORKSPACE) === 'steam' && !storage.get(studioModeStorageKeys.ideLayout, StorageScope.WORKSPACE);
+}
 
 /** Establish the release shell before layout, title controls, or editor restoration. */
 export function initializeStudioReleaseProject(project: IStudioReleaseProject | undefined, openedFromLibrary = false): void {

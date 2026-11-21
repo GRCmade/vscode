@@ -16,7 +16,9 @@ import { URI } from '../../base/common/uri.js';
 import { generateUuid } from '../../base/common/uuid.js';
 import { ipcRenderer, webUtils } from '../../base/parts/sandbox/electron-browser/globals.js';
 import { getNLSLanguage } from '../../nls.js';
+import { IClipboardService } from '../../platform/clipboard/common/clipboardService.js';
 import { CommandsRegistry, ICommandService } from '../../platform/commands/common/commands.js';
+import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
 import { IFileDialogService } from '../../platform/dialogs/common/dialogs.js';
 import { containsDragType } from '../../platform/dnd/browser/dnd.js';
 import { IExtensionStorageService } from '../../platform/extensionManagement/common/extensionStorage.js';
@@ -39,7 +41,7 @@ import { SocialResult } from './studioLaunchpadProfile.js';
 import { CatalogPage } from './studioLaunchpadStore.js';
 import './media/studioLaunchpad.css';
 
-type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version'>;
+type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries'>;
 type LaunchpadMenuAccount = Omit<LaunchpadAccount, 'signedIn'> & { status: string };
 const launchpadSettingsViewType = 'studio.launchpadSettings';
 
@@ -79,6 +81,8 @@ export class StudioLaunchpad extends Disposable {
 		@IExtensionStorageService extensionStorage: IExtensionStorageService,
 		@IWebviewViewService private readonly webviewViews: IWebviewViewService,
 		@IAuxiliaryWindowService auxiliaryWindows: IAuxiliaryWindowService,
+		@IContextMenuService contextMenu: IContextMenuService,
+		@IClipboardService clipboard: IClipboardService,
 	) {
 		super();
 		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener, section => {
@@ -90,7 +94,7 @@ export class StudioLaunchpad extends Disposable {
 			for (const row of saved.slice(0, 50)) {
 				if (typeof row?.uri === 'string' && typeof row.label === 'string' && Number.isFinite(row.lastOpened)) {
 					this.savedProjects.set(row.uri, { name: row.label, lastOpened: row.lastOpened,
-						artwork: row.artwork, distribution: row.distribution, projectId: row.projectId, version: row.version,
+						artwork: row.artwork, distribution: row.distribution, projectId: row.projectId, version: row.version, entries: row.entries,
 						projectType: ['bot', 'workflow', 'kanban'].includes(row.projectType) ? row.projectType : undefined,
 						avatarUrl: typeof row.avatarUrl === 'string' && row.avatarUrl.startsWith('data:image/svg+xml,') ? row.avatarUrl : undefined });
 				}
@@ -103,6 +107,8 @@ export class StudioLaunchpad extends Disposable {
 			create: () => run(commands.executeCommand('studio.createProject')),
 			project: project => run(this.openProject(project)),
 			remove: project => run(this.removeProject(project)),
+			reveal: project => run(native.showItemInFolder(URI.parse(project.uri).fsPath)),
+			copyPath: project => run(clipboard.writeText(project.path)), contextMenu,
 			signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
 			inbox: conversation => run(this.openInbox(conversation)),
@@ -434,7 +440,7 @@ export class StudioLaunchpad extends Disposable {
 		for (const uri of this.missing) { if (!this.recent.some(row => row.uri === uri)) { this.missing.delete(uri); } }
 		this.paint();
 		const known = new Set(this.start.state?.recent.filter(p => p.artwork).map(p => p.uri));
-		const others = this.recent.filter(p => p.kind === 'folder' && !known.has(p.uri)).map(p => p.uri);
+		const others = [...new Set([...this.recent, ...this.windows].filter(p => p.kind === 'folder' && !known.has(p.uri)).map(p => p.uri))];
 		if (others.length) {
 			const rows = await this.commands.executeCommand<(LibraryMetadata & { uri: string })[]>('studio.internalDetectProjectTypes', others).catch(() => undefined);
 			if (revision === this.windowRevision && rows) { for (const { uri, ...metadata } of rows) { this.savedProjects.set(uri, { ...this.savedProjects.get(uri), ...metadata }); } this.paint(); }
@@ -473,8 +479,12 @@ export class StudioLaunchpad extends Disposable {
 		const enrich = (row: LaunchpadProject, window?: LaunchpadProject): LaunchpadProject => {
 			const info = metadata.get(row.uri);
 			const saved = this.savedProjects.get(row.uri);
-			const details = info ? { name: info.label || row.name, projectType: info.projectType ?? saved?.projectType, avatarUrl: info.avatarUrl ?? saved?.avatarUrl, lastOpened: info.lastOpened, artwork: info.artwork ?? saved?.artwork, distribution: info.distribution ?? saved?.distribution, version: info.version ?? saved?.version } : saved;
-			return { ...row, ...details, windowId: row.windowId ?? window?.windowId, dirty: row.dirty ?? window?.dirty, missing: !window && row.windowId === undefined && this.missing.has(row.uri) };
+			// Once inspected, an absent field is authoritative (e.g. a plain folder replacing a release).
+			const details = info?.artwork ? info : { ...saved, ...info };
+			return { ...row, projectId: details.projectId, projectType: details.projectType, distribution: details.distribution,
+				artwork: details.artwork, entries: details.entries, avatarUrl: details.avatarUrl, version: details.version,
+				name: info?.label || saved?.name || row.name, lastOpened: info?.lastOpened ?? saved?.lastOpened,
+				windowId: row.windowId ?? window?.windowId, dirty: row.dirty ?? window?.dirty, missing: !window && row.windowId === undefined && this.missing.has(row.uri) };
 		};
 		this.view.update({ windows: this.windows.map(row => enrich(row)), recent: this.recent.map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
 			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox, notices: this.notices.list(), socialUnread: this.socialUnread });

@@ -5,8 +5,8 @@
 
 import { Disposable } from '../../base/common/lifecycle.js';
 import { STEAMHARNESS_ICON_DATA_URI } from '../common/studioBranding.js';
-import { edition, glyph, LaunchpadProject, picture, StoreListing } from './studioLaunchpadCards.js';
-import { LaunchpadLibrary } from './studioLaunchpadLibrary.js';
+import { glyph, LaunchpadProject, picture, StoreListing } from './studioLaunchpadCards.js';
+import { LaunchpadLibrary, LibraryActions } from './studioLaunchpadLibrary.js';
 import { button, element, icon, LaunchpadLabel, LaunchpadOption, LaunchpadPicker } from './studioLaunchpadPicker.js';
 import { avatar, LaunchpadAccount, LaunchpadInbox, LaunchpadProfile, ProfileActions, StudioNotice } from './studioLaunchpadProfile.js';
 import { CatalogPage, CatalogRequest, LaunchpadStore } from './studioLaunchpadStore.js';
@@ -16,9 +16,9 @@ export interface LaunchpadState {
 	windows: LaunchpadProject[]; recent: LaunchpadProject[]; platform: boolean; canCreate: boolean;
 	account?: LaunchpadAccount; inbox?: LaunchpadInbox; store?: { items: StoreListing[] }; notices: StudioNotice[]; socialUnread: boolean;
 }
-interface LaunchpadActions extends ProfileActions {
-	open(): void; workspace(): void; create(): void; project(p: LaunchpadProject): void; remove(p: LaunchpadProject): void;
-	cover(p: LaunchpadProject): Promise<string | undefined>; catalog(request: CatalogRequest, platform: boolean): Promise<CatalogPage>;
+interface LaunchpadActions extends ProfileActions, LibraryActions {
+	open(): void; workspace(): void; create(): void;
+	catalog(request: CatalogRequest, platform: boolean): Promise<CatalogPage>;
 	getListing(id: string, platform: boolean): void; readNotice(id: string): void;
 	resource(id: 'docs' | 'github' | 'server'): void;
 }
@@ -70,7 +70,7 @@ export class StudioLaunchpadView extends Disposable {
 		this.createButton = button('', 'add', actions.create, 'lp-outline lp-create');
 		this.createButton.title = createLabel; this.createButton.setAttribute('aria-label', createLabel);
 		this.createButton.append(element('span', 'lp-create-label', createLabel)); navigation.append(this.tabs, this.createButton);
-		this.library = new LaunchpadLibrary(t, { ...actions, manage: (p, b) => this.manage(p, b) });
+		this.library = new LaunchpadLibrary(t, actions);
 		this.store = this._register(new LaunchpadStore(t, actions.catalog, actions.getListing)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice));
 		const community = element('div', 'lp-community'); community.append(icon('organization'), element('h1', '', t('Community', '社区')), element('p', '', t('Coming soon', '暂未开放')));
 		for (const [id, page] of [['store', this.store.element], ['library', this.library.element], ['community', community], ['profile', this.profile.element]] as const) {
@@ -87,23 +87,18 @@ export class StudioLaunchpadView extends Disposable {
 		this.element.append(chrome, navigation, this.panels, foot, this.drop, this.picker.dialog); this.select(this.active);
 	}
 
-	select(id: Tab): void {
+	select(id: Tab, projectUri?: string): void {
 		this.active = id;
 		for (const b of this.tabs.querySelectorAll('button')) { const selected = b.dataset.tab === id; b.setAttribute('aria-selected', String(selected)); b.tabIndex = selected ? 0 : -1; }
 		for (const page of Array.from(this.panels.children) as HTMLElement[]) { page.hidden = page.id !== `lp-page-${id}`; }
 		if (this.state) { this.update(this.state); }
+		if (id === 'library') { this.library.show(projectUri); }
 	}
 
 	private fileOptions(): LaunchpadOption[] { return [{ label: this.t('Open folder…', '打开文件夹…'), glyph: 'folder-opened', run: this.actions.open }, { label: this.t('Open workspace…', '打开工作区…'), glyph: 'project', run: this.actions.workspace }]; }
 	private openOptions(origin: HTMLElement): void { this.picker.choices(this.t('Add project', '添加项目'), this.fileOptions(), origin); }
-	private manage(p: LaunchpadProject, b: HTMLElement): void {
-		const t = this.t; this.picker.choices(p.name, [
-			{ label: p.windowId !== undefined ? t('Switch to window', '切换到项目窗口') : t('Open in new window', '在新窗口打开'), glyph: 'open-in-window', run: () => this.actions.project(p) },
-			{ label: t('Remove from history…', '移除打开记录…'), glyph: 'trash', run: () => this.actions.remove(p) },
-		], b, [p.path, edition(p, t), p.version].filter(Boolean).join('\n'));
-	}
 	private search(commands: boolean): void {
-		this.picker.search(commands, this.commandCenter, mode => mode ? [...this.fileOptions(), ...(this.state?.canCreate ? [{ label: this.t('New project', '新建项目'), glyph: 'add', run: this.actions.create }] : []), ...(this.state?.platform ? [{ label: this.t('Open chat', '打开聊天'), glyph: 'comment', run: () => this.actions.inbox() }] : [])] : (this.state?.recent ?? []).map(p => ({ label: p.name, glyph: glyph(p), detail: p.path, run: () => this.actions.project(p) })));
+		this.picker.search(commands, this.commandCenter, mode => mode ? [...this.fileOptions(), ...(this.state?.canCreate ? [{ label: this.t('New project', '新建项目'), glyph: 'add', run: this.actions.create }] : []), ...(this.state?.platform ? [{ label: this.t('Open chat', '打开聊天'), glyph: 'comment', run: () => this.actions.inbox() }] : [])] : (this.state?.recent ?? []).map(p => ({ label: p.name, glyph: glyph(p), detail: p.path, run: () => this.select('library', p.uri) })));
 	}
 	shortcut(event: KeyboardEvent): void {
 		if (this.element.hidden || event.defaultPrevented || event.isComposing || event.altKey || !(event.target instanceof Node) || (!this.element.contains(event.target) && event.target !== document.body) || (this.picker.dialog.open && !this.picker.dialog.classList.contains('lp-quick'))) { return; }

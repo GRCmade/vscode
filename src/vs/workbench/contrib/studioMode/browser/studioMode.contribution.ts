@@ -17,7 +17,7 @@ import { IInstantiationService } from '../../../../platform/instantiation/common
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
-import { StudioModeLoading, StudioSteamTools, studioModeState, studioWindowChrome, studioSteamToolDefinitions, isStudioSteamToolAvailable } from '../../../browser/parts/studioMode.js';
+import { StudioModeLoading, StudioSteamTools, studioModeState, studioModeStorageKeys, studioWindowChrome, studioSteamToolDefinitions, isStudioSteamToolAvailable } from '../../../browser/parts/studioMode.js';
 import { ViewPane } from '../../../browser/parts/views/viewPane.js';
 import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
 import { WorkbenchPhase, registerWorkbenchContribution2 } from '../../../common/contributions.js';
@@ -31,8 +31,7 @@ import { StudioSteamWorkspace } from './studioSteamWorkspace.js';
 
 const TOOLS_CONTAINER = 'studio-steam-tools';
 const TOOLS_VIEW = 'studio.steamTools';
-const MODE_KEY = 'studio.workbenchMode';
-const SNAPSHOT_KEY = 'studio.ideLayout';
+const { mode: MODE_KEY, ideLayout: SNAPSHOT_KEY } = studioModeStorageKeys;
 const STEAM_WIDTH_KEY = 'studio.steamToolsWidth';
 const toolsTitle = localize2('studioSteamTools', "Open Tools");
 const sideParts = [Parts.ACTIVITYBAR_PART, Parts.SIDEBAR_PART, Parts.PANEL_PART, Parts.AUXILIARYBAR_PART] as const;

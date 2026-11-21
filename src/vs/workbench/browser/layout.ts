@@ -52,7 +52,7 @@ import { ITelemetryService } from '../../platform/telemetry/common/telemetry.js'
 import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
 import { CodeWindow, mainWindow } from '../../base/browser/window.js';
 import { localize } from '../../nls.js';
-import { studioModeState } from './parts/studioMode.js';
+import { shouldRecoverStudioIdeVisibility, studioModeState } from './parts/studioMode.js';
 import { isStudioSidebarTab } from '../common/studioSidebar.js';
 
 //#region Layout Implementation
@@ -3086,6 +3086,14 @@ class LayoutStateModel extends Disposable {
 				if (value !== undefined) {
 					this.stateCache.set(stateKey.name, value);
 				}
+			}
+		}
+
+		// A folder formerly opened as an installation has no IDE snapshot. Keep its sizes,
+		// editor groups and user settings; let the normal visibility defaults below take effect.
+		if (shouldRecoverStudioIdeVisibility(this.storageService) && !this.stateCache.get(LayoutStateKeys.ZEN_MODE_ACTIVE.name)) {
+			for (const part of [LayoutStateKeys.SIDEBAR_HIDDEN, LayoutStateKeys.EDITOR_HIDDEN, LayoutStateKeys.PANEL_HIDDEN, LayoutStateKeys.AUXILIARYBAR_HIDDEN, LayoutStateKeys.AUXILIARYBAR_WAS_LAST_MAXIMIZED]) {
+				this.stateCache.delete(part.name);
 			}
 		}
 

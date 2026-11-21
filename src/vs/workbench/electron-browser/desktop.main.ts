@@ -8,7 +8,7 @@ import product from '../../platform/product/common/product.js';
 import { INativeWindowConfiguration, IWindowsConfiguration } from '../../platform/window/common/window.js';
 import { Workbench } from '../browser/workbench.js';
 import { initializeStudioReleaseProject } from '../browser/parts/studioMode.js';
-import { downloadedStudioProject, parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
+import { downloadedStudioProject, hasStudioDownloadRecord, parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
 import { joinPath } from '../../base/common/resources.js';
 import { CommandsRegistry } from '../../platform/commands/common/commands.js';
 import { StudioLaunchpad } from './studioLaunchpad.js';
@@ -141,7 +141,7 @@ export class DesktopMain extends Disposable {
 			const state = services.storageService.getObject('studio.studio-workstation', StorageScope.PROFILE) as Record<string, unknown> | undefined;
 			const imports = state?.['studio.importedProjects'];
 			// Main already checked local marker files. Re-read only a legacy installation or a remote folder.
-			const legacy = Array.isArray(imports) && imports.some(row => row?.uri === folder.toString());
+			const legacy = hasStudioDownloadRecord(imports, folder.toString());
 			try {
 				if (legacy || folder.scheme !== Schemas.file) {
 					const read = (name: string, size: number) => fileService.readFile(joinPath(folder, name), { limits: { size } }).then(file => file.value.toString(), () => undefined);

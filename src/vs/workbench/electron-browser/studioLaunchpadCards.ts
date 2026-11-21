@@ -17,6 +17,7 @@ export interface LaunchpadProject {
 	kind: 'folder' | 'workspace'; uri: string; name: string; path: string;
 	projectId?: string; projectType?: string; avatarUrl?: string; windowId?: number; dirty?: boolean; lastOpened?: number; missing?: boolean;
 	distribution?: 'source' | 'release' | 'download'; artwork?: LibraryArtwork; version?: string;
+	entries?: { entryId: string; name: string; type: string; primary: boolean }[];
 }
 
 export interface StoreListing {
@@ -27,7 +28,7 @@ export function picture(src: string, className = ''): HTMLImageElement {
 	const img = element('img', className); img.alt = ''; img.draggable = false; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; img.src = src; return img;
 }
 
-export function glyph(p: LaunchpadProject): string { return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? 'folder'; }
+export function glyph(p: LaunchpadProject): string { return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? (p.distribution ? 'package' : 'folder'); }
 export function projectMark(p: LaunchpadProject): HTMLElement { return p.avatarUrl?.startsWith('data:image/') ? picture(p.avatarUrl) : icon(glyph(p)); }
 export function typeLabel(type: string | undefined, t: LaunchpadLabel): string {
 	switch (type) {
@@ -36,8 +37,18 @@ export function typeLabel(type: string | undefined, t: LaunchpadLabel): string {
 }
 export function edition(p: LaunchpadProject, t: LaunchpadLabel): string {
 	switch (p.distribution) {
-		case 'download': return t('Downloaded · Steam', '已下载 · Steam'); case 'release': return t('Release · Steam', '发行版 · Steam'); case 'source': return t('Source · IDE', '源码 · IDE');
+		case 'download': return t('Downloaded source · Steam', '已下载源码 · Steam'); case 'release': return t('Release · Steam', '发行版 · Steam'); case 'source': return t('Source · IDE', '源码 · IDE');
 		default: return p.kind === 'workspace' ? t('Workspace', '工作区') : p.projectType ? t('Project', '项目') : t('Folder', '文件夹');
+	}
+}
+
+export function openProjectLabel(p: LaunchpadProject, t: LaunchpadLabel): string {
+	if (p.windowId !== undefined) { return t('Switch to window', '切换到项目窗口'); }
+	if (p.missing) { return t('Locate project…', '重新定位项目…'); }
+	switch (p.distribution) {
+		case 'source': return t('Open in IDE', '在 IDE 中打开');
+		case 'release': case 'download': return t('Open in Steam mode', '在 Steam 模式打开');
+		default: return t('Open in new window', '在新窗口打开');
 	}
 }
 

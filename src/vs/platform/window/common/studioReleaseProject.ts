@@ -9,14 +9,20 @@ export interface IStudioReleaseProject {
 	readonly avatarUrl: string;
 }
 
+/** The legacy catalog also contains locally created sources. Only downloads recorded an installed version. */
+export function hasStudioDownloadRecord(imports: unknown, uri: string, project?: { id: string; version: string }): boolean {
+	return Array.isArray(imports) && imports.some(row => row?.uri === uri && typeof row.version === 'string' && !!row.version.trim()
+		&& (!project || row.id === project.id.toLowerCase() && row.version === project.version));
+}
+
 /** A downloaded source snapshot has normal source bytes. Match the installation record to the current folder and identity. */
 export function downloadedStudioProject(uri: string, document: string, imports: unknown, receipt?: string): IStudioReleaseProject | undefined {
 	try {
 		const project = JSON.parse(document);
-		if (typeof project?.id !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(project.id) || typeof project.name !== 'string' || !project.name.trim() || !Array.isArray(project.entries) || !project.entries.some((entry: { entryId?: string }) => entry?.entryId === project.defaultEntry)) { return undefined; }
-		const saved = Array.isArray(imports) && imports.some(row => row?.uri === uri && row.id === project.id.toLowerCase());
+		if (typeof project?.id !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(project.id) || typeof project.version !== 'string' || !project.version.trim() || project.distribution !== undefined || typeof project.name !== 'string' || !project.name.trim() || !Array.isArray(project.entries) || !project.entries.some((entry: { entryId?: string }) => entry?.entryId === project.defaultEntry)) { return undefined; }
+		const saved = hasStudioDownloadRecord(imports, uri, project);
 		const mark = !saved && receipt && JSON.parse(receipt);
-		return saved || (mark?.kind === 'steamharness.download' && mark.version === 1 && mark.projectId === project.id.toLowerCase() && typeof project.version === 'string' && mark.projectVersion === project.version) ? { projectUri: uri, name: project.name, avatarUrl: '' } : undefined;
+		return saved || (mark?.kind === 'steamharness.download' && mark.version === 1 && mark.projectId === project.id.toLowerCase() && mark.projectVersion === project.version) ? { projectUri: uri, name: project.name, avatarUrl: '' } : undefined;
 	} catch { return undefined; }
 }
 

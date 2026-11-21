@@ -10,6 +10,8 @@ import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.j
 import { projectDetails } from './studioLaunchpadProjectDetails.js';
 
 export interface LibraryActions {
+	create(): void;
+	importProjects(): void;
 	project(p: LaunchpadProject): void;
 	remove(p: LaunchpadProject): void;
 	reveal(p: LaunchpadProject): void;
@@ -22,6 +24,9 @@ export class LaunchpadLibrary {
 	readonly element = element('div', 'lp-library');
 	private readonly index = element('div', 'lp-index lp-scroll');
 	private readonly shelf = element('div', 'lp-shelf lp-scroll');
+	private readonly toolbar = element('header', 'lp-library-title');
+	private readonly content = element('div');
+	private readonly createButton: HTMLButtonElement;
 	private readonly search = element('input', 'lp-query');
 	private readonly filters = element('div', 'lp-filters');
 	private filter = 'all';
@@ -29,34 +34,49 @@ export class LaunchpadLibrary {
 	private projects = new Map<string, LaunchpadProject>();
 	private history = new Set<string>();
 	private selected?: string;
+	private pendingSelection?: string;
 	private homeScroll = 0;
 
 	constructor(private readonly t: LaunchpadLabel, private readonly actions: LibraryActions) {
 		const rail = element('aside', 'lp-rail');
 		this.search.type = 'search'; this.search.placeholder = t('Find a project', '查找项目'); this.search.setAttribute('aria-label', this.search.placeholder);
-		this.search.addEventListener('input', () => { this.selected = undefined; this.shelf.scrollTop = 0; this.render(); });
+		this.search.addEventListener('input', () => { this.pendingSelection = this.selected = undefined; this.shelf.scrollTop = 0; this.render(); });
 		const field = element('label', 'lp-search-field'); field.append(icon('search'), this.search);
 		rail.append(element('h2', '', t('Library', '仓库')), field, this.index);
 		for (const [id, label] of [['all', t('All', '全部')], ['source', t('Source', '源码')], ['installed', t('Installed', '已安装')], ['folder', t('Folders', '文件夹')]]) {
-			const b = button(label, '', () => { this.filter = id; this.render(); }, 'lp-filter-btn'); b.dataset.id = id; this.filters.append(b);
+			const b = button(label, '', () => { this.pendingSelection = undefined; this.filter = id; this.render(); }, 'lp-filter-btn'); b.dataset.id = id; this.filters.append(b);
 		}
+		const heading = element('div', 'lp-library-heading'), manage = element('div', 'lp-library-actions');
+		this.createButton = button(t('New project', '新建项目'), 'add', actions.create, 'lp-primary'); this.createButton.disabled = true;
+		manage.append(button(t('Import project', '导入项目'), 'folder-opened', actions.importProjects, 'lp-outline'), this.createButton);
+		heading.append(element('h1', '', t('Project library', '项目仓库')), manage);
+		this.toolbar.append(heading, this.filters); this.shelf.append(this.toolbar, this.content);
 		this.element.append(rail, this.shelf);
 	}
 
-	update(recent: LaunchpadProject[], windows: LaunchpadProject[]): void {
+	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean): void {
+		this.createButton.disabled = !canCreate;
 		const signature = JSON.stringify([recent, windows]); if (signature === this.signature) { return; }
 		this.signature = signature; this.history = new Set(recent.map(p => p.uri));
 		this.projects = new Map(recent.map(p => [p.uri, p]));
 		for (const p of windows) { if (!this.projects.has(p.uri)) { this.projects.set(p.uri, p); } }
-		if (this.selected && !this.projects.has(this.selected)) { this.show(); } else { this.render(); }
+		if (this.pendingSelection && this.projects.has(this.pendingSelection)) { this.show(this.pendingSelection); }
+		else if (this.selected && !this.projects.has(this.selected)) { this.show(); } else { this.render(); }
+	}
+
+	resetFilters(): void {
+		this.homeScroll = this.shelf.scrollTop = 0;
+		if (this.search.value || this.filter !== 'all') { this.search.value = ''; this.filter = 'all'; this.render(); }
 	}
 
 	show(uri?: string): void {
-		if (uri === this.selected || (uri && !this.projects.has(uri))) { return; }
+		// Imported folders arrive with the debounced native history snapshot, not the picker result.
+		this.pendingSelection = uri && !this.projects.has(uri) ? uri : undefined;
+		if (this.pendingSelection || uri === this.selected) { return; }
 		if (!this.selected) { this.homeScroll = this.shelf.scrollTop; }
 		this.selected = uri; this.render();
 		this.shelf.scrollTop = uri ? 0 : this.homeScroll;
-		if (uri) { this.shelf.querySelector('h1')?.focus({ preventScroll: true }); }
+		if (uri) { this.content.querySelector('h1')?.focus({ preventScroll: true }); }
 	}
 
 	private manage(p: LaunchpadProject, origin: HTMLElement, point?: { x: number; y: number }): void {
@@ -94,14 +114,14 @@ export class LaunchpadLibrary {
 			this.bindMenu(b, p); return b;
 		}));
 		const selected = this.selected && this.projects.get(this.selected);
+		this.toolbar.hidden = !!selected;
 		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };
 		if (selected) {
-			this.shelf.replaceChildren(projectDetails(selected, t, () => this.actions.project(selected), origin => this.manage(selected, origin))); restoreFocus(); return;
+			this.content.replaceChildren(projectDetails(selected, t, () => this.actions.project(selected), origin => this.manage(selected, origin))); restoreFocus(); return;
 		}
-		const toolbar = element('header', 'lp-library-title'); toolbar.append(element('h1', '', t('Project library', '项目仓库')), this.filters);
-		this.shelf.replaceChildren(toolbar);
+		this.content.replaceChildren();
 		if (!rows.length) {
-			const empty = element('p', 'lp-empty'); empty.append(icon('library'), query || this.filter !== 'all' ? t('No matching projects.', '没有匹配的项目。') : t('No projects in your library yet.', '仓库里还没有项目。')); this.shelf.append(empty); return;
+			const empty = element('p', 'lp-empty'); empty.append(icon('library'), query || this.filter !== 'all' ? t('No matching projects.', '没有匹配的项目。') : t('No projects in your library yet.', '仓库里还没有项目。')); this.content.append(empty); return;
 		}
 		const gallery = (title: string, group: string, projects: LaunchpadProject[]) => {
 			const section = element('section', `lp-collection lp-${group}`), grid = element('div', 'lp-library-grid');
@@ -118,7 +138,7 @@ export class LaunchpadLibrary {
 				this.bindMenu(b, p);
 				item.append(b, more); grid.append(item);
 			}
-			section.append(heading(title, projects.length), grid); this.shelf.append(section);
+			section.append(heading(title, projects.length), grid); this.content.append(section);
 		};
 		if (this.filter === 'all' && !query) { gallery(t('Recently opened', '最近打开'), 'recent', rows.slice(0, 6)); }
 		gallery(t('All projects', '所有项目'), 'all', rows);

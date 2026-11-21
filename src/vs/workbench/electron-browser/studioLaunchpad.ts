@@ -11,6 +11,7 @@ import { encodeBase64 } from '../../base/common/buffer.js';
 import { CancellationTokenSource } from '../../base/common/cancellation.js';
 import { Event } from '../../base/common/event.js';
 import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
+import { Schemas } from '../../base/common/network.js';
 import { basenameOrAuthority } from '../../base/common/resources.js';
 import { URI } from '../../base/common/uri.js';
 import { generateUuid } from '../../base/common/uuid.js';
@@ -105,6 +106,7 @@ export class StudioLaunchpad extends Disposable {
 			open: () => run(dialogs.pickFolderAndOpen({ forceNewWindow: true })),
 			workspace: () => run(dialogs.pickWorkspaceAndOpen({ forceNewWindow: true })),
 			create: () => run(commands.executeCommand('studio.createProject')),
+			importProjects: () => run(this.pickProjectsToImport()),
 			project: project => run(this.openProject(project)),
 			remove: project => run(this.removeProject(project)),
 			reveal: project => run(native.showItemInFolder(URI.parse(project.uri).fsPath)),
@@ -141,7 +143,7 @@ export class StudioLaunchpad extends Disposable {
 				event.preventDefault();
 				event.stopPropagation();
 				const paths = new Set(Array.from(data.files, file => webUtils.getPathForFile(file)).filter(Boolean));
-				if (paths.size) { run(this.openDroppedFolders(Array.from(paths, path => URI.file(path)))); }
+				if (paths.size) { run(this.importFolders(Array.from(paths, path => URI.file(path)))); }
 			},
 		}));
 		const resize = () => {
@@ -359,20 +361,31 @@ export class StudioLaunchpad extends Disposable {
 		return data;
 	}
 
-	private async openDroppedFolders(uris: URI[]): Promise<void> {
+	private async pickProjectsToImport(): Promise<void> {
+		const zh = this.language.startsWith('zh');
+		const uris = await this.dialogs.showOpenDialog({ title: zh ? '导入项目' : 'Import project', openLabel: zh ? '导入' : 'Import',
+			canSelectFolders: true, canSelectFiles: false, canSelectMany: true, availableFileSystems: [Schemas.file] });
+		if (uris?.length && !this._store.isDisposed) { await this.importFolders(uris); }
+	}
+
+	private async importFolders(uris: URI[]): Promise<void> {
 		const folders = (await Promise.all(uris.map(async uri => {
 			try {
 				return (await this.files.stat(uri)).isDirectory ? { folderUri: uri } : undefined;
 			} catch {
-				return undefined; // A dropped path can disappear before it is opened.
+				return undefined; // The folder may have moved since the picker or drop.
 			}
 		}))).filter(folder => folder !== undefined);
 		if (this._store.isDisposed) { return; }
 		if (folders.length) {
-			await this.native.openWindow(folders, { forceNewWindow: true });
+			await this.workspaces.addRecentlyOpened(folders);
+			if (this._store.isDisposed) { return; }
+			for (const { folderUri } of folders) { this.missing.delete(folderUri.toString()); }
+			this.paint();
+			this.view.showImportedProjects(folders.length === 1 ? folders[0].folderUri.toString() : undefined);
 		} else {
 			const zh = this.language.startsWith('zh');
-			await this.native.showMessageBox({ type: 'warning', message: zh ? '没有可打开的项目文件夹' : 'No project folders could be opened',
+			await this.native.showMessageBox({ type: 'warning', message: zh ? '没有可导入的项目文件夹' : 'No project folders could be imported',
 				buttons: [zh ? '确定' : 'OK'], noLink: true });
 		}
 	}

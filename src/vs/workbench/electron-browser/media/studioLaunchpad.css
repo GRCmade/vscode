@@ -28,16 +28,22 @@
 .monaco-workbench .studio-launchpad[tabindex]:focus,.monaco-workbench .studio-launchpad :focus:not(:focus-visible),.monaco-workbench .studio-launchpad.lp-pointer :is(button,input,[tabindex]):focus { outline: none; }
 .monaco-workbench .studio-launchpad :is(button,input,[tabindex]):focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: -2px; }
 .lp-titlebar,.lp-navigation,.lp-statusbar,.lp-utilities,.lp-filters,.lp-feature-controls,.lp-pager,.lp-profile-nav { display: flex; align-items: center; gap: 8px; }
-.lp-titlebar { padding-inline: calc(var(--lp-controls-left,0px) + 10px) calc(var(--lp-controls-right,0px) + 10px); justify-content: space-between; }
+.lp-titlebar { container: lp-titlebar / inline-size; padding-inline: calc(var(--lp-controls-left,0px) + 10px) calc(var(--lp-controls-right,0px) + 10px); justify-content: space-between; }
 .lp-titlebar button { pointer-events: auto; -webkit-app-region: no-drag; }
 .lp-no-native-bar .lp-titlebar { background: var(--lp-chrome); }
-.lp-brand { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
-.lp-brand img { height: 42px; width: 42px; object-fit: contain; }
-.lp-utilities .lp-tool,.studio-launchpad .lp-tool { width: 30px; height: 28px; padding: 0; position: relative; }
+.lp-brand { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
+.lp-brand img { width: min(36px,var(--studio-launchpad-bar,44px)); aspect-ratio: 1; flex: none; object-fit: contain; }
+.lp-wordmark { overflow: hidden; text-overflow: ellipsis; }
+.lp-utilities { flex: none; --lp-avatar-size: min(32px,calc(var(--studio-launchpad-bar,44px) - 2px)); }
+.studio-launchpad .lp-tool { width: 30px; height: 28px; padding: 0; position: relative; }
+.lp-resources { display: flex; align-items: center; gap: 2px; border-inline-end: 1px solid var(--lp-line); padding-inline-end: 8px; }
+.lp-resources .lp-tool { width: auto; padding-inline: 7px; white-space: nowrap; }
+.lp-utilities .lp-account { width: calc(var(--lp-avatar-size) + 2px); height: calc(var(--lp-avatar-size) + 2px); }
 .lp-has-unread::after { content: ''; position: absolute; top: 3px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--lp-accent); }
 .lp-avatar { position: relative; display: inline-grid; place-items: center; width: 32px; height: 32px; flex: none; overflow: hidden; border-radius: 5px; background: var(--lp-panel); }
 .lp-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.lp-utilities .lp-avatar { width: 24px; height: 24px; }
+.lp-utilities .lp-avatar { width: var(--lp-avatar-size); height: var(--lp-avatar-size); }
+.lp-account .codicon-account { font-size: 22px; }
 .lp-navigation,.lp-statusbar,.lp-panels,.lp-dialog,.lp-project-drop { pointer-events: auto; }
 .lp-navigation { justify-content: space-between; padding-inline: var(--lp-pad); border-bottom: 1px solid var(--lp-line); background: var(--lp-chrome); }
 .lp-tabs { display: flex; align-items: stretch; height: 100%; gap: clamp(6px,2vw,26px); }
@@ -67,7 +73,9 @@
 .lp-detail-entries strong { min-width: 0; overflow-wrap: anywhere; font-weight: 500; } .lp-entry-type { margin-inline-start: auto; } .lp-entry-default,.lp-entry-type { flex: none; }
 .lp-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .lp-shelf,.lp-profile,.lp-store-page { padding: 22px var(--lp-pad) 32px; }
-.lp-library-title,.lp-shelf-head,.lp-store-toolbar,.lp-profile-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.lp-library-title { display: grid; gap: 12px; }
+.lp-library-heading,.lp-shelf-head,.lp-store-toolbar,.lp-profile-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.lp-library-actions { display: flex; align-items: stretch; flex-wrap: wrap; gap: 6px; }
 .lp-shelf-head { justify-content: flex-start; margin-bottom: 10px; }
 .lp-collection { margin-top: 24px; }
 .lp-library-grid,.lp-store-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(156px,100%),1fr)); gap: 14px; }
@@ -99,7 +107,7 @@
 .lp-search-field .lp-query { border: 0; }
 .studio-launchpad :is(.lp-filters,.lp-profile-nav) [aria-pressed=true] { color: var(--lp-strong); background: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover)); }
 .studio-launchpad .lp-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); padding: 6px 12px; }
-.studio-launchpad .lp-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
+.studio-launchpad .lp-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground,var(--vscode-button-background)); }
 .studio-launchpad .lp-outline { border: 1px solid var(--lp-edge); }
 .lp-store-page { padding-inline: max(var(--lp-pad),calc((100% - 1120px)/2)); }
 .lp-store-toolbar { margin-bottom: 19px; }
@@ -128,15 +136,22 @@
 .studio-launchpad-app-close { position: absolute; z-index: 25; inset-inline-start: calc(var(--lp-controls-left,0px) + 12px); top: calc((var(--studio-launchpad-bar,44px) - 26px)/2); height: 26px; border: 0; background: var(--lp-chrome); color: var(--lp-text); cursor: pointer; -webkit-app-region: no-drag; }
 .studio-launchpad-app-close.lp-pointer:focus { outline: none !important; }
 .studio-chat-window { position: absolute; inset: 0; overflow: hidden; background: var(--vscode-editor-background); }
+@container lp-titlebar (max-width: 680px) {
+	.lp-resource-label { display: none; } .lp-resources .lp-tool { width: 30px; padding: 0; }
+}
+@container lp-titlebar (max-width: 360px) {
+	.lp-wordmark { display: none; } .lp-brand img { width: min(30px,var(--studio-launchpad-bar,44px)); }
+	.lp-resources,.lp-utilities { gap: 2px; } .lp-resources { padding-inline-end: 3px; }
+	.lp-utilities .lp-tool:not(.lp-account) { width: 24px; }
+}
 @media (max-width: 700px) {
 	.lp-library { grid-template-columns: minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); } .lp-rail { padding: 8px var(--lp-pad); border: 0; } .lp-rail > h2,.lp-rail > .lp-index { display: none; } .lp-navigation { padding-inline: 10px; }
 	.lp-tabs { gap: 10px; } .studio-launchpad .lp-tabs button { font-size: 15px; } .lp-feature-info h2 { font-size: 18px; }
 	.lp-recent .lp-library-grid { grid-auto-columns: minmax(150px,44%); }
 }
 @media (max-width: 480px) {
-	.lp-create-label { display: none; } .studio-launchpad .lp-create { flex: 0 0 28px; height: 28px; }
-	.lp-titlebar { gap: 3px; padding-inline-end: calc(var(--lp-controls-right,0px) + 3px); } .lp-brand { min-width: 0; overflow: hidden; } .lp-utilities { flex: none; }
+	.lp-titlebar { gap: 3px; padding-inline-end: calc(var(--lp-controls-right,0px) + 3px); }
 	.lp-navigation { gap: 4px; } .studio-launchpad .lp-outline { padding: 3px 5px; } .lp-store-feature { grid-template-columns: 1fr; }
-	.lp-store-feature > .lp-artwork { max-height: 165px; } .lp-utilities { gap: 3px; } .lp-brand img { width: 33px; }
+	.lp-store-feature > .lp-artwork { max-height: 165px; }
 	.lp-profile-nav { gap: 2px; } .lp-library-grid,.lp-store-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
 }

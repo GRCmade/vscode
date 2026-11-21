@@ -59,12 +59,18 @@ export class StudioLaunchpadView extends Disposable {
 		};
 		this.consoleButton = resource('server', t('Web console', 'Web 控制台'), 'link-external'); this.consoleButton.hidden = true;
 		resources.append(resource('docs', t('Documentation', '文档'), 'book'), resource('github', 'GitHub', 'github'), this.consoleButton);
-		this.commandCenter = tool(t('Search projects or commands', '搜索项目或命令'), 'search', () => this.search(false));
+		const searchLabel = t('Search projects or commands', '搜索项目或命令');
+		this.commandCenter = button('', 'search', () => this.search(false), 'lp-command-center');
+		this.commandCenter.append(element('span', 'lp-command-label', searchLabel), element('span', 'lp-command-short', t('Search', '搜索')));
+		this.commandCenter.title = searchLabel;
+		this.commandCenter.setAttribute('aria-label', searchLabel);
+		this.commandCenter.setAttribute('aria-haspopup', 'dialog');
+		this.commandCenter.setAttribute('aria-expanded', 'false');
 		this.bell = tool(t('Studio notifications', 'Studio 通知'), 'bell', () => { this.select('profile'); this.profile.select('notifications'); });
 		this.accountButton = tool(t('Studio account', 'Studio 账号'), 'account', () => this.select('profile'));
 		this.accountButton.classList.add('lp-account');
-		const utilities = element('div', 'lp-utilities'); utilities.append(resources, this.commandCenter, this.bell, this.accountButton);
-		chrome.append(brand, utilities);
+		const utilities = element('div', 'lp-utilities'); utilities.append(resources, this.bell, this.accountButton);
+		chrome.append(brand, this.commandCenter, utilities);
 		const navigation = element('div', 'lp-navigation'); this.tabs.setAttribute('role', 'tablist'); this.tabs.setAttribute('aria-label', t('Launchpad navigation', '启动台导航'));
 		for (const [id, name] of [['store', t('Store', '商店')], ['library', t('Library', '仓库')], ['community', t('Community', '社区')], ['profile', t('My Studio', '我的')]] as const) {
 			const b = button(name, '', () => this.select(id)); b.id = `lp-tab-${id}`; b.dataset.tab = id; b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', `lp-page-${id}`); this.tabs.append(b);

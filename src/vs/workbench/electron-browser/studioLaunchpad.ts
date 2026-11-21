@@ -35,7 +35,7 @@ import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layou
 import { removeStudioLaunchpadSplash } from './studioLaunchpadSplash.js';
 import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
 import { LaunchpadApp, StudioChatWindow } from './studioChatWindow.js';
-import { SocialSnapshot } from './studioLaunchpadProfile.js';
+import { SocialResult } from './studioLaunchpadProfile.js';
 import { CatalogPage } from './studioLaunchpadStore.js';
 import './media/studioLaunchpad.css';
 
@@ -109,7 +109,7 @@ export class StudioLaunchpad extends Disposable {
 			cover: project => this.cover(project),
 			catalog: async (request, platform) => { const page = await commands.executeCommand<CatalogPage>(platform ? 'studio.getStoreCatalog' : 'studio.getLocalCatalog', request); if (!page) { throw new Error('Catalog unavailable'); } return page; },
 			getListing: (id, platform) => run(commands.executeCommand(platform ? 'studio.getStoreListing' : 'studio.createExample', id)),
-			social: async query => { const snapshot = await commands.executeCommand<SocialSnapshot>('studio.getSocialSnapshot', query); if (!snapshot) { throw new Error('Social data unavailable'); } return snapshot; },
+			social: async query => { const result = await commands.executeCommand<SocialResult>('studio.getSocialSnapshot', query); if (!result) { throw new Error('Social data unavailable'); } return result; },
 			change: async action => { await commands.executeCommand('studio.changeSocial', action); this.refreshNotices.schedule(); },
 			chatUser: user => run(this.openInbox(undefined, user)),
 			readNotice: id => this.notices.read(id),

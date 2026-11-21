@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { addDisposableListener } from '../../base/browser/dom.js';
+import { $, addDisposableListener } from '../../base/browser/dom.js';
 import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
 import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
 import { URI } from '../../base/common/uri.js';
@@ -45,7 +45,8 @@ export class StudioChatWindow extends Disposable {
 		try {
 			const app = prepared.app, ready = new DeferredPromise<boolean>(); life.add(toDisposable(() => { void ready.complete(false); }));
 			const doc = window.window.document; doc.title = app.title;
-			const host = doc.createElement('div'); host.className = 'studio-chat-window'; window.container.append(host);
+			// Auxiliary windows adopt workbench elements from the main document.
+			const host = window.container.appendChild($('.studio-chat-window'));
 			const webview = life.add(this.webviews.createWebviewElement({ title: app.title, options: {}, extension: undefined,
 				contentOptions: { allowScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: app.port, extensionHostPort: app.port }] } }));
 			const chat = { window, webview, ready: ready.p, dispose: () => life.dispose() };

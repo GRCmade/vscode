@@ -119,6 +119,12 @@ export class StudioLaunchpad extends Disposable {
 			getListing: (id, platform) => run(commands.executeCommand(platform ? 'studio.getStoreListing' : 'studio.createExample', id)),
 			social: async query => { const result = await commands.executeCommand<SocialResult>('studio.getSocialSnapshot', query); if (!result) { throw new Error('Social data unavailable'); } return result; },
 			change: async action => { await commands.executeCommand('studio.changeSocial', action); this.refreshNotices.schedule(); },
+			confirmRemoveFriend: async name => {
+				const zh = this.language.startsWith('zh');
+				const { response } = await native.showMessageBox({ type: 'question', message: zh ? `从好友中移除「${name}」？` : `Remove “${name}” from your friends?`,
+					buttons: zh ? ['移除好友', '取消'] : ['Remove friend', 'Cancel'], cancelId: 1, defaultId: 1, noLink: true });
+				return response === 0;
+			},
 			chatUser: user => run(this.openInbox(undefined, user)),
 			readNotice: id => this.notices.read(id),
 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),

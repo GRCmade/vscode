@@ -181,7 +181,6 @@ export class LaunchpadProfile extends Disposable {
 		const name = a?.hasAccount ? a.name : this.platform ? t('Not signed in', '尚未登录') : t('Local profile', '本机用户');
 		const identity = element('div', 'lp-profile-identity'); identity.append(element('strong', '', name));
 		if (a?.email) { identity.append(element('small', '', a.email)); }
-		if (a?.statusLabel) { identity.append(element('small', 'lp-profile-account-state', a.statusLabel)); }
 		this.header.replaceChildren(avatar(name, a?.avatarUrl), identity, tool(t('Settings', '设置'), 'settings-gear', this.actions.settings));
 		if (this.platform && !a?.signedIn) { this.header.append(button(t('Sign in', '登录'), 'sign-in', this.actions.signIn, 'lp-primary')); }
 	}

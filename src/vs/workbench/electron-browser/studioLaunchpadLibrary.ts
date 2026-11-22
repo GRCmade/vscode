@@ -5,9 +5,9 @@
 
 import { IAction, Separator, toAction } from '../../base/common/actions.js';
 import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
+import { projectDetails } from '../browser/studioProjectDetails.js';
 import { artwork, edition, LaunchpadProject, openProjectLabel, projectMark, typeLabel } from './studioLaunchpadCards.js';
 import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
-import { projectDetails } from './studioLaunchpadProjectDetails.js';
 
 export interface LibraryProjectCategory {
 	label: string;
@@ -18,7 +18,7 @@ export interface LibraryProjectCategory {
 export interface LibraryActions {
 	create(): void;
 	importProjects(): void;
-	project(p: LaunchpadProject): void;
+	project(p: LaunchpadProject, entryId?: string): void;
 	remove(p: LaunchpadProject): void;
 	reveal(p: LaunchpadProject): void;
 	copyPath(p: LaunchpadProject): void;
@@ -150,7 +150,19 @@ export class LaunchpadLibrary {
 		this.toolbar.hidden = !!selected;
 		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };
 		if (selected) {
-			const detail = projectDetails(selected, t, () => this.actions.project(selected), origin => this.manage(selected, origin));
+			const canRun = !!selected.distribution && !selected.missing;
+			const open = button(openProjectLabel(selected, t), 'open-in-window', () => this.actions.project(selected), `studio-project-action ${canRun ? 'lp-outline' : 'lp-primary'}`);
+			open.dataset.key = 'open:' + selected.uri;
+			const more = button('', 'ellipsis', () => this.manage(selected, more), 'studio-project-action lp-outline lp-tool');
+			more.dataset.key = 'more:' + selected.uri;
+			more.title = t('Project actions', '项目操作'); more.setAttribute('aria-label', more.title); more.setAttribute('aria-haspopup', 'menu');
+			const actions = [open, more];
+			if (canRun) {
+				const run = button(t('Run project', '运行项目'), 'play', () => this.actions.project(selected), 'studio-project-action lp-primary');
+				run.dataset.key = 'run:' + selected.uri;
+				actions.unshift(run);
+			}
+			const detail = projectDetails(selected, t, { actions, openEntry: canRun ? entryId => this.actions.project(selected, entryId) : undefined });
 			this.content.replaceChildren(detail); restoreFocus();
 			void this.actions.detailActions?.(selected).then(items => {
 				if (detail.parentElement !== this.content) { return; }
@@ -159,7 +171,7 @@ export class LaunchpadLibrary {
 					const action = button(item.label, '', () => {
 						action.disabled = true;
 						void this.actions.runDetailAction?.(selected, item.id).finally(() => { if (detail.parentElement === this.content) { this.render(); } });
-					}, 'lp-outline');
+					}, 'studio-project-action lp-outline');
 					controls?.insertBefore(action, controls.lastElementChild);
 				}
 			}).catch(() => undefined); return;

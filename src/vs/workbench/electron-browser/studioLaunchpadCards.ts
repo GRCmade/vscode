@@ -3,8 +3,11 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { studioProjectCardIcon, studioProjectIcon } from '../common/studioProjectIcons.js';
-import { element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
+import { projectTypeMark, type StudioProjectDetails } from '../browser/studioProjectDetails.js';
+import { element, icon, picture, type StudioLabel } from '../browser/studioUiElements.js';
+
+export { edition, glyph, projectMark, typeLabel } from '../browser/studioProjectDetails.js';
+export { picture } from '../browser/studioUiElements.js';
 
 export interface LibraryArtwork {
 	cover?: { name: string; mtime: number };
@@ -13,11 +16,8 @@ export interface LibraryArtwork {
 	entryTypes?: string[];
 }
 
-export interface LaunchpadProject {
-	kind: 'folder' | 'workspace'; uri: string; name: string; path: string;
-	projectId?: string; projectType?: string; avatarUrl?: string; windowId?: number; dirty?: boolean; lastOpened?: number; missing?: boolean;
-	distribution?: 'source' | 'release' | 'download'; artwork?: LibraryArtwork; version?: string;
-	entries?: { entryId: string; name: string; type: string; primary: boolean }[];
+export interface LaunchpadProject extends StudioProjectDetails {
+	artwork?: LibraryArtwork;
 }
 
 export interface StoreListing {
@@ -32,30 +32,7 @@ export function storeArtwork(p: StoreListing, cover?: string | Promise<string | 
 	return artwork(p.id, { entries: p.entries?.length ? p.entries : p.avatarUrl ? [p.avatarUrl] : [], entryTypes: p.entryTypes }, projectTypeMark(p.projectType, icon('extensions')), cover);
 }
 
-export function picture(src: string, className = ''): HTMLImageElement {
-	const img = element('img', className); img.alt = ''; img.draggable = false; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; img.src = src; return img;
-}
-
-export function glyph(p: LaunchpadProject): string { return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? (p.distribution ? 'package' : 'folder'); }
-export function projectMark(p: LaunchpadProject): HTMLElement { return p.avatarUrl?.startsWith('data:image/') ? picture(p.avatarUrl) : icon(glyph(p)); }
-/** Project type identity uses the same Lucide card glyphs as the shared avatar assets. */
-export function projectTypeMark(type: string | undefined, fallback: HTMLElement): HTMLElement {
-	const source = studioProjectCardIcon(type);
-	return source ? picture(source) : fallback;
-}
-export function typeLabel(type: string | undefined, t: LaunchpadLabel): string {
-	switch (type) {
-		case 'bot': return 'Bot'; case 'kanban': return t('Kanban', '看板'); case 'workflow': return t('Workflow', '工作流'); case 'aggregate': return t('Multi-entry', '多入口'); default: return t('Folder', '文件夹');
-	}
-}
-export function edition(p: LaunchpadProject, t: LaunchpadLabel): string {
-	switch (p.distribution) {
-		case 'download': return t('Downloaded source · Steam', '已下载源码 · Steam'); case 'release': return t('Release · Steam', '发行版 · Steam'); case 'source': return t('Source · IDE', '源码 · IDE');
-		default: return p.kind === 'workspace' ? t('Workspace', '工作区') : p.projectType ? t('Project', '项目') : t('Folder', '文件夹');
-	}
-}
-
-export function openProjectLabel(p: LaunchpadProject, t: LaunchpadLabel): string {
+export function openProjectLabel(p: LaunchpadProject, t: StudioLabel): string {
 	if (p.windowId !== undefined) { return t('Switch to window', '切换到项目窗口'); }
 	if (p.missing) { return t('Locate project…', '重新定位项目…'); }
 	switch (p.distribution) {

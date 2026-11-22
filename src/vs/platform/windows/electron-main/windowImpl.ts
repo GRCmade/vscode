@@ -1383,6 +1383,9 @@ export class CodeWindow extends BaseWindow implements ICodeWindow {
 
 	load(configuration: INativeWindowConfiguration, options: ILoadOptions = Object.create(null)): void {
 		this.logService.trace(`window#load: attempt to load window (id: ${this._id})`);
+		if (options.isReload && configuration.studioProjectEntry) {
+			configuration = { ...configuration, studioProjectEntry: undefined };
+		}
 
 		// Clear Document Edited if needed
 		if (this.isDocumentEdited()) {

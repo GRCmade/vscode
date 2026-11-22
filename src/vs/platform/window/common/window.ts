@@ -19,6 +19,7 @@ import { PolicyDefinition, PolicyValue } from '../../policy/common/policy.js';
 import { IPartsSplash } from '../../theme/common/themeService.js';
 import { IUserDataProfile } from '../../userDataProfile/common/userDataProfile.js';
 import { IAnyWorkspaceIdentifier, ISingleFolderWorkspaceIdentifier, IWorkspaceIdentifier } from '../../workspace/common/workspace.js';
+import type { IStudioProjectEntry } from './studioProjectWindow.js';
 
 export const WindowMinimumSize = {
 	WIDTH: 400,
@@ -77,6 +78,9 @@ export interface IOpenWindowOptions extends IBaseOpenWindowsOptions {
 	 * the Agents window) so the new window restores both the folder and session.
 	 */
 	readonly chatSessionToOpen?: URI;
+
+	/** Run the requested entry (or the default if omitted) in the single folder being opened. */
+	readonly studioProjectEntry?: Omit<IStudioProjectEntry, 'uri'>;
 }
 
 export interface IAddRemoveFoldersRequest {
@@ -517,6 +521,8 @@ export interface IOSConfiguration {
 export interface INativeWindowConfiguration extends IWindowConfiguration, NativeParsedArgs, ISandboxConfiguration {
 	readonly isStudioLaunchpad?: boolean;
 	studioOpenedFromLibrary?: boolean;
+	/** One-shot startup target; a cold release window must select it before preparing the Steam view. */
+	studioProjectEntry?: IStudioProjectEntry;
 	studioLaunchpadReduceMotion?: boolean;
 	studioReleaseProject?: import('./studioReleaseProject.js').IStudioReleaseProject;
 	studioReleasePending?: boolean;

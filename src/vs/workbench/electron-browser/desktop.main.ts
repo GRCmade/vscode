@@ -150,7 +150,7 @@ export class DesktopMain extends Disposable {
 				}
 			} catch { /* Ordinary folders have no release identity. */ }
 		}
-		initializeStudioReleaseProject(release, !!this.configuration.studioOpenedFromLibrary);
+		initializeStudioReleaseProject(release, !!this.configuration.studioOpenedFromLibrary, this.configuration.studioProjectEntry);
 
 		// Create Workbench
 		const workbench = new Workbench(mainWindow.document.body, {

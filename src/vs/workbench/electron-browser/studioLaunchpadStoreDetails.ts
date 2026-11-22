@@ -7,7 +7,7 @@ import { renderMarkdown } from '../../base/browser/markdownRenderer.js';
 import { Disposable } from '../../base/common/lifecycle.js';
 import { picture, storeArtwork, StoreListing, StoreListingDetails, typeLabel } from './studioLaunchpadCards.js';
 import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
-import { projectEntryList } from './studioLaunchpadProjectDetails.js';
+import { projectEntryList } from '../browser/studioProjectDetails.js';
 import type { StoreActions } from './studioLaunchpadStore.js';
 
 export class LaunchpadStoreDetails extends Disposable {

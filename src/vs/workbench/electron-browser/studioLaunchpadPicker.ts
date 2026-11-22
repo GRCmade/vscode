@@ -3,30 +3,12 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-export function element<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] {
-	const node = document.createElement(tag);
-	node.className = className;
-	node.textContent = text;
-	return node;
-}
+import { button, element, icon, type StudioLabel } from '../browser/studioUiElements.js';
 
-export function icon(name: string): HTMLElement {
-	const node = element('span', `codicon codicon-${name}`);
-	node.setAttribute('aria-hidden', 'true');
-	return node;
-}
-
-export function button(text: string, glyph: string, action: () => void, className = ''): HTMLButtonElement {
-	const node = element('button', className);
-	node.type = 'button';
-	if (glyph) { node.append(icon(glyph)); }
-	node.append(text);
-	node.addEventListener('click', action);
-	return node;
-}
+export { button, element, icon } from '../browser/studioUiElements.js';
 
 export interface LaunchpadOption { label: string; glyph: string; detail?: string; visible?(): boolean; run(): void }
-export type LaunchpadLabel = (en: string, zh: string) => string;
+export type LaunchpadLabel = StudioLabel;
 
 /** Only launchpad actions are offered here; the workbench command palette belongs to project windows. */
 export class LaunchpadPicker {

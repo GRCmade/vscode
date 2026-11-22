@@ -35,6 +35,7 @@ import { IPartsSplash } from '../../theme/common/themeService.js';
 import { IThemeMainService } from '../../theme/electron-main/themeMainService.js';
 import { defaultWindowState, ICodeWindow } from '../../window/electron-main/window.js';
 import { IColorScheme, IOpenedAuxiliaryWindow, IOpenedMainWindow, IOpenEmptyWindowOptions, IOpenWindowOptions, IPoint, IRectangle, IWindowOpenable } from '../../window/common/window.js';
+import { studioEntryForOpenables } from '../../window/common/studioProjectWindow.js';
 import { defaultBrowserWindowOptions, IWindowsMainService, OpenContext } from '../../windows/electron-main/windows.js';
 import { openWithProjectWindowChoice } from '../../windows/electron-main/studioProjectWindow.js';
 import { isWorkspaceIdentifier, toWorkspaceIdentifier } from '../../workspace/common/workspace.js';
@@ -307,6 +308,7 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 				contextWindowId: windowId,
 				urisToOpen: toOpen,
 				cli: this.environmentMainService.args,
+				studioProjectEntry: studioEntryForOpenables(toOpen, options),
 				forceNewWindow: options.forceNewWindow,
 				forceReuseWindow: options.forceReuseWindow,
 				preferNewWindow: options.preferNewWindow,

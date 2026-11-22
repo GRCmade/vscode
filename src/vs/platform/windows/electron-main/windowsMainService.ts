@@ -62,11 +62,13 @@ import { VSBuffer } from '../../../base/common/buffer.js';
 import { resolveAgentsWindowFolder } from './agentsWindow.js';
 import { createStudioTray } from './studioTray.js';
 import { readStudioReleaseProject } from '../node/studioReleaseProject.js';
+import { studioEntryForFolder, type IStudioProjectEntry } from '../../window/common/studioProjectWindow.js';
 
 //#region Helper Interfaces
 
 interface IOpenBrowserWindowOptions {
 	readonly studioOpenedFromLibrary?: boolean;
+	readonly studioProjectEntry?: IStudioProjectEntry;
 	readonly studioLaunchpad?: { background: boolean };
 	readonly userEnv?: IProcessEnvironment;
 	readonly cli?: NativeParsedArgs;
@@ -783,6 +785,10 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 			termProgram: configuration?.userEnv?.['TERM_PROGRAM']
 		};
 		window.sendWhenReady('vscode:openFiles', CancellationToken.None, params);
+		const entry = studioEntryForFolder(configuration.studioProjectEntry, isSingleFolderWorkspaceIdentifier(window.openedWorkspace) ? window.openedWorkspace.uri : undefined);
+		if (entry) {
+			window.sendWhenReady('vscode:runAction', CancellationToken.None, { id: 'studio.internalLaunchProjectEntry', from: 'mouse', args: [entry] });
+		}
 
 		return window;
 	}
@@ -859,6 +865,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 		return this.openInBrowserWindow({
 			workspace: folderOrWorkspace.workspace,
 			studioOpenedFromLibrary: typeof openConfig.contextWindowId === 'number' && this.getWindowById(openConfig.contextWindowId)?.isStudioLaunchpad,
+			studioProjectEntry: studioEntryForFolder(openConfig.studioProjectEntry, isSingleFolderWorkspaceIdentifier(folderOrWorkspace.workspace) ? folderOrWorkspace.workspace.uri : undefined),
 			userEnv: openConfig.userEnv,
 			cli: openConfig.cli,
 			initialStartup: openConfig.initialStartup,
@@ -1613,6 +1620,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 			workspace: options.workspace,
 			isStudioLaunchpad: !!options.studioLaunchpad,
 			studioOpenedFromLibrary: options.studioOpenedFromLibrary,
+			studioProjectEntry: options.studioProjectEntry,
 			studioReleaseProject: await readStudioReleaseProject(isSingleFolderWorkspaceIdentifier(options.workspace) ? options.workspace.uri : undefined, getNLSLanguage()),
 			studioReleasePending: !!options.remoteAuthority && isSingleFolderWorkspaceIdentifier(options.workspace),
 			userEnv: { ...this.initialUserEnv, ...options.userEnv },

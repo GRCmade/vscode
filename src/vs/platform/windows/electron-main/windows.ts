@@ -11,6 +11,7 @@ import { IProcessEnvironment, isLinux, isMacintosh, isWindows } from '../../../b
 import { URI } from '../../../base/common/uri.js';
 import { IAuxiliaryWindow } from '../../auxiliaryWindow/electron-main/auxiliaryWindow.js';
 import { IConfigurationService } from '../../configuration/common/configuration.js';
+import type { IStudioProjectEntry } from '../../window/common/studioProjectWindow.js';
 import { NativeParsedArgs } from '../../environment/common/argv.js';
 import { IEnvironmentMainService } from '../../environment/electron-main/environmentMainService.js';
 import { ServicesAccessor, createDecorator } from '../../instantiation/common/instantiation.js';
@@ -96,6 +97,7 @@ export interface IBaseOpenConfiguration {
 
 export interface IOpenConfiguration extends IBaseOpenConfiguration {
 	readonly cli: NativeParsedArgs;
+	readonly studioProjectEntry?: IStudioProjectEntry;
 	readonly userEnv?: IProcessEnvironment;
 	readonly urisToOpen?: IWindowOpenable[];
 	readonly waitMarkerFileURI?: URI;

@@ -44,7 +44,7 @@ import { StoreListingDetails } from './studioLaunchpadCards.js';
 import type { LibraryProjectCategory } from './studioLaunchpadLibrary.js';
 import './media/studioLaunchpad.css';
 
-type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries'>;
+type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries' | 'description'> & { projectName?: string };
 type LaunchpadMenuAccount = Omit<LaunchpadAccount, 'signedIn'> & { status: string };
 const launchpadSettingsViewType = 'studio.launchpadSettings';
 
@@ -101,6 +101,7 @@ export class StudioLaunchpad extends Disposable {
 				if (typeof row?.uri === 'string' && typeof row.label === 'string' && Number.isFinite(row.lastOpened)) {
 					this.savedProjects.set(row.uri, { name: row.label, lastOpened: row.lastOpened,
 						artwork: row.artwork, distribution: row.distribution, projectId: row.projectId, version: row.version, entries: row.entries,
+						description: row.description, projectName: row.projectName,
 						projectType: ['bot', 'workflow', 'kanban'].includes(row.projectType) ? row.projectType : undefined,
 						avatarUrl: typeof row.avatarUrl === 'string' && row.avatarUrl.startsWith('data:image/svg+xml,') ? row.avatarUrl : undefined });
 				}
@@ -112,7 +113,7 @@ export class StudioLaunchpad extends Disposable {
 			workspace: () => run(dialogs.pickWorkspaceAndOpen({ forceNewWindow: true })),
 			create: () => run(commands.executeCommand('studio.createProject')),
 			importProjects: () => run(this.pickProjectsToImport()),
-			project: project => run(this.openProject(project)),
+			project: (project, entryId) => run(this.openProject(project, entryId)),
 			remove: project => run(this.removeProject(project)),
 			reveal: project => run(native.showItemInFolder(URI.parse(project.uri).fsPath)),
 			copyPath: project => run(clipboard.writeText(project.path)), contextMenu,
@@ -425,11 +426,7 @@ export class StudioLaunchpad extends Disposable {
 		}
 	}
 
-	private async openProject(project: LaunchpadProject): Promise<void> {
-		const live = this.windows.find(row => row.uri === project.uri && row.windowId === project.windowId) ?? this.windows.find(row => row.uri === project.uri);
-		if (live?.windowId !== undefined) {
-			await this.native.focusWindow({ targetWindowId: live.windowId, mode: FocusMode.Force }); return;
-		}
+	private async openProject(project: LaunchpadProject, entryId?: string): Promise<void> {
 		const uri = URI.parse(project.uri);
 		if (uri.scheme === 'file') {
 			let present: boolean;
@@ -437,8 +434,22 @@ export class StudioLaunchpad extends Disposable {
 			catch (error) { if (!(error instanceof Error) || toFileOperationResult(error) !== FileOperationResult.FILE_NOT_FOUND) { throw error; } present = false; }
 			if (!present) { await this.locateProject(project); return; }
 		}
+		let distribution = project.distribution;
+		if (!distribution && !project.artwork && project.kind === 'folder') {
+			// A click can arrive before the asynchronous library scan populates this row.
+			const [metadata] = await this.commands.executeCommand<LibraryMetadata[]>('studio.internalDetectProjectTypes', [project.uri]).catch(() => []) ?? [];
+			distribution = metadata?.distribution;
+		}
+		if (this._store.isDisposed) { return; }
+		const runEntry = project.kind === 'folder' && (!!distribution || entryId !== undefined);
+		const live = this.windows.find(row => row.uri === project.uri && row.windowId === project.windowId) ?? this.windows.find(row => row.uri === project.uri);
+		if (!runEntry && live?.windowId !== undefined) {
+			await this.native.focusWindow({ targetWindowId: live.windowId, mode: FocusMode.Force }); return;
+		}
 		this.missing.delete(project.uri);
-		await this.native.openWindow([project.kind === 'workspace' ? { workspaceUri: uri } : { folderUri: uri }], { forceNewWindow: true });
+		await this.native.openWindow([project.kind === 'workspace' ? { workspaceUri: uri } : { folderUri: uri }], {
+			forceNewWindow: true, ...(runEntry ? { studioProjectEntry: entryId === undefined ? {} : { entryId } } : {}),
+		});
 	}
 
 	private async removeProject(project: LaunchpadProject): Promise<void> {
@@ -549,8 +560,8 @@ export class StudioLaunchpad extends Disposable {
 			// Once inspected, an absent field is authoritative (e.g. a plain folder replacing a release).
 			const details = info?.artwork ? info : { ...saved, ...info };
 			return { ...row, projectId: details.projectId, projectType: details.projectType, distribution: details.distribution,
-				artwork: details.artwork, entries: details.entries, avatarUrl: details.avatarUrl, version: details.version,
-				name: info?.label || saved?.name || row.name, lastOpened: info?.lastOpened ?? saved?.lastOpened,
+				artwork: details.artwork, entries: details.entries, avatarUrl: details.avatarUrl, version: details.version, description: details.description,
+				name: details.projectName || info?.label || saved?.name || row.name, lastOpened: info?.lastOpened ?? saved?.lastOpened,
 				windowId: row.windowId ?? window?.windowId, dirty: row.dirty ?? window?.dirty, missing: !window && row.windowId === undefined && this.missing.has(row.uri) };
 		};
 		this.view.update({ windows: this.windows.map(row => enrich(row)), recent: this.recent.map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,

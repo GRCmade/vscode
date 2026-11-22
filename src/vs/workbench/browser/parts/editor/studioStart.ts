@@ -7,14 +7,17 @@ import { $, addDisposableListener, append, clearNode, getWindow } from '../../..
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
+import { getNLSLanguage } from '../../../../nls.js';
 import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
-import { studioProjectCardIcon } from '../../../common/studioProjectIcons.js';
+import { projectDetails, type StudioProjectDetails } from '../../studioProjectDetails.js';
 import './media/studioStart.css';
 
 interface StudioOverviewProject {
 	uri: string;
+	projectId?: string;
+	distribution?: StudioProjectDetails['distribution'];
 	defaultEntry: string;
 	name: string;
 	description?: string;
@@ -35,6 +38,7 @@ export interface StudioStartState {
 	recommendations?: { title: string; openLabel: string; browseLabel: string; message?: string; items: { id: string; name: string; description?: string; projectType?: string; version?: string; avatarUrl?: string }[] };
 	projects: StudioOverviewProject[];
 	recent: { uri: string; label: string; kind: string; lastOpened: number; current?: boolean; projectId?: string; projectType?: string; version?: string; avatarUrl?: string;
+		projectName?: string; description?: string;
 		entries?: { entryId: string; name: string; type: string; primary: boolean }[];
 		distribution?: 'source' | 'release' | 'download'; artwork?: { cover?: { name: string; mtime: number }; entries?: string[]; files?: string[] } }[];
 	pending: { id: string; name: string; directory: string; status: string; stage?: string; error?: string }[];
@@ -90,6 +94,7 @@ export class StudioStartView extends Disposable {
 	private readonly id = generateUuid();
 	private readonly content: HTMLElement;
 	private readonly contentDisposables = this._register(new DisposableStore());
+	private readonly zh = getNLSLanguage()?.toLowerCase().startsWith('zh');
 	private renderKey = '';
 	private intersecting = false;
 	private enabled = true;
@@ -144,8 +149,8 @@ export class StudioStartView extends Disposable {
 		}
 	}
 
-	private button(parent: HTMLElement, label: string, icon: string, command: string, arg: { uri: string; entryId?: string } | string): HTMLButtonElement {
-		const button = append(parent, $<HTMLButtonElement>('button.studio-start-action', { type: 'button' }));
+	private button(label: string, icon: string, command: string, arg: { uri: string; entryId?: string } | string, css = 'studio-start-action'): HTMLButtonElement {
+		const button = $<HTMLButtonElement>('button', { type: 'button', class: css });
 		append(button, $(`span.codicon.codicon-${icon}`, { 'aria-hidden': 'true' }));
 		append(button, $('span.studio-start-action-label', undefined, label));
 		button.dataset.action = command;
@@ -157,30 +162,24 @@ export class StudioStartView extends Disposable {
 		return button;
 	}
 
-	private avatar(parent: HTMLElement, size: 'project' | 'entry', projectType: string, avatarUrl: string | undefined): void {
-		const icon = append(parent, $(`span.studio-start-avatar.studio-start-avatar-${size}`, { 'aria-hidden': 'true' }));
-		const source = avatarUrl?.startsWith('data:image/svg+xml,') ? avatarUrl : studioProjectCardIcon(projectType);
-		if (source) {
-			append(icon, $('img', { alt: '', src: source }));
-		} else {
-			append(icon, $('span.codicon.codicon-root-folder'));
-		}
-	}
-
 	private render(): void {
 		const state = this.service.state;
 		this.element.classList.toggle('loading', !state);
 		this.element.setAttribute('aria-busy', String(!state));
 		if (!state) { return; }
 		const { hasWorkspace, projects, pending, platform, installing, busy, labels } = state;
-		const key = JSON.stringify({ hasWorkspace, projects, pending, platform, installing, busy: pending.length ? busy : undefined, labels });
+		const lastOpened = new Map(state.recent.map(row => [row.uri, row.lastOpened]));
+		const details = projects.map(project => ({ ...project, lastOpened: lastOpened.get(project.uri) }));
+		const key = JSON.stringify({ hasWorkspace, details, pending, platform, installing, busy: pending.length ? busy : undefined, labels });
 		if (key === this.renderKey) { return; }
 		this.renderKey = key;
+		const active = this.element.ownerDocument.activeElement;
+		const focusKey = this.content.contains(active) ? (active as HTMLElement | null)?.dataset.key : undefined;
 		this.contentDisposables.clear();
 		clearNode(this.content);
 		const text = (key: string): string => labels[key] ?? key;
 		this.element.setAttribute('aria-label', text('overview'));
-		append(this.content, $('h1', undefined, text('overview')));
+		if (!projects.length) { append(this.content, $('h1.studio-start-heading', undefined, text('overview'))); }
 		for (const project of pending) {
 			const setup = append(this.content, $('.studio-start-setup'));
 			const active = installing === project.id;
@@ -195,8 +194,8 @@ export class StudioStartView extends Disposable {
 				append(details, $('pre', undefined, project.error));
 			}
 			const actions = append(setup, $('.studio-start-project-actions'));
-			if (!active) { this.button(actions, text('retry'), 'refresh', 'studio.retryProjectSetup', project.id).disabled = busy; }
-			this.button(actions, text('installationLog'), 'output', 'studio.showProjectSetupLog', project.id);
+			if (!active) { append(actions, this.button(text('retry'), 'refresh', 'studio.retryProjectSetup', project.id)).disabled = busy; }
+			append(actions, this.button(text('installationLog'), 'output', 'studio.showProjectSetupLog', project.id));
 		}
 		if (!projects.length && !pending.length) {
 			const empty = append(this.content, $('.studio-start-empty'));
@@ -205,61 +204,38 @@ export class StudioStartView extends Disposable {
 			return;
 		}
 		const root = append(this.content, $('.studio-start-current'));
-		for (const project of projects) { this.renderProject(root, project, !!platform, text); }
+		for (const project of details) { this.renderProject(root, project, !!platform, text); }
+		if (focusKey) { Array.from(root.querySelectorAll<HTMLElement>('[data-key]')).find(node => node.dataset.key === focusKey)?.focus({ preventScroll: true }); }
 	}
 
-	private renderProject(root: HTMLElement, project: StudioOverviewProject, platform: boolean, text: (key: string) => string): void {
-		const section = append(root, $('section.studio-start-project-card'));
-		const header = append(section, $('header.studio-start-project-heading'));
-		this.avatar(header, 'project', project.projectType, project.avatarUrl);
-		const identity = append(header, $('.studio-start-project-identity'));
-		append(identity, $('h2', undefined, project.name));
-		const meta = append(identity, $('.studio-start-project-meta'));
-		append(meta, $('span.studio-start-project-type', undefined, text(`type.${project.projectType}`)));
-		if (project.version) { append(meta, $('span', undefined, `${text('localVersion')} ${project.version}`)); }
-		if (project.update?.serverVersion && project.update.status !== 'unavailable') {
-			append(meta, $('span', undefined, `${text('serverVersion')} ${project.update.serverVersion}`));
+	private renderProject(root: HTMLElement, project: StudioOverviewProject & { lastOpened?: number }, platform: boolean, text: (key: string) => string): void {
+		const t = (en: string, zh: string) => this.zh ? zh : en;
+		const { uri, entries, defaultEntry, update, folderPath, distribution = 'source' } = project;
+		const actions: HTMLButtonElement[] = [];
+		const action = (label: string, icon: string, command: string, entryId?: string, css = 'lp-outline') => {
+			const button = this.button(label, icon, command, entryId === undefined ? { uri } : { uri, entryId }, `studio-project-action ${css}`);
+			button.dataset.key = `${command}:${uri}`;
+			actions.push(button);
+			return button;
+		};
+		const primary = entries.find(entry => entry.entryId === defaultEntry && entry.available);
+		if (primary) { action(t('Run project', '运行项目'), 'play', 'studio.internalRunProjectEntry', primary.entryId, 'lp-primary'); }
+		if (distribution === 'source') {
+			const sourceEntry = primary ?? entries.find(entry => entry.available);
+			if (sourceEntry) { action(text('source'), 'code', 'studio.openProjectSource', sourceEntry.entryId); }
+			if (platform) { action(text('upload'), 'cloud-upload', 'studio.uploadProject'); }
 		}
-		const updateAvailable = project.update?.status === 'upgrade';
-		if (updateAvailable || project.update?.status === 'current' || project.update?.status === 'ahead') {
-			append(meta, $('span', undefined, text(updateAvailable ? 'updateAvailable' : project.update?.status === 'current' ? 'upToDate' : 'localNewer')));
+		if (update?.status === 'upgrade') {
+			const upgrade = action(text('upgrade'), 'arrow-circle-up', 'studio.upgradeProject');
+			upgrade.disabled = !update.canDownload || !!update.busy;
+			if (!update.canDownload) { upgrade.title = text('downloadUnavailable'); }
 		}
-		const actions = append(header, $('.studio-start-project-actions'));
-		const sourceEntry = project.entries.find(entry => entry.available && entry.entryId === project.defaultEntry) ?? project.entries.find(entry => entry.available);
-		if (sourceEntry) {
-			this.button(actions, text('source'), 'code', 'studio.openProjectSource', { uri: project.uri, entryId: sourceEntry.entryId });
-		}
-		if (platform) { this.button(actions, text('upload'), 'cloud-upload', 'studio.uploadProject', { uri: project.uri }); }
-		if (updateAvailable) {
-			const upgrade = this.button(actions, text('upgrade'), 'arrow-circle-up', 'studio.upgradeProject', { uri: project.uri });
-			upgrade.disabled = !project.update?.canDownload || !!project.update?.busy;
-			if (!project.update?.canDownload) { upgrade.title = text('downloadUnavailable'); }
-		}
-		if (project.description?.trim()) { append(section, $('p.studio-start-project-description', undefined, project.description)); }
-		const details = append(section, $('dl.studio-start-project-details'));
-		append(details, $('dt', undefined, text('projectFolder')));
-		append(append(details, $('dd')), $('code.studio-start-project-path', undefined, project.folderPath));
-		append(section, $('h3.studio-start-entries-title', undefined, text('entries')));
-		const entries = append(section, $('ul.studio-start-entries'));
-		for (const entry of project.entries) {
-			const row = append(entries, $('li.studio-start-entry', { 'data-entry-id': entry.entryId }));
-			const primary = entry.entryId === project.defaultEntry;
-			this.avatar(row, 'entry', entry.projectType, entry.avatarUrl);
-			const description = append(row, $('.studio-start-entry-description'));
-			const title = append(description, $('.studio-start-entry-title'));
-			append(title, $('span.studio-start-entry-name', undefined, entry.name));
-			if (primary) { append(title, $('span.studio-start-entry-default', undefined, text('defaultEntry'))); }
-			const entryMeta = append(description, $('.studio-start-entry-meta'));
-			append(entryMeta, $('span', undefined, text(`type.${entry.projectType}`)));
-			append(entryMeta, $('code', undefined, entry.entryId));
-			if (entry.available) {
-				const open = this.button(row, text('openEntry'), 'play', 'studio.openProject', { uri: project.uri, entryId: entry.entryId });
-				open.setAttribute('aria-label', `${text('openEntry')}: ${entry.name}`);
-				open.classList.toggle('studio-start-primary', primary);
-			} else {
-				append(row, $('span.studio-start-entry-unavailable', undefined, text('unavailable')));
-			}
-		}
+		const status = update?.status === 'upgrade' ? 'updateAvailable' : update?.status === 'current' ? 'upToDate' : update?.status === 'ahead' ? 'localNewer' : undefined;
+		const extraFacts: [string, string | undefined][] = [[text('serverVersion'), update?.status !== 'unavailable' ? update?.serverVersion : undefined],
+			[t('Update status', '更新状态'), status ? text(status) : undefined]];
+		append(root, projectDetails({ ...project, kind: 'folder', path: folderPath, distribution,
+			entries: entries.map(entry => ({ ...entry, type: entry.projectType, primary: entry.entryId === defaultEntry })),
+		}, t, { actions, extraFacts, currentWindow: true, openEntry: entryId => { void this.commands.executeCommand('studio.internalRunProjectEntry', { uri, entryId }).catch(() => undefined); } }));
 	}
 
 	override dispose(): void {

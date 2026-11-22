@@ -3,9 +3,32 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { extUriBiasedIgnorePathCase } from '../../../base/common/resources.js';
+import { URI } from '../../../base/common/uri.js';
 import { getNLSLanguage, localize } from '../../../nls.js';
 import { hasWorkspaceFileExtension } from '../../workspace/common/workspace.js';
 import { IOpenWindowOptions, IWindowOpenable, isFileToOpen, isFolderToOpen, isWorkspaceToOpen } from './window.js';
+
+export interface IStudioProjectEntry {
+	readonly uri: string;
+	readonly entryId?: string;
+}
+
+export function studioEntryForOpenables(toOpen: readonly IWindowOpenable[], options: IOpenWindowOptions): IStudioProjectEntry | undefined {
+	const [folder] = toOpen;
+	const entry = options.studioProjectEntry;
+	if (entry && toOpen.length === 1 && isFolderToOpen(folder) && !options.addMode && !options.removeMode) {
+		return { uri: URI.revive(folder.folderUri).toString(), entryId: entry.entryId };
+	}
+	return undefined;
+}
+
+export function studioEntryForFolder(entry: IStudioProjectEntry | undefined, folder: URI | undefined): IStudioProjectEntry | undefined {
+	if (entry && folder && extUriBiasedIgnorePathCase.isEqual(folder, URI.parse(entry.uri))) {
+		return { uri: folder.toString(), entryId: entry.entryId };
+	}
+	return undefined;
+}
 
 export function shouldChooseProjectWindow(toOpen: readonly IWindowOpenable[], options?: IOpenWindowOptions): boolean {
 	return !options?.forceNewWindow && !options?.forceReuseWindow && !options?.addMode && !options?.removeMode

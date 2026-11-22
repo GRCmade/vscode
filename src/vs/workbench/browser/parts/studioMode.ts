@@ -18,6 +18,7 @@ import { onDidChangeFullscreen, onDidChangeZoomLevel } from '../../../base/brows
 import { getIconRegistry } from '../../../platform/theme/common/iconRegistry.js';
 import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
 import { IStudioReleaseProject } from '../../../platform/window/common/studioReleaseProject.js';
+import type { IStudioProjectEntry } from '../../../platform/window/common/studioProjectWindow.js';
 import { IStorageService, StorageScope } from '../../../platform/storage/common/storage.js';
 import { studioLocaleStrings } from '../../services/localization/common/studioLocaleStrings.js';
 
@@ -71,6 +72,7 @@ const modeChange = new Emitter<void>();
 export const studioModeStorageKeys = { mode: 'studio.workbenchMode', ideLayout: 'studio.ideLayout' } as const;
 export const studioModeState = {
 	openedFromLibrary: false,
+	startupEntry: undefined as IStudioProjectEntry | undefined,
 	releaseProject: undefined as IStudioReleaseProject | undefined,
 	state: { available: false, labels: {} } as StudioModeState,
 	steam: false,
@@ -93,8 +95,9 @@ export function shouldRecoverStudioIdeVisibility(storage: IStorageService): bool
 }
 
 /** Establish the release shell before layout, title controls, or editor restoration. */
-export function initializeStudioReleaseProject(project: IStudioReleaseProject | undefined, openedFromLibrary = false): void {
+export function initializeStudioReleaseProject(project: IStudioReleaseProject | undefined, openedFromLibrary = false, startupEntry?: IStudioProjectEntry): void {
 	studioModeState.openedFromLibrary = openedFromLibrary;
+	studioModeState.startupEntry = startupEntry;
 	if (!project) { return; }
 	studioModeState.releaseProject = project;
 	studioModeState.state = { available: false, releaseOnly: true, projectUri: project.projectUri, project,

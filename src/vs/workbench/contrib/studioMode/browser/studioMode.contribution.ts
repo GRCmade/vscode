@@ -17,6 +17,7 @@ import { IInstantiationService } from '../../../../platform/instantiation/common
 import { INotificationService } from '../../../../platform/notification/common/notification.js';
 import { Registry } from '../../../../platform/registry/common/platform.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
+import type { IStudioProjectEntry } from '../../../../platform/window/common/studioProjectWindow.js';
 import { StudioModeLoading, StudioSteamTools, studioModeState, studioModeStorageKeys, studioWindowChrome, studioSteamToolDefinitions, isStudioSteamToolAvailable } from '../../../browser/parts/studioMode.js';
 import { ViewPane } from '../../../browser/parts/views/viewPane.js';
 import { ViewPaneContainer } from '../../../browser/parts/views/viewPaneContainer.js';
@@ -130,6 +131,19 @@ export class StudioModeContribution extends Disposable {
 		toolsTitle.value = studioModeState.state.labels.tools ?? toolsTitle.original;
 		this.snapshot = studioModeState.state.releaseOnly ? undefined : storage.getObject<IdeLayout>(SNAPSHOT_KEY, StorageScope.WORKSPACE);
 		this.requested = !!studioModeState.state.releaseOnly || !studioModeState.openedFromLibrary && storage.get(MODE_KEY, StorageScope.WORKSPACE) === 'steam';
+		const startupEntry = studioModeState.startupEntry;
+		studioModeState.startupEntry = undefined;
+		let pendingReleaseEntry = studioModeState.state.releaseOnly && startupEntry?.uri === studioModeState.state.projectUri ? startupEntry : undefined;
+		const launchEntry = async (entry: IStudioProjectEntry): Promise<void> => {
+			if (studioModeState.state.releaseOnly) {
+				if (entry.uri !== studioModeState.state.projectUri) { return; }
+				if (!studioModeState.state.available) { pendingReleaseEntry = entry; return; }
+				await this.request(true, entry);
+			} else {
+				await this.request(false);
+				if (!this._store.isDisposed) { await this.commands.executeCommand('studio.internalRunProjectEntry', entry); }
+			}
+		};
 		if (studioModeState.state.releaseOnly) {
 			this.contextKeys.createKey<boolean>('studio.steamMode', false).set(true);
 			this.layout.mainContainer.classList.add('studio-steam-mode');
@@ -149,6 +163,7 @@ export class StudioModeContribution extends Disposable {
 		this._register(CommandsRegistry.registerCommand('studio.internalToggleMode', () => this.request(!this.requested)));
 		this._register(CommandsRegistry.registerCommand('studio.internalEnterIdeMode', () => this.request(false)));
 		this._register(CommandsRegistry.registerCommand('studio.internalEnterSteamMode', () => this.request(true)));
+		this._register(CommandsRegistry.registerCommand('studio.internalLaunchProjectEntry', (_accessor, entry: IStudioProjectEntry) => launchEntry(entry)));
 		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTools', () => this.sequencer.queue(() => this.openTools())));
 		this._register(CommandsRegistry.registerCommand('studio.internalOpenSteamTool', (_accessor, id: string) => this.openTool(id)));
 		this._register(CommandsRegistry.registerCommand('studio.internalSelectSteamTab', (_accessor, id: string) => this.workspace.select(id)));
@@ -177,32 +192,33 @@ export class StudioModeContribution extends Disposable {
 			when: ContextKeyExpr.and(ContextKeyExpr.has('studio.steamMode'), ContextKeyExpr.or(ContextKeyExpr.equals('studio.steamTool', 'info'), ContextKeyExpr.equals('studio.steamTool', 'versions'))),
 			group: '2_configuration',
 		}));
-		this._register(studioModeState.onDidChangeState(state => {
+		const updateMode = (state: typeof studioModeState.state) => {
 			toolsTitle.value = state.labels.tools ?? toolsTitle.original;
 			if (state.releaseOnly && !state.available) { return; }
-			if (!this.initialized || !state.available || state.releaseOnly && !this.requested) {
+			if (pendingReleaseEntry || !this.initialized || !state.available || state.releaseOnly && !this.requested) {
 				this.initialized = true;
-				void this.request((this.requested || !!state.releaseOnly) && state.available).catch(error => notifications.error(error));
+				const entry = pendingReleaseEntry;
+				pendingReleaseEntry = undefined;
+				void this.request((this.requested || !!state.releaseOnly) && state.available, entry).catch(error => notifications.error(error));
 			}
-		}));
-		if (studioModeState.state.labels.mode) {
-			this.initialized = true;
-			void this.request(this.requested && studioModeState.state.available).catch(error => notifications.error(error));
-		}
+		};
+		this._register(studioModeState.onDidChangeState(updateMode));
+		if (studioModeState.state.labels.mode) { updateMode(studioModeState.state); }
+		if (startupEntry && !studioModeState.state.releaseOnly) { void launchEntry(startupEntry).catch(error => notifications.error(error)); }
 	}
 
-	private request(steam: boolean): Promise<void> {
+	private request(steam: boolean, entry?: IStudioProjectEntry): Promise<void> {
 		this.requested = (steam || !!studioModeState.state.releaseOnly) && studioModeState.state.available;
 		const revision = ++this.revision;
 		for (const animation of this.animations) { animation.cancel(); }
-		if (!this.requested && studioModeState.busy) {
+		if ((!this.requested || entry) && studioModeState.busy) {
 			void this.commands.executeCommand('studio.internalCancelSteamPreparation').catch(() => undefined);
 		}
 		return this.sequencer.queue(async () => {
 			if (revision !== this.revision || this._store.isDisposed) { return; }
 			const next = this.requested;
-			const projectUri = this.snapshot?.projectUri ?? studioModeState.state.projectUri;
-			if (next === this.steam && (next ? this.projectReady && this.workspace.hasProject : !this.snapshot)) {
+			const projectUri = entry?.uri ?? this.snapshot?.projectUri ?? studioModeState.state.projectUri;
+			if (!entry && next === this.steam && (next ? this.projectReady && this.workspace.hasProject : !this.snapshot)) {
 				if (!next) { await this.workspace.deactivate(this.groups.mainPart.activeGroup); }
 				if (revision === this.revision && !this._store.isDisposed && this.storage.get(MODE_KEY, StorageScope.WORKSPACE) !== (next ? 'steam' : 'ide')) {
 					await this.rememberMode(next);
@@ -214,7 +230,7 @@ export class StudioModeContribution extends Disposable {
 				if (next) {
 					let prepared: boolean | undefined;
 					const prepare = async () => {
-						try { return await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject', projectUri); }
+						try { return await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject', projectUri, ...(entry ? [entry.entryId] : [])); }
 						catch (error) {
 							if (revision !== this.revision || this._store.isDisposed) { return undefined; }
 							throw error;

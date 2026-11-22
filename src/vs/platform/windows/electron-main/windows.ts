@@ -39,6 +39,7 @@ export interface IWindowsMainService {
 
 	readonly hasStudioLaunchpad: boolean;
 	enableStudioLaunchpad(): void;
+	setStudioUnreadCount(windowId: number, count: number): void;
 	openStudioLaunchpad(background?: boolean, page?: 'home' | 'inbox' | 'store'): Promise<ICodeWindow>;
 	open(openConfig: IOpenConfiguration): Promise<ICodeWindow[]>;
 	openEmptyWindow(openConfig: IOpenEmptyConfiguration, options?: IOpenEmptyWindowOptions): Promise<ICodeWindow[]>;

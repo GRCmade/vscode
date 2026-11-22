@@ -144,6 +144,14 @@ export class StudioLaunchpad extends Disposable {
 			chatUser: user => run(this.openInbox(undefined, user)),
 			addContact: () => run(this.openInbox(undefined, undefined, 'add-contact')),
 			readNotice: id => this.notices.read(id),
+			readAllNotices: async () => {
+				this.notices.readAll();
+				if (this.start.state?.platform && this.account?.signedIn) {
+					++this.noticeRevision;
+					try { await commands.executeCommand('studio.markAllNoticesRead'); }
+					finally { this.refreshNotices.schedule(); }
+				}
+			},
 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
 		}));
 		const repaintNotices = this._register(new RunOnceScheduler(() => this.paint(), 100));
@@ -565,7 +573,7 @@ export class StudioLaunchpad extends Disposable {
 				windowId: row.windowId ?? window?.windowId, dirty: row.dirty ?? window?.dirty, missing: !window && row.windowId === undefined && this.missing.has(row.uri) };
 		};
 		this.view.update({ windows: this.windows.map(row => enrich(row)), recent: this.recent.map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
-			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox, notices: this.notices.list(), socialUnread: this.socialUnread,
+			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox, notices: this.notices.list(), notificationUnread: this.socialUnread || this.notices.hasUnread(),
 			libraryCategory: this.libraryCategory });
 	}
 }

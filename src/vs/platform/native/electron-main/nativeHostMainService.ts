@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import { exec } from 'child_process';
 import { app, BrowserWindow, clipboard, contentTracing, Display, Menu, MessageBoxOptions, MessageBoxReturnValue, Notification, OpenDevToolsOptions, OpenDialogOptions, OpenDialogReturnValue, powerMonitor, powerSaveBlocker, SaveDialogOptions, SaveDialogReturnValue, screen, shell, systemPreferences, webContents } from 'electron';
+import { createRequire } from 'node:module';
 import { arch, cpus, freemem, loadavg, platform, release, totalmem, type } from 'os';
 import { promisify } from 'util';
 import { memoize } from '../../../base/common/decorators.js';
@@ -27,7 +28,7 @@ import { IEnvironmentMainService } from '../../environment/electron-main/environ
 import { createDecorator, IInstantiationService } from '../../instantiation/common/instantiation.js';
 import { ILifecycleMainService, IRelaunchOptions } from '../../lifecycle/electron-main/lifecycleMainService.js';
 import { ILogService } from '../../log/common/log.js';
-import { FocusMode, IApplicationBadge, ICommonNativeHostService, INativeHostOptions, INativeSystemWideKeybinding, INativeSystemWideKeybindingResult, INativeZipFile, INativeZipOptions, IOpenAgentsWindowOptions, IOSProperties, IOSProxy, IOSProxyConfig, IOSStatistics, IStartTracingOptions, IToastOptions, IToastResult, PowerSaveBlockerType, SystemIdleState, ThermalState } from '../common/native.js';
+import { FocusMode, IApplicationBadge, ICommonNativeHostService, INativeHostOptions, INativeSystemWideKeybinding, INativeSystemWideKeybindingResult, INativeZipFile, INativeZipOptions, IOpenAgentsWindowOptions, IOSProperties, IOSProxy, IOSProxyConfig, IOSStatistics, IStartTracingOptions, IStudioDesktopNotificationStatus, IToastOptions, IToastResult, PowerSaveBlockerType, SystemIdleState, ThermalState } from '../common/native.js';
 import { IGlobalKeybindingsMainService } from '../../globalKeybindings/electron-main/globalKeybindingsMainService.js';
 import { IGPUProcessMainService } from '../../gpu/electron-main/gpuProcessMainService.js';
 import { IProductService } from '../../product/common/productService.js';
@@ -1386,6 +1387,42 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 
 	//#region Toast Notifications
 
+	async isStudioNotificationWindow(windowId: number | undefined): Promise<boolean> {
+		const focused = this.windowsMainService.getFocusedWindow();
+		const lastActive = this.windowsMainService.getLastActiveWindow();
+		const owner = focused?.isReady ? focused : lastActive?.isReady ? lastActive : this.windowsMainService.getWindows().find(window => window.isStudioLaunchpad && window.isReady);
+		return !!owner && owner.id === windowId;
+	}
+
+	async getStudioDesktopNotificationStatus(): Promise<IStudioDesktopNotificationStatus> {
+		// On macOS isSupported() initializes Electron's presenter, which can prompt for permission.
+		let permission: IStudioDesktopNotificationStatus['permission'] = isMacintosh || Notification.isSupported() ? 'unknown' : 'unsupported';
+		if (isMacintosh) {
+			try {
+				const addon = createRequire(import.meta.url)(join(process.resourcesPath, 'studio-notification-permission.node')) as { getPermission(): Promise<IStudioDesktopNotificationStatus['permission']> };
+				permission = await addon.getPermission();
+			} catch { /* Builds without the native permission helper still offer a system settings link. */ }
+		}
+		return {
+			platform: isMacintosh ? 'macos' : isWindows ? 'windows' : 'linux',
+			appName: app.getName(),
+			permission,
+		};
+	}
+
+	async openStudioNotificationSettings(): Promise<boolean> {
+		const url = isMacintosh ? 'x-apple.systempreferences:com.apple.Notifications-Settings.extension' : isWindows ? 'ms-settings:notifications' : undefined;
+		if (!url) { return false; }
+		try { await shell.openExternal(url); return true; }
+		catch { return false; }
+	}
+
+	async setStudioUnreadCount(windowId: number | undefined, count: number): Promise<void> {
+		if (windowId !== undefined && Number.isSafeInteger(count) && count >= 0 && count <= 1e9) {
+			this.windowsMainService.setStudioUnreadCount(windowId, count);
+		}
+	}
+
 	private readonly activeToasts = this._register(new DisposableMap<string>());
 	private readonly activeToastDedupeKeys = new Map<string, string>();
 
@@ -1447,7 +1484,10 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 			toast.on('click', () => resolve({ supported: true, clicked: true }));
 			toast.on('action', (_event, actionIndex) => resolve({ supported: true, clicked: true, actionIndex }));
 			toast.on('close', () => resolve({ supported: true, clicked: false }));
-			toast.on('failed', () => resolve({ supported: false, clicked: false }));
+			toast.on('failed', (_event, error) => {
+				this.logService.warn('Native notification failed', error);
+				resolve({ supported: false, clicked: false });
+			});
 
 			try {
 				toast.show();

@@ -23,6 +23,7 @@ export interface ProfileActions {
 	addContact(): void;
 	confirmRemoveFriend(name: string): Promise<boolean>;
 	social(query: string): Promise<SocialResult>; change(action: SocialAction): Promise<void>;
+	readAllNotices(): Promise<void>;
 }
 export function avatar(name: string, src?: string): HTMLElement {
 	const mark = element('span', 'lp-avatar');
@@ -74,6 +75,7 @@ export class LaunchpadProfile extends Disposable {
 	private readonly filter = element('input', 'lp-query');
 	private readonly peopleTools = element('div', 'lp-social-actions');
 	private readonly addContact: HTMLButtonElement;
+	private readonly readAll: HTMLButtonElement;
 	private readonly status = element('div', 'lp-message lp-profile-status');
 	private readonly debounce = this._register(new RunOnceScheduler(() => void this.load(), 220));
 	// The default snapshot serves all sections. Keep at most one additional friend search, in memory only.
@@ -82,11 +84,14 @@ export class LaunchpadProfile extends Disposable {
 	private pending?: { query: string; generation: number };
 	private failure?: { query: string; reason: Failure };
 	private changing = new Set<string>();
+	private markingAll = false;
+	private markAllFailed = false;
 	private scope?: string;
 	private active = false;
 	private section: Section = 'activity';
 	private inbox?: LaunchpadInbox;
 	private nativeNotices: StudioNotice[] = [];
+	private notificationUnread = false;
 	private platform = false;
 	private account?: LaunchpadAccount;
 
@@ -96,6 +101,8 @@ export class LaunchpadProfile extends Disposable {
 		this.filter.placeholder = t('Search friends', '搜索好友'); this.filter.setAttribute('aria-label', this.filter.placeholder);
 		this.search.append(icon('search'), this.filter);
 		this.addContact = button(t('Add friend', '添加好友'), 'add', this.actions.addContact, 'lp-primary');
+		this.readAll = button(t('Mark all as read', '全部已读'), 'check-all', () => void this.markAllRead(), 'lp-outline');
+		this.readAll.hidden = true;
 		this.peopleTools.hidden = true;
 		this.peopleTools.append(this.search, this.addContact);
 		this.filter.addEventListener('input', () => { if (this.pending?.query !== this.query) { this.pending = undefined; } this.failure = undefined; this.renderRows(); this.debounce.schedule(); });
@@ -122,7 +129,7 @@ export class LaunchpadProfile extends Disposable {
 			this.select(id); this.tabs.get(id)!.focus();
 		});
 		const rail = element('aside', 'lp-profile-rail lp-scroll'), body = element('div', 'lp-profile-body'), toolbar = element('header', 'lp-profile-toolbar');
-		const title = element('div', 'lp-profile-title'); title.append(this.heading, this.count); toolbar.append(title, this.peopleTools);
+		const title = element('div', 'lp-profile-title'); title.append(this.heading, this.count); toolbar.append(title, this.peopleTools, this.readAll);
 		rail.append(this.header, this.nav); body.append(toolbar, this.status, this.rows, this.empty); this.content.append(body); this.element.append(rail, this.content);
 	}
 
@@ -135,14 +142,15 @@ export class LaunchpadProfile extends Disposable {
 		this.renderSection(); this.content.scrollTop = 0;
 		void this.load();
 	}
-	update(active: boolean, platform: boolean, account: LaunchpadAccount | undefined, inbox: LaunchpadInbox | undefined, notices: StudioNotice[]): void {
+	update(active: boolean, platform: boolean, account: LaunchpadAccount | undefined, inbox: LaunchpadInbox | undefined, notices: StudioNotice[], notificationUnread: boolean): void {
 		const scope = JSON.stringify([platform, account?.signedIn, account?.scopeKey ?? account?.email ?? account?.name]);
 		const changed = this.scope !== scope, enter = active && !this.active;
 		const identityChanged = changed || JSON.stringify(this.account) !== JSON.stringify(account);
-		const repaint = changed || enter || (this.section === 'activity' && inbox !== this.inbox) || (this.section === 'notifications' && JSON.stringify(notices) !== JSON.stringify(this.nativeNotices));
+		const repaint = changed || enter || (this.section === 'activity' && inbox !== this.inbox) || (this.section === 'notifications' &&
+			(notificationUnread !== this.notificationUnread || JSON.stringify(notices) !== JSON.stringify(this.nativeNotices)));
 		if (!platform) { this.section = 'notifications'; } else if (!this.platform) { this.section = 'activity'; }
-		this.active = active; this.platform = platform; this.account = account; this.inbox = inbox; this.nativeNotices = notices;
-		if (changed) { this.pending = undefined; this.cache.clear(); this.changing = new Set(); this.debounce.cancel(); this.failure = undefined; this.scope = scope; this.filter.value = ''; }
+		this.active = active; this.platform = platform; this.account = account; this.inbox = inbox; this.nativeNotices = notices; this.notificationUnread = notificationUnread;
+		if (changed) { this.pending = undefined; this.cache.clear(); this.changing = new Set(); this.markingAll = this.markAllFailed = false; this.debounce.cancel(); this.failure = undefined; this.scope = scope; this.filter.value = ''; }
 		if (identityChanged) { this.renderAccount(); }
 		if (changed || (active && repaint)) { this.renderSection(); }
 		if (active && (enter || changed)) { this.refresh(); }
@@ -191,6 +199,29 @@ export class LaunchpadProfile extends Disposable {
 		finally { changing.delete(action.id); if (changing === this.changing && this.active) { this.renderRows(); } }
 	}
 
+	private async markAllRead(): Promise<void> {
+		if (this.markingAll) { return; }
+		const owner = this.changing;
+		const existing = new Set([...this.cache.values()].flatMap(({ snapshot }) => snapshot.notices.map(notice => notice.id)));
+		this.markingAll = true; this.markAllFailed = false; this.renderRows();
+		try {
+			await this.actions.readAllNotices();
+			if (owner !== this.changing) { return; }
+			for (const { snapshot } of this.cache.values()) {
+				snapshot.notices = snapshot.notices.map(notice => existing.has(notice.id) ? { ...notice, read: true } : notice);
+			}
+			this.failure = undefined;
+		} catch {
+			if (owner === this.changing) { this.markAllFailed = true; }
+		} finally {
+			if (owner === this.changing) {
+				this.markingAll = false;
+				this.refresh();
+				if (this.active) { this.renderRows(); }
+			}
+		}
+	}
+
 	private renderAccount(): void {
 		const t = this.t, a = this.account;
 		const name = a?.hasAccount ? a.name : this.platform ? t('Not signed in', '尚未登录') : t('Local profile', '本机用户');
@@ -212,10 +243,14 @@ export class LaunchpadProfile extends Disposable {
 	private renderRows(): void {
 		const t = this.t, needsSocial = this.section !== 'activity' && this.platform && !!this.account?.signedIn;
 		const query = this.query, data = this.cache.get(query)?.snapshot;
+		this.readAll.hidden = this.section !== 'notifications';
+		this.readAll.disabled = this.markingAll || !(this.markAllFailed || this.notificationUnread || data?.notices.some(notice => !notice.read));
 		const failure = this.failure?.query === query ? this.failure.reason : undefined;
 		const friends = data?.people ?? (query ? this.cache.get('')?.snapshot.people.filter(p => p.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())) : undefined);
 		this.status.replaceChildren();
-		if (needsSocial) {
+		if (this.section === 'notifications' && this.markAllFailed) {
+			this.status.textContent = t('Could not mark all notifications as read. Try again.', '未能将所有通知标为已读，请重试。');
+		} else if (needsSocial) {
 			if (failure === 'change') { this.status.textContent = t('Change could not be saved.', '更改未能保存。'); }
 			else if (failure) {
 				const message = failure === 'unsupported'

@@ -43,6 +43,13 @@ export interface IToastResult {
 	readonly actionIndex?: number;
 }
 
+export interface IStudioDesktopNotificationStatus {
+	readonly platform: 'macos' | 'windows' | 'linux';
+	readonly appName: string;
+	// Native toast support does not imply that the OS has granted permission.
+	readonly permission: 'granted' | 'denied' | 'not-determined' | 'unknown' | 'unsupported';
+}
+
 /**
  * A count badge to render on the application icon in the dock (macOS), the
  * launcher (Linux) or over the taskbar icon of a window (Windows).
@@ -433,6 +440,10 @@ export interface ICommonNativeHostService {
 	showToast(options: IToastOptions): Promise<IToastResult>;
 	clearToast(id: string): Promise<void>;
 	clearToasts(): Promise<void>;
+	isStudioNotificationWindow(): Promise<boolean>;
+	getStudioDesktopNotificationStatus(): Promise<IStudioDesktopNotificationStatus>;
+	openStudioNotificationSettings(): Promise<boolean>;
+	setStudioUnreadCount(count: number): Promise<void>;
 
 	// Zip
 	/**

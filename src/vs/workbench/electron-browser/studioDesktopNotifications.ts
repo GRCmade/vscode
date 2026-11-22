@@ -5,9 +5,11 @@
 
 import { toAction } from '../../base/common/actions.js';
 import { mainWindow } from '../../base/browser/window.js';
+import { DisposableStore } from '../../base/common/lifecycle.js';
 import { CommandsRegistry, ICommandService } from '../../platform/commands/common/commands.js';
+import { IConfigurationService } from '../../platform/configuration/common/configuration.js';
 import { FocusMode, INativeHostService } from '../../platform/native/common/native.js';
-import { INotificationService, INotificationSource, NotificationPriority, NotificationsFilter, Severity } from '../../platform/notification/common/notification.js';
+import { INotificationHandle, INotificationService, INotificationSource, Severity } from '../../platform/notification/common/notification.js';
 import { NotificationText } from '../../platform/notification/common/notificationMessage.js';
 import { IHostService } from '../services/host/browser/host.js';
 
@@ -24,8 +26,13 @@ const pending = new Set<string>();
 const cancelled = new Set<string>();
 const safeId = (value: unknown): value is string => typeof value === 'string' && /^[\w.-]{1,100}$/.test(value);
 const text = (value: unknown, limit: number): value is string => typeof value === 'string' && value.length > 0 && value.length <= limit && !/[\r\n]/.test(value);
+const desktopKey = 'studio.notifications.desktop';
+const workbenchKey = 'studio.notifications.workbench';
 
-CommandsRegistry.registerCommand('studio.internalIsNotificationWindow', accessor => accessor.get(IHostService).hadLastFocus());
+CommandsRegistry.registerCommand('studio.internalIsNotificationWindow', accessor => accessor.get(INativeHostService).isStudioNotificationWindow());
+CommandsRegistry.registerCommand('studio.internalGetDesktopNotificationStatus', accessor => accessor.get(INativeHostService).getStudioDesktopNotificationStatus());
+CommandsRegistry.registerCommand('studio.internalOpenNotificationSettings', accessor => accessor.get(INativeHostService).openStudioNotificationSettings());
+CommandsRegistry.registerCommand('studio.internalSetUnreadCount', (accessor, count: number) => accessor.get(INativeHostService).setStudioUnreadCount(count));
 
 CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async (accessor, notice: DesktopNotice) => {
 	if (!safeId(notice?.id) || !safeId(notice.source?.id) || !text(notice.source.label, 80) || !text(notice.title, 120) ||
@@ -36,23 +43,36 @@ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async
 	const nativeHost = accessor.get(INativeHostService);
 	const notifications = accessor.get(INotificationService);
 	const commands = accessor.get(ICommandService);
+	const configuration = accessor.get(IConfigurationService);
 	const { id, source, message, title, actionLabel } = notice;
 	pending.add(id);
 	let owner = false;
-	try { owner = await host.hadLastFocus(); } catch { /* No window claimed the notification. */ }
+	try { owner = await nativeHost.isStudioNotificationWindow(); } catch { /* No window claimed the notification. */ }
 	finally { pending.delete(id); }
 	if (cancelled.delete(id) || !owner) {
 		return false;
 	}
-	const background = !host.hasFocus;
-	const nativeAllowed = () => notifications.getFilter() === NotificationsFilter.OFF && notifications.getFilter(source) === NotificationsFilter.OFF;
 	live.get(source.id)?.close();
+	let native = configuration.getValue<boolean>(desktopKey) !== false;
+	const workbench = configuration.getValue<boolean>(workbenchKey) !== false;
+	// Acknowledge the event even if both channels are disabled, so toggling them on does not replay it.
+	if (!native && !workbench) { return true; }
+	const lifetime = new DisposableStore();
 	let closed = false;
-	let native = false;
+	let handle: INotificationHandle | undefined;
 	const clearNative = () => {
 		if (native) { void nativeHost.clearToast(id).catch(() => undefined); }
 		native = false;
 	};
+	const close = () => {
+		if (closed) { return; }
+		closed = true;
+		if (live.get(source.id)?.id === id) { live.delete(source.id); }
+		lifetime.dispose();
+		handle?.close();
+		clearNative();
+	};
+	const closeIfIdle = () => { if (!handle && !native) { close(); } };
 	const activate = async (focus: boolean) => {
 		if (closed) { return; }
 		const target = await commands.executeCommand<boolean | 'launchpadInbox'>('studio.internalDesktopNotificationAction', id);
@@ -62,30 +82,29 @@ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async
 		} else if (focus) {
 			await host.focus(mainWindow, { mode: FocusMode.Force });
 		}
-		handle.close();
+		close();
 	};
-	const handle = notifications.notify({
-		id, source, message: NotificationText.concat(message), severity: Severity.Info,
-		priority: background ? NotificationPriority.SILENT : NotificationPriority.DEFAULT,
-		actions: { primary: [toAction({ id: 'studio.openDesktopNotification', label: actionLabel, run: () => activate(false) })] },
-	});
-	const filter = notifications.onDidChangeFilter(() => { if (!nativeAllowed()) { clearNative(); } });
-	const closeListener = handle.onDidClose(() => {
-		closed = true;
-		clearNative();
-		filter.dispose();
-		closeListener.dispose();
-		if (live.get(source.id)?.id === id) { live.delete(source.id); }
-	});
-	live.set(source.id, { id, close: () => handle.close() });
-	if (background && nativeAllowed()) {
-		native = true;
-		// Use the desktop notification service directly: no browser permission prompt or focus change on delivery.
+	live.set(source.id, { id, close });
+	if (workbench) {
+		// The normal workbench notification model handles its own Do Not Disturb and source filters.
+		handle = notifications.notify({
+			id, source, message: NotificationText.concat(message), severity: Severity.Info,
+			actions: { primary: [toAction({ id: 'studio.openDesktopNotification', label: actionLabel, run: () => activate(false) })] },
+		});
+		lifetime.add(handle.onDidClose(() => { handle = undefined; closeIfIdle(); }));
+	}
+	lifetime.add(configuration.onDidChangeConfiguration(event => {
+		if (event.affectsConfiguration(desktopKey) && configuration.getValue<boolean>(desktopKey) === false) { clearNative(); }
+		if (event.affectsConfiguration(workbenchKey) && configuration.getValue<boolean>(workbenchKey) === false) { handle?.close(); }
+		closeIfIdle();
+	}));
+	if (native) {
+		// OS notifications are independent of workbench focus and its Do Not Disturb setting.
 		void nativeHost.showToast({ id, dedupeKey: source.id, replaceExisting: true, title, body: message, actions: [actionLabel] }).then(async result => {
 			const actionable = native;
 			native = false;
 			if (result.clicked && actionable) { await activate(true); }
-		}).catch(() => { native = false; });
+		}).catch(() => undefined).finally(() => { native = false; closeIfIdle(); });
 	}
 	return true;
 });

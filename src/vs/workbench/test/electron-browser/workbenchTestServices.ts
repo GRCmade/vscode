@@ -25,7 +25,7 @@ import { InMemoryFileSystemProvider } from '../../../platform/files/common/inMem
 import { IInstantiationService } from '../../../platform/instantiation/common/instantiation.js';
 import { ISharedProcessService } from '../../../platform/ipc/electron-browser/services.js';
 import { NullLogService } from '../../../platform/log/common/log.js';
-import { IApplicationBadge, INativeHostOptions, INativeHostService, INativeSystemWideKeybinding, INativeSystemWideKeybindingResult, INativeZipFile, IOSProperties, IOSStatistics, IToastOptions, IToastResult, PowerSaveBlockerType, SystemIdleState, ThermalState } from '../../../platform/native/common/native.js';
+import { IApplicationBadge, INativeHostOptions, INativeHostService, INativeSystemWideKeybinding, INativeSystemWideKeybindingResult, INativeZipFile, IOSProperties, IOSStatistics, IStudioDesktopNotificationStatus, IToastOptions, IToastResult, PowerSaveBlockerType, SystemIdleState, ThermalState } from '../../../platform/native/common/native.js';
 import { IProductService } from '../../../platform/product/common/productService.js';
 import { AuthInfo, Credentials } from '../../../platform/request/common/request.js';
 import { IStorageService } from '../../../platform/storage/common/storage.js';
@@ -209,6 +209,10 @@ export class TestNativeHostService implements INativeHostService {
 	async showToast(options: IToastOptions): Promise<IToastResult> { return { supported: false, clicked: false }; }
 	async clearToast(id: string): Promise<void> { }
 	async clearToasts(): Promise<void> { }
+	async isStudioNotificationWindow(): Promise<boolean> { return false; }
+	async getStudioDesktopNotificationStatus(): Promise<IStudioDesktopNotificationStatus> { return { platform: 'linux', appName: 'Studio', permission: 'unsupported' }; }
+	async openStudioNotificationSettings(): Promise<boolean> { return false; }
+	async setStudioUnreadCount(count: number): Promise<void> { }
 
 	// Power APIs
 	async getSystemIdleState(idleThreshold: number): Promise<SystemIdleState> { return 'unknown'; }

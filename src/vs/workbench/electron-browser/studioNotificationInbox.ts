@@ -20,7 +20,7 @@ interface Notice extends StudioNotice { owner: string }
 /** One key per event: simultaneous project windows cannot overwrite each other's notifications. */
 export class StudioNotificationInbox extends Disposable {
 	private owner?: string;
-	private visible?: StudioNotice[];
+	private stored?: Notice[];
 	private revision = 0;
 	private readonly change = this._register(new Emitter<void>());
 	readonly onDidChange = this.change.event;
@@ -30,7 +30,7 @@ export class StudioNotificationInbox extends Disposable {
 		const update = (value: unknown) => {
 			const account = value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
 			const owner = account?.localProfile === true ? 'local' : account?.status === 'authenticated' && account.hasAccount === true && typeof account.scopeKey === 'string' && /^[a-f\d]{64}$/.test(account.scopeKey) ? account.scopeKey : undefined;
-			if (owner !== this.owner) { this.owner = owner; this.visible = undefined; this.change.fire(); }
+			if (owner !== this.owner) { this.owner = owner; this.stored = undefined; this.change.fire(); }
 		};
 		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
 			if (commandId === 'studio.internalUpdateAccountMenuState') { this.revision++; update(args[0]); }
@@ -42,13 +42,20 @@ export class StudioNotificationInbox extends Disposable {
 			this.storage.store(prefix + id, { owner: this.owner, id, title: e.item.message.raw.slice(0, 500), source: 'studio', read: false }, scope, target);
 			for (const stale of this.keys().slice(300)) { this.storage.remove(stale, scope); }
 		}));
-		this._register(storage.onDidChangeValue(scope, undefined, this._store)(e => { if (e.key.startsWith(prefix)) { this.visible = undefined; this.change.fire(); } }));
+		this._register(storage.onDidChangeValue(scope, undefined, this._store)(e => { if (e.key.startsWith(prefix)) { this.stored = undefined; this.change.fire(); } }));
 		// Until the profile is known, do not persist potentially account-specific text.
 		const rev = this.revision;
 		void commands.executeCommand('studio.internalGetAccountMenuState').then(a => { if (rev === this.revision && !this._store.isDisposed) { update(a); } }, () => undefined);
 	}
 	private keys(): string[] { return this.storage.keys(scope, target).filter(k => k.startsWith(prefix)).sort().reverse(); }
-	list(): StudioNotice[] { return this.visible ??= this.owner ? this.keys().map(k => this.storage.getObject(k, scope) as Notice | undefined).filter((n): n is Notice => !!n && n.owner === this.owner).slice(0, 100) : []; }
+	private owned(): Notice[] { return this.stored ??= this.owner ? this.keys().map(k => this.storage.getObject(k, scope) as Notice | undefined).filter((n): n is Notice => !!n && n.owner === this.owner) : []; }
+	list(): StudioNotice[] { return this.owned().slice(0, 100); }
+	hasUnread(): boolean { return this.owned().some(notice => !notice.read); }
+	readAll(): void {
+		for (const notice of this.owned()) {
+			if (!notice.read) { this.read(notice.id); }
+		}
+	}
 	read(id: string): void {
 		const item = this.storage.getObject(prefix + id, scope) as Notice | undefined;
 		if (this.owner && item?.owner === this.owner && item.id === id) { this.storage.store(prefix + id, { ...item, read: true }, scope, target); }

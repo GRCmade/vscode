@@ -14,7 +14,7 @@ import { LaunchpadStore, StoreActions } from './studioLaunchpadStore.js';
 export type { LaunchpadProject, LaunchpadAccount, LaunchpadInbox };
 export interface LaunchpadState {
 	windows: LaunchpadProject[]; recent: LaunchpadProject[]; platform: boolean; canCreate: boolean;
-	account?: LaunchpadAccount; inbox?: LaunchpadInbox; store?: { items: StoreListing[] }; notices: StudioNotice[]; socialUnread: boolean;
+	account?: LaunchpadAccount; inbox?: LaunchpadInbox; store?: { items: StoreListing[] }; notices: StudioNotice[]; notificationUnread: boolean;
 	libraryCategory?: LibraryProjectCategory;
 }
 interface LaunchpadActions extends ProfileActions, LibraryActions, StoreActions {
@@ -127,10 +127,10 @@ export class StudioLaunchpadView extends Disposable {
 		this.consoleButton.hidden = this.inboxButton.hidden = !state.platform;
 		if (!previous || JSON.stringify(previous.account) !== JSON.stringify(state.account)) { this.accountButton.replaceChildren(avatar(state.account?.name ?? '', state.account?.avatarUrl)); }
 		const unread = state.inbox?.items.reduce((sum, c) => sum + c.unread, 0) ?? 0;
-		this.inboxButton.dataset.count = unread ? String(unread) : ''; this.bell.classList.toggle('lp-has-unread', state.socialUnread || state.notices.some(n => !n.read) || unread > 0);
+		this.inboxButton.dataset.count = unread ? String(unread) : ''; this.bell.classList.toggle('lp-has-unread', state.notificationUnread);
 		this.library.update(state.recent, state.windows, state.canCreate, state.platform && state.account?.signedIn ? state.account.scopeKey ?? 'signed-in' : '', state.libraryCategory);
 		this.store.update(this.active === 'store', state.platform, state.account?.scopeKey ?? state.account?.storeScopeKey, state.store?.items ?? []);
-		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices);
+		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices, state.notificationUnread);
 		if (this.picker.dialog.open) { this.picker.update(); }
 	}
 }

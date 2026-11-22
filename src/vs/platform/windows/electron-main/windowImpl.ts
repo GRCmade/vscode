@@ -102,6 +102,14 @@ class DockBadgeManager {
 
 	private readonly attention = new Set<number>();
 	private readonly counts = new Map<number, number>();
+	private studioCount = 0;
+
+	setStudioCount(count: number): void {
+		if (this.studioCount !== count) {
+			this.studioCount = count;
+			this.update();
+		}
+	}
 
 	acquireBadge(window: IBaseWindow): IDisposable {
 		const windowId = window.id;
@@ -129,7 +137,7 @@ class DockBadgeManager {
 	}
 
 	private update(): void {
-		let total = 0;
+		let total = this.studioCount;
 		for (const count of this.counts.values()) {
 			total += count;
 		}
@@ -142,6 +150,10 @@ class DockBadgeManager {
 			electron.app.setBadgeCount(0);
 		}
 	}
+}
+
+export function setStudioDockUnreadCount(count: number): void {
+	DockBadgeManager.INSTANCE.setStudioCount(count);
 }
 
 export abstract class BaseWindow extends Disposable implements IBaseWindow {

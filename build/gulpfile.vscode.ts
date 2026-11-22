@@ -22,6 +22,7 @@ import * as cp from 'child_process';
 import * as i18n from './lib/i18n.ts';
 import { getProductionDependencies } from './lib/dependencies.ts';
 import { config } from './lib/electron.ts';
+import { buildStudioNotificationPermission, studioNotificationPermissionName } from './lib/studioNotificationPermission.ts';
 import { createAsar } from './lib/asar.ts';
 import minimist from 'minimist';
 import { compileNonNativeExtensionsBuildTask, compileNativeExtensionsBuildTask, compileAllExtensionsBuildTask, compileExtensionMediaBuildTask, cleanExtensionsBuildTask, compileCopilotExtensionBuildTask } from './gulpfile.extensions.ts';
@@ -372,6 +373,14 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 				...(platform === 'darwin' ? ['!**/Contents/Applications', '!**/Contents/Applications/**'] : []),
 				...(platform === 'win32' ? ['!**/electron_proxy.exe'] : []),
 			], { dot: true }));
+
+		if (platform === 'darwin' && process.platform === 'darwin') {
+			const directory = path.join(root, '.build', 'studio-notifications', arch);
+			const permissionAddon = path.join(directory, studioNotificationPermissionName);
+			buildStudioNotificationPermission(permissionAddon, arch);
+			result = es.merge(result, gulp.src(permissionAddon, { base: directory })
+				.pipe(rename(f => f.dirname = `${product.nameLong}.app/Contents/Resources`)));
+		}
 
 		if (platform === 'linux') {
 			result = es.merge(result, gulp.src('resources/completions/bash/code', { base: '.' })

@@ -38,7 +38,7 @@ import { IProtocolMainService } from '../../protocol/electron-main/protocol.js';
 import { getRemoteAuthority } from '../../remote/common/remoteHosts.js';
 import { IStateService } from '../../state/node/state.js';
 import { AgentsWindowOpenSource, DEFAULT_RESTORE_WINDOWS_SETTING, IAgentsWindowDraft, IAddRemoveFoldersRequest, INativeOpenFileRequest, INativeWindowConfiguration, IOpenEmptyWindowOptions, IPath, IPathsToWaitFor, isFileToOpen, isFolderToOpen, isWorkspaceToOpen, IWindowOpenable, IWindowSettings } from '../../window/common/window.js';
-import { CodeWindow } from './windowImpl.js';
+import { CodeWindow, setStudioDockUnreadCount } from './windowImpl.js';
 import { IOpenConfiguration, IOpenEmptyConfiguration, IWindowsCountChangedEvent, IWindowsMainService, OpenContext, getLastFocused } from './windows.js';
 import { findWindowOnExtensionDevelopmentPath, findWindowOnFile, findWindowOnWorkspaceOrFolder } from './windowsFinder.js';
 import { IWindowState, WindowsStateHandler } from './windowsStateHandler.js';
@@ -60,7 +60,7 @@ import { ICSSDevelopmentService } from '../../cssDev/node/cssDevService.js';
 import { ResourceSet } from '../../../base/common/map.js';
 import { VSBuffer } from '../../../base/common/buffer.js';
 import { resolveAgentsWindowFolder } from './agentsWindow.js';
-import { createStudioTray } from './studioTray.js';
+import { createStudioTray, IStudioTray } from './studioTray.js';
 import { readStudioReleaseProject } from '../node/studioReleaseProject.js';
 import { studioEntryForFolder, type IStudioProjectEntry } from '../../window/common/studioProjectWindow.js';
 
@@ -250,6 +250,9 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 	}
 
 	private registerListeners(): void {
+		this._register(this.onDidDestroyWindow(window => {
+			if (window.isStudioLaunchpad) { this.updateStudioUnreadCount(0); }
+		}));
 
 		this._register(Event.any(this.onDidSignalReadyWindow, Event.map(this.onDidChangeWindowsCount, () => undefined))(() => {
 			const launchpad = this.getWindows().find(window => window.isStudioLaunchpad && window.isReady);
@@ -282,7 +285,18 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 
 	private studioLaunchpadEnabled = false;
 	private launchpadOpening?: Promise<ICodeWindow>;
+	private studioTray?: IStudioTray;
 	get hasStudioLaunchpad(): boolean { return this.studioLaunchpadEnabled; }
+
+	setStudioUnreadCount(windowId: number, count: number): void {
+		// The resident launchpad reports an account snapshot, not a per-window delta.
+		if (this.getWindowById(windowId)?.isStudioLaunchpad) { this.updateStudioUnreadCount(count); }
+	}
+
+	private updateStudioUnreadCount(count: number): void {
+		setStudioDockUnreadCount(count);
+		this.studioTray?.setUnreadCount(count);
+	}
 
 	enableStudioLaunchpad(): void {
 		const args = this.environmentMainService.args;
@@ -291,7 +305,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 		}
 		this.studioLaunchpadEnabled = true;
 		try {
-			this._register(createStudioTray(
+			this.studioTray = this._register(createStudioTray(
 				() => { void this.openStudioLaunchpad().catch(error => this.logService.error(error)); },
 				() => { void this.lifecycleMainService.quit(); },
 			));
@@ -1815,6 +1829,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 	}
 
 	private onWindowClosed(window: ICodeWindow, disposables: IDisposable): void {
+		if (window.isStudioLaunchpad) { this.updateStudioUnreadCount(0); }
 
 		// Remove from our list so that Electron can clean it up
 		this.windows.delete(window.id);

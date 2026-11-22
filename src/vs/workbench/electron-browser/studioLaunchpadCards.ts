@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { studioProjectIcon } from '../common/studioProjectIcons.js';
+import { studioProjectCardIcon, studioProjectIcon } from '../common/studioProjectIcons.js';
 import { element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
 
 export interface LibraryArtwork {
@@ -29,7 +29,7 @@ export interface StoreListingDetails extends StoreListing {
 }
 
 export function storeArtwork(p: StoreListing, cover?: string | Promise<string | undefined>): HTMLElement {
-	return artwork(p.id, { entries: p.entries?.length ? p.entries : p.avatarUrl ? [p.avatarUrl] : [], entryTypes: p.entryTypes }, icon(studioProjectIcon(p.projectType) ?? 'extensions'), cover);
+	return artwork(p.id, { entries: p.entries?.length ? p.entries : p.avatarUrl ? [p.avatarUrl] : [], entryTypes: p.entryTypes }, projectTypeMark(p.projectType, icon('extensions')), cover);
 }
 
 export function picture(src: string, className = ''): HTMLImageElement {
@@ -38,6 +38,11 @@ export function picture(src: string, className = ''): HTMLImageElement {
 
 export function glyph(p: LaunchpadProject): string { return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? (p.distribution ? 'package' : 'folder'); }
 export function projectMark(p: LaunchpadProject): HTMLElement { return p.avatarUrl?.startsWith('data:image/') ? picture(p.avatarUrl) : icon(glyph(p)); }
+/** Project type identity uses the same Lucide card glyphs as the shared avatar assets. */
+export function projectTypeMark(type: string | undefined, fallback: HTMLElement): HTMLElement {
+	const source = studioProjectCardIcon(type);
+	return source ? picture(source) : fallback;
+}
 export function typeLabel(type: string | undefined, t: LaunchpadLabel): string {
 	switch (type) {
 		case 'bot': return 'Bot'; case 'kanban': return t('Kanban', '看板'); case 'workflow': return t('Workflow', '工作流'); case 'aggregate': return t('Multi-entry', '多入口'); default: return t('Folder', '文件夹');
@@ -68,7 +73,7 @@ export function artwork(key: string, art: LibraryArtwork | undefined, fallback: 
 	const stack = element('span', 'lp-art-stack');
 	const marks = art?.entries?.filter(src => src.startsWith('data:image/')).slice(0, 3).map(src => picture(src));
 	if (marks?.length) { stack.append(...marks); }
-	else if (art?.entryTypes?.length) { stack.append(...art.entryTypes.slice(0, 3).map(type => icon(studioProjectIcon(type) ?? 'extensions'))); }
+	else if (art?.entryTypes?.length) { stack.append(...art.entryTypes.slice(0, 3).map(type => projectTypeMark(type, icon('extensions')))); }
 	else if (art?.files?.length) {
 		for (const filename of art.files.slice(0, 3)) {
 			const sheet = element('span', 'lp-art-file'); sheet.title = filename;

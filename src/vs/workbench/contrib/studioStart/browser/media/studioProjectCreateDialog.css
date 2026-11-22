@@ -15,6 +15,7 @@
 .studio-create-type:has(:checked) { border-color:var(--vscode-focusBorder); background:var(--vscode-list-activeSelectionBackground); color:var(--vscode-list-activeSelectionForeground); }
 .studio-create-type input { position:absolute; opacity:0; width:1px; height:1px; }
 .studio-create-type:focus-within { outline:1px solid var(--vscode-focusBorder); outline-offset:2px; }
+.studio-create-type-icon { display:block; width:18px; height:18px; flex:none; object-fit:contain; }
 .studio-create-options { max-height:230px; overflow:auto; scrollbar-width:thin; scrollbar-color:transparent transparent; }
 .studio-create-options:hover, .studio-create-options:focus-within { scrollbar-color:var(--vscode-scrollbarSlider-background) transparent; }
 .studio-create-template { display:grid; grid-template-columns:16px minmax(0,1fr); align-items:start; gap:8px; padding:10px 8px; border-bottom:1px solid var(--vscode-widget-border,transparent); cursor:pointer; }

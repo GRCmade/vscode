@@ -10,7 +10,7 @@ import { generateUuid } from '../../../../base/common/uuid.js';
 import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
-import { studioProjectIcon } from '../../../common/studioProjectIcons.js';
+import { studioProjectCardIcon, studioProjectIcon } from '../../../common/studioProjectIcons.js';
 import './media/studioStart.css';
 
 interface StudioOverviewProject {
@@ -159,10 +159,11 @@ export class StudioStartView extends Disposable {
 
 	private avatar(parent: HTMLElement, size: 'project' | 'entry', projectType: string, avatarUrl: string | undefined): void {
 		const icon = append(parent, $(`span.studio-start-avatar.studio-start-avatar-${size}`, { 'aria-hidden': 'true' }));
-		if (avatarUrl?.startsWith('data:image/svg+xml,')) {
-			append(icon, $('img', { alt: '', src: avatarUrl }));
+		const source = avatarUrl?.startsWith('data:image/svg+xml,') ? avatarUrl : studioProjectCardIcon(projectType);
+		if (source) {
+			append(icon, $('img', { alt: '', src: source }));
 		} else {
-			append(icon, $(`span.codicon.codicon-${studioProjectIcon(projectType) ?? 'root-folder'}`));
+			append(icon, $('span.codicon.codicon-root-folder'));
 		}
 	}
 

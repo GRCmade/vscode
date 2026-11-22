@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { studioProjectIcon } from '../common/studioProjectIcons.js';
+import { projectTypeMark } from './studioLaunchpadCards.js';
 import { edition, LaunchpadProject, openProjectLabel, projectMark, typeLabel } from './studioLaunchpadCards.js';
 import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
 
@@ -39,7 +39,7 @@ export function projectDetails(p: LaunchpadProject, t: LaunchpadLabel, open: () 
 export function projectEntryList(entries: readonly { name: string; type: string; primary: boolean }[], t: LaunchpadLabel): HTMLElement {
 	const section = element('section', 'lp-detail-entries'), list = element('ul');
 	for (const entry of entries) {
-		const row = element('li'); row.append(icon(studioProjectIcon(entry.type) ?? 'extensions'), element('strong', '', entry.name));
+		const row = element('li'); row.append(projectTypeMark(entry.type, icon('extensions')), element('strong', '', entry.name));
 		if (entry.primary) { row.append(element('small', 'lp-entry-default', t('Default', '默认入口'))); }
 		row.append(element('small', 'lp-entry-type', typeLabel(entry.type, t))); list.append(row);
 	}

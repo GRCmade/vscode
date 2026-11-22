@@ -93,6 +93,7 @@
 .lp-detail-entries { border-top: 1px solid var(--lp-line); padding-top: 18px; } .lp-detail-entries ul { margin: 8px 0; padding: 0; list-style: none; }
 .lp-detail-entries li { display: flex; align-items: center; gap: 9px; padding: 8px 0; border-bottom: 1px solid var(--lp-line); }
 .lp-detail-entries strong { min-width: 0; overflow-wrap: anywhere; font-weight: 500; } .lp-entry-type { margin-inline-start: auto; } .lp-entry-default,.lp-entry-type { flex: none; }
+.lp-detail-entries li > img { flex: none; width: 18px; height: 18px; border-radius: 4px; object-fit: contain; }
 .lp-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .lp-shelf,.lp-store-content { padding: 22px var(--lp-pad) 32px; }
 .lp-library-title { display: grid; gap: 12px; }

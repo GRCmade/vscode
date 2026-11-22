@@ -14,7 +14,7 @@ import { IKeybindingService } from '../../../../platform/keybinding/common/keybi
 import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
 import { defaultInputBoxStyles } from '../../../../platform/theme/browser/defaultStyles.js';
 import { createWorkbenchDialogOptions } from '../../../browser/parts/dialogs/dialog.js';
-import { studioProjectIcon } from '../../../common/studioProjectIcons.js';
+import { studioProjectCardIcon } from '../../../common/studioProjectIcons.js';
 import { IHostService } from '../../../services/host/browser/host.js';
 import './media/studioProjectCreateDialog.css';
 
@@ -97,7 +97,11 @@ export class StudioProjectCreateDialog extends Disposable {
 			const radio = append(label, $<HTMLInputElement>('input', { type: 'radio', name: 'projectType', value: type }));
 			radio.checked = this.projectType === type;
 			radio.tabIndex = radio.checked ? 0 : -1;
-			append(label, $(`span.codicon.codicon-${type === 'link' ? 'link' : studioProjectIcon(type)}`)).setAttribute('aria-hidden', 'true');
+			if (type === 'link') {
+				append(label, $('span.codicon.codicon-link')).setAttribute('aria-hidden', 'true');
+			} else {
+				append(label, $('img.studio-create-type-icon', { alt: '', src: studioProjectCardIcon(type)! })).setAttribute('aria-hidden', 'true');
+			}
 			append(label, $('span', undefined, this.text(`type.${type}`)));
 			this._register(addDisposableListener(radio, 'change', () => {
 				if (!radio.checked) { return; }

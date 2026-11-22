@@ -9,17 +9,16 @@ import { glyph, LaunchpadProject, picture, StoreListing } from './studioLaunchpa
 import { LaunchpadLibrary, LibraryActions } from './studioLaunchpadLibrary.js';
 import { button, element, icon, LaunchpadLabel, LaunchpadOption, LaunchpadPicker } from './studioLaunchpadPicker.js';
 import { avatar, LaunchpadAccount, LaunchpadInbox, LaunchpadProfile, ProfileActions, StudioNotice } from './studioLaunchpadProfile.js';
-import { CatalogPage, CatalogRequest, LaunchpadStore } from './studioLaunchpadStore.js';
+import { LaunchpadStore, StoreActions } from './studioLaunchpadStore.js';
 
 export type { LaunchpadProject, LaunchpadAccount, LaunchpadInbox };
 export interface LaunchpadState {
 	windows: LaunchpadProject[]; recent: LaunchpadProject[]; platform: boolean; canCreate: boolean;
 	account?: LaunchpadAccount; inbox?: LaunchpadInbox; store?: { items: StoreListing[] }; notices: StudioNotice[]; socialUnread: boolean;
 }
-interface LaunchpadActions extends ProfileActions, LibraryActions {
+interface LaunchpadActions extends ProfileActions, LibraryActions, StoreActions {
 	open(): void; workspace(): void;
-	catalog(request: CatalogRequest, platform: boolean): Promise<CatalogPage>;
-	getListing(id: string, platform: boolean): void; readNotice(id: string): void;
+	readNotice(id: string): void;
 	resource(id: 'docs' | 'github' | 'server'): void;
 }
 type Tab = 'store' | 'library' | 'community' | 'profile';
@@ -82,7 +81,7 @@ export class StudioLaunchpadView extends Disposable {
 		});
 		navigation.append(this.tabs);
 		this.library = new LaunchpadLibrary(t, actions);
-		this.store = this._register(new LaunchpadStore(t, actions.catalog, actions.getListing)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice));
+		this.store = this._register(new LaunchpadStore(t, actions)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice));
 		const community = element('div', 'lp-community'); community.append(icon('organization'), element('h1', '', t('Community', '社区')), element('p', '', t('Coming soon', '暂未开放')));
 		for (const [id, page] of [['store', this.store.element], ['library', this.library.element], ['community', community], ['profile', this.profile.element]] as const) {
 			page.id = `lp-page-${id}`; page.setAttribute('role', 'tabpanel'); page.setAttribute('aria-labelledby', `lp-tab-${id}`); this.panels.append(page);
@@ -99,6 +98,7 @@ export class StudioLaunchpadView extends Disposable {
 		for (const page of Array.from(this.panels.children) as HTMLElement[]) { page.hidden = page.id !== `lp-page-${id}`; }
 		if (this.state) { this.update(this.state); }
 		if (id === 'library') { this.library.show(projectUri); }
+		if (id === 'store') { this.store.showCatalog(false); }
 	}
 
 	private fileOptions(): LaunchpadOption[] { return [{ label: this.t('Open folder…', '打开文件夹…'), glyph: 'folder-opened', run: this.actions.open }, { label: this.t('Open workspace…', '打开工作区…'), glyph: 'project', run: this.actions.workspace }]; }
@@ -127,7 +127,7 @@ export class StudioLaunchpadView extends Disposable {
 		if (!previous || JSON.stringify(previous.account) !== JSON.stringify(state.account)) { this.accountButton.replaceChildren(avatar(state.account?.name ?? '', state.account?.avatarUrl)); }
 		const unread = state.inbox?.items.reduce((sum, c) => sum + c.unread, 0) ?? 0;
 		this.inboxButton.dataset.count = unread ? String(unread) : ''; this.bell.classList.toggle('lp-has-unread', state.socialUnread || state.notices.some(n => !n.read) || unread > 0);
-		this.library.update(state.recent, state.windows, state.canCreate); this.store.update(this.active === 'store', state.platform, state.account?.scopeKey, state.store?.items ?? []);
+		this.library.update(state.recent, state.windows, state.canCreate); this.store.update(this.active === 'store', state.platform, state.account?.scopeKey ?? state.account?.storeScopeKey, state.store?.items ?? []);
 		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices);
 		if (this.picker.dialog.open) { this.picker.update(); }
 	}

@@ -40,6 +40,7 @@ import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, Stu
 import { LaunchpadApp, StudioChatWindow } from './studioChatWindow.js';
 import { SocialResult } from './studioLaunchpadProfile.js';
 import { CatalogPage } from './studioLaunchpadStore.js';
+import { StoreListingDetails } from './studioLaunchpadCards.js';
 import './media/studioLaunchpad.css';
 
 type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries'>;
@@ -116,6 +117,8 @@ export class StudioLaunchpad extends Disposable {
 			inbox: conversation => run(this.openInbox(conversation)),
 			cover: project => this.cover(project),
 			catalog: async (request, platform) => { const page = await commands.executeCommand<CatalogPage>(platform ? 'studio.getStoreCatalog' : 'studio.getLocalCatalog', request); if (!page) { throw new Error('Catalog unavailable'); } return page; },
+			listingDetails: async id => { const item = await commands.executeCommand<StoreListingDetails>('studio.getStoreListingDetails', id); if (!item) { throw new Error('Project details unavailable'); } return item; },
+			storeImage: async src => src.startsWith('http:') ? commands.executeCommand<string | undefined>('studio.readLocalStoreImage', src) : src,
 			getListing: (id, platform) => run(commands.executeCommand(platform ? 'studio.getStoreListing' : 'studio.createExample', id)),
 			social: async query => { const result = await commands.executeCommand<SocialResult>('studio.getSocialSnapshot', query); if (!result) { throw new Error('Social data unavailable'); } return result; },
 			change: async action => { await commands.executeCommand('studio.changeSocial', action); this.refreshNotices.schedule(); },
@@ -188,7 +191,7 @@ export class StudioLaunchpad extends Disposable {
 			if (state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn) { ++this.noticeRevision; this.socialUnread = false; this.refreshNotices.schedule(); }
 			if (state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn) { ++this.inboxRevision; this.inbox = undefined; this.refreshInbox.schedule(); }
 			this.account = state && { name: state.name, email: state.email, avatarUrl: state.avatarUrl, hasAccount: state.hasAccount,
-				scopeKey: state.scopeKey, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
+				scopeKey: state.scopeKey, storeScopeKey: state.storeScopeKey, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
 		};
 		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
 			if (commandId === 'studio.internalUpdateAccountMenuState' && platform) {

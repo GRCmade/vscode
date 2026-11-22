@@ -32,14 +32,17 @@ export function projectDetails(p: LaunchpadProject, t: LaunchpadLabel, open: () 
 	fact(t('Location', '位置'), p.path);
 	fact(t('Project ID', '项目 ID'), p.projectId);
 	page.append(facts);
-	if (p.entries?.length) {
-		const section = element('section', 'lp-detail-entries'), list = element('ul');
-		for (const entry of p.entries) {
-			const row = element('li'); row.append(icon(studioProjectIcon(entry.type) ?? 'extensions'), element('strong', '', entry.name));
-			if (entry.primary) { row.append(element('small', 'lp-entry-default', t('Default', '默认入口'))); }
-			row.append(element('small', 'lp-entry-type', typeLabel(entry.type, t))); list.append(row);
-		}
-		section.append(element('h2', '', t('Project entries', '项目入口')), list); page.append(section);
-	}
+	if (p.entries?.length) { page.append(projectEntryList(p.entries, t)); }
 	return page;
+}
+
+export function projectEntryList(entries: readonly { name: string; type: string; primary: boolean }[], t: LaunchpadLabel): HTMLElement {
+	const section = element('section', 'lp-detail-entries'), list = element('ul');
+	for (const entry of entries) {
+		const row = element('li'); row.append(icon(studioProjectIcon(entry.type) ?? 'extensions'), element('strong', '', entry.name));
+		if (entry.primary) { row.append(element('small', 'lp-entry-default', t('Default', '默认入口'))); }
+		row.append(element('small', 'lp-entry-type', typeLabel(entry.type, t))); list.append(row);
+	}
+	section.append(element('h2', '', t('Project entries', '项目入口')), list);
+	return section;
 }

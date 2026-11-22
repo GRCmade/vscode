@@ -24,6 +24,14 @@ export interface StoreListing {
 	id: string; name: string; description?: string; version?: string; projectType?: string; avatarUrl?: string; images?: string[]; entries?: string[]; entryTypes?: string[];
 }
 
+export interface StoreListingDetails extends StoreListing {
+	summary?: string; updatedAt?: string; projectEntries?: { name: string; type: string; primary: boolean }[];
+}
+
+export function storeArtwork(p: StoreListing, cover?: string | Promise<string | undefined>): HTMLElement {
+	return artwork(p.id, { entries: p.entries?.length ? p.entries : p.avatarUrl ? [p.avatarUrl] : [], entryTypes: p.entryTypes }, icon(studioProjectIcon(p.projectType) ?? 'extensions'), cover);
+}
+
 export function picture(src: string, className = ''): HTMLImageElement {
 	const img = element('img', className); img.alt = ''; img.draggable = false; img.decoding = 'async'; img.referrerPolicy = 'no-referrer'; img.src = src; return img;
 }

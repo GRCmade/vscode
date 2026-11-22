@@ -9,7 +9,7 @@ import { Disposable, toDisposable } from '../../base/common/lifecycle.js';
 import { picture } from './studioLaunchpadCards.js';
 import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
 
-export interface LaunchpadAccount { name: string; email?: string | null; avatarUrl?: string; scopeKey?: string; statusLabel?: string; hasAccount: boolean; signedIn: boolean }
+export interface LaunchpadAccount { name: string; email?: string | null; avatarUrl?: string; scopeKey?: string; storeScopeKey?: string; statusLabel?: string; hasAccount: boolean; signedIn: boolean }
 export interface LaunchpadInbox { connection?: 'connected' | 'offline' | 'connecting' | 'guest'; message?: string; items: { id?: string; name: string; preview: string; unread: number; avatarUrl?: string; time?: number; group?: boolean }[] }
 export interface StudioPerson { id: string; name: string; avatarUrl?: string; relation?: 'friend' | 'incoming' | 'outgoing' }
 export interface StudioFavorite { id: string; title: string; detail?: string; conversation?: string }

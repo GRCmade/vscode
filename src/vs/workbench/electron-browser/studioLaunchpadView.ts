@@ -6,7 +6,7 @@
 import { Disposable } from '../../base/common/lifecycle.js';
 import { STEAMHARNESS_ICON_DATA_URI } from '../common/studioBranding.js';
 import { glyph, LaunchpadProject, picture, StoreListing } from './studioLaunchpadCards.js';
-import { LaunchpadLibrary, LibraryActions } from './studioLaunchpadLibrary.js';
+import { LaunchpadLibrary, LibraryActions, LibraryProjectCategory } from './studioLaunchpadLibrary.js';
 import { button, element, icon, LaunchpadLabel, LaunchpadOption, LaunchpadPicker } from './studioLaunchpadPicker.js';
 import { avatar, LaunchpadAccount, LaunchpadInbox, LaunchpadProfile, ProfileActions, StudioNotice } from './studioLaunchpadProfile.js';
 import { LaunchpadStore, StoreActions } from './studioLaunchpadStore.js';
@@ -15,6 +15,7 @@ export type { LaunchpadProject, LaunchpadAccount, LaunchpadInbox };
 export interface LaunchpadState {
 	windows: LaunchpadProject[]; recent: LaunchpadProject[]; platform: boolean; canCreate: boolean;
 	account?: LaunchpadAccount; inbox?: LaunchpadInbox; store?: { items: StoreListing[] }; notices: StudioNotice[]; socialUnread: boolean;
+	libraryCategory?: LibraryProjectCategory;
 }
 interface LaunchpadActions extends ProfileActions, LibraryActions, StoreActions {
 	open(): void; workspace(): void;
@@ -127,7 +128,7 @@ export class StudioLaunchpadView extends Disposable {
 		if (!previous || JSON.stringify(previous.account) !== JSON.stringify(state.account)) { this.accountButton.replaceChildren(avatar(state.account?.name ?? '', state.account?.avatarUrl)); }
 		const unread = state.inbox?.items.reduce((sum, c) => sum + c.unread, 0) ?? 0;
 		this.inboxButton.dataset.count = unread ? String(unread) : ''; this.bell.classList.toggle('lp-has-unread', state.socialUnread || state.notices.some(n => !n.read) || unread > 0);
-		this.library.update(state.recent, state.windows, state.canCreate, state.platform && state.account?.signedIn ? state.account.scopeKey ?? 'signed-in' : '');
+		this.library.update(state.recent, state.windows, state.canCreate, state.platform && state.account?.signedIn ? state.account.scopeKey ?? 'signed-in' : '', state.libraryCategory);
 		this.store.update(this.active === 'store', state.platform, state.account?.scopeKey ?? state.account?.storeScopeKey, state.store?.items ?? []);
 		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices);
 		if (this.picker.dialog.open) { this.picker.update(); }

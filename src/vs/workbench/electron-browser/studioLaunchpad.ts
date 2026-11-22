@@ -41,6 +41,7 @@ import { LaunchpadApp, StudioChatWindow } from './studioChatWindow.js';
 import { SocialResult } from './studioLaunchpadProfile.js';
 import { CatalogPage } from './studioLaunchpadStore.js';
 import { StoreListingDetails } from './studioLaunchpadCards.js';
+import type { LibraryProjectCategory } from './studioLaunchpadLibrary.js';
 import './media/studioLaunchpad.css';
 
 type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries'>;
@@ -59,14 +60,17 @@ export class StudioLaunchpad extends Disposable {
 	private readonly missing = new Set<string>();
 	private readonly editsSinceSnapshot = new Map<number, boolean>();
 	private inbox?: LaunchpadInbox;
+	private libraryCategory?: LibraryProjectCategory;
 	private account?: LaunchpadState['account'];
 	private windowRevision = 0;
+	private libraryCategoryRevision = 0;
 	private inboxRevision = 0;
 	private noticeRevision = 0;
 	private socialUnread = false;
 	private readonly refreshNotices = this._register(new RunOnceScheduler(() => void this.readNotices(), 250));
 	private readonly language = getNLSLanguage() ?? 'en';
 	private readonly refreshInbox = this._register(new RunOnceScheduler(() => void this.readInbox(), 160));
+	private readonly refreshLibraryCategory = this._register(new RunOnceScheduler(() => void this.readLibraryCategory(), 100));
 
 	constructor(
 		private readonly notices: StudioNotificationInbox,
@@ -187,6 +191,7 @@ export class StudioLaunchpad extends Disposable {
 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => this.chat.clear(key)));
 		this._register(CommandsRegistry.registerCommand('studio.internalOpenStoreTab', () => { this.showHome(); this.view.select('store'); }));
 		this._register(CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', () => this.refreshSocialState()));
+		this._register(CommandsRegistry.registerCommand('studio.internalLibraryProjectCategoryChanged', () => this.scheduleLibraryCategory()));
 		this._register(CommandsRegistry.registerCommand('studio.internalLaunchpadInboxChanged', (_accessor, reset?: boolean) => {
 			++this.inboxRevision;
 			if (reset && !this.account?.hasAccount) {
@@ -197,10 +202,15 @@ export class StudioLaunchpad extends Disposable {
 		}));
 		let platform = false, accountRevision = 0;
 		const setAccount = (state?: LaunchpadMenuAccount) => {
-			if (state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn) { ++this.noticeRevision; this.socialUnread = false; this.refreshNotices.schedule(); }
-			if (state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn) { ++this.inboxRevision; this.inbox = undefined; this.refreshInbox.schedule(); }
+			const scopeChanged = state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn;
+			if (scopeChanged) {
+				++this.noticeRevision; this.socialUnread = false; this.refreshNotices.schedule();
+				++this.inboxRevision; this.inbox = undefined; this.refreshInbox.schedule();
+				this.libraryCategory = undefined;
+			}
 			this.account = state && { name: state.name, email: state.email, avatarUrl: state.avatarUrl, hasAccount: state.hasAccount,
 				scopeKey: state.scopeKey, storeScopeKey: state.storeScopeKey, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
+			if (scopeChanged) { this.scheduleLibraryCategory(); }
 		};
 		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
 			if (commandId === 'studio.internalUpdateAccountMenuState' && platform) {
@@ -250,7 +260,7 @@ export class StudioLaunchpad extends Disposable {
 		const parts = Array.from(layout.mainContainer.querySelectorAll<HTMLElement>('.part:not(.titlebar)')).filter(part => !part.inert);
 		for (const part of parts) { part.inert = true; }
 		this._register(toDisposable(() => {
-			++this.windowRevision; ++this.inboxRevision;
+			++this.windowRevision; ++this.inboxRevision; ++this.libraryCategoryRevision;
 			this.requestId = undefined;
 			this.start.setVisible('launchpad', false);
 			for (const part of parts) { part.inert = false; }
@@ -476,12 +486,31 @@ export class StudioLaunchpad extends Disposable {
 		const members = new Set([...this.recent, ...this.windows].map(row => row.uri));
 		for (const uri of this.savedProjects.keys()) { if (!members.has(uri)) { this.savedProjects.delete(uri); } }
 		for (const uri of this.missing) { if (!this.recent.some(row => row.uri === uri)) { this.missing.delete(uri); } }
+		this.scheduleLibraryCategory();
 		this.paint();
 		const known = new Set(this.start.state?.recent.filter(p => p.artwork).map(p => p.uri));
 		const others = [...new Set([...this.recent, ...this.windows].filter(p => p.kind === 'folder' && !known.has(p.uri)).map(p => p.uri))];
 		if (others.length) {
 			const rows = await this.commands.executeCommand<(LibraryMetadata & { uri: string })[]>('studio.internalDetectProjectTypes', others).catch(() => undefined);
 			if (revision === this.windowRevision && rows) { for (const { uri, ...metadata } of rows) { this.savedProjects.set(uri, { ...this.savedProjects.get(uri), ...metadata }); } this.paint(); }
+		}
+	}
+
+	private scheduleLibraryCategory(): void {
+		++this.libraryCategoryRevision;
+		if (this.start.state?.platform && this.account?.signedIn) { this.refreshLibraryCategory.schedule(); }
+		else { this.refreshLibraryCategory.cancel(); }
+	}
+
+	private async readLibraryCategory(): Promise<void> {
+		const revision = this.libraryCategoryRevision;
+		const uris = [...new Set([...this.recent, ...this.windows].filter(p => p.kind === 'folder' && p.uri.startsWith('file:')).map(p => p.uri))];
+		const category = await this.commands.executeCommand<LibraryProjectCategory | null | undefined>('studio.getLibraryProjectCategory', uris).catch(() => undefined);
+		// Undefined means temporarily unavailable; null explicitly removes the optional category.
+		if (revision !== this.libraryCategoryRevision || category === undefined) { return; }
+		if (JSON.stringify(category ?? undefined) !== JSON.stringify(this.libraryCategory)) {
+			this.libraryCategory = category ?? undefined;
+			this.paint();
 		}
 	}
 
@@ -525,6 +554,7 @@ export class StudioLaunchpad extends Disposable {
 				windowId: row.windowId ?? window?.windowId, dirty: row.dirty ?? window?.dirty, missing: !window && row.windowId === undefined && this.missing.has(row.uri) };
 		};
 		this.view.update({ windows: this.windows.map(row => enrich(row)), recent: this.recent.map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
-			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox, notices: this.notices.list(), socialUnread: this.socialUnread });
+			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox, notices: this.notices.list(), socialUnread: this.socialUnread,
+			libraryCategory: this.libraryCategory });
 	}
 }

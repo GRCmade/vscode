@@ -10,7 +10,7 @@ import { generateUuid } from '../../../../base/common/uuid.js';
 import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
-import { studioProjectCardIcon, studioProjectIcon } from '../../../common/studioProjectIcons.js';
+import { studioProjectCardIcon } from '../../../common/studioProjectIcons.js';
 import './media/studioStart.css';
 
 interface StudioOverviewProject {

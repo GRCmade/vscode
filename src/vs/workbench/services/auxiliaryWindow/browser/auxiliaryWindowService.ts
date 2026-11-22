@@ -49,6 +49,8 @@ export interface IAuxiliaryWindowOpenOptions {
 	readonly mode?: AuxiliaryWindowMode;
 	readonly zoomLevel?: number;
 	readonly alwaysOnTop?: boolean;
+	/** Keep this native window above its opener, not above other applications. */
+	readonly keepAboveParent?: boolean;
 
 	readonly nativeTitlebar?: boolean;
 	readonly disableFullscreen?: boolean;
@@ -374,6 +376,7 @@ export class BrowserAuxiliaryWindowService extends Disposable implements IAuxili
 			options?.nativeTitlebar ? 'window-native-titlebar=yes' : undefined,
 			options?.disableFullscreen ? 'window-disable-fullscreen=yes' : undefined,
 			options?.alwaysOnTop ? 'window-always-on-top=yes' : undefined,
+			options?.keepAboveParent ? 'window-keep-above-parent=yes' : undefined,
 			options?.mode === AuxiliaryWindowMode.Maximized ? 'window-maximized=yes' : undefined,
 			options?.mode === AuxiliaryWindowMode.Fullscreen ? 'window-fullscreen=yes' : undefined,
 			options?.frameless ? 'window-frameless=yes' : undefined,

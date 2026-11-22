@@ -92,19 +92,23 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
 		});
 	}
 
-	createWindow(details: HandlerDetails): BrowserWindowConstructorOptions {
-		const { state, overrides, disableMaximize } = this.computeWindowStateAndOverrides(details);
+	createWindow(details: HandlerDetails, parent?: BrowserWindow): BrowserWindowConstructorOptions {
+		const { state, overrides, disableMaximize, keepAboveParent } = this.computeWindowStateAndOverrides(details);
 		const options = this.instantiationService.invokeFunction(defaultBrowserWindowOptions, state, overrides, {
 			preload: FileAccess.asFileUri('vs/base/parts/sandbox/electron-browser/preload-aux.js').fsPath
 		});
+		if (keepAboveParent && parent && !parent.isDestroyed()) {
+			options.parent = parent;
+		}
 		this.pendingWindowOptionsQueue.push({ options, disableMaximize });
 		return options;
 	}
 
-	private computeWindowStateAndOverrides(details: HandlerDetails): { readonly state: IWindowState; readonly overrides: IDefaultBrowserWindowOptionsOverrides; readonly disableMaximize: boolean } {
+	private computeWindowStateAndOverrides(details: HandlerDetails): { readonly state: IWindowState; readonly overrides: IDefaultBrowserWindowOptionsOverrides; readonly disableMaximize: boolean; readonly keepAboveParent: boolean } {
 		const windowState: IWindowState = {};
 		const overrides: IDefaultBrowserWindowOptionsOverrides = {};
 		let disableMaximize = false;
+		let keepAboveParent = false;
 
 		const features = details.features.split(','); // for example: popup=yes,left=270,top=14.5,width=1024,height=768
 		for (const feature of features) {
@@ -137,6 +141,9 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
 				case 'window-always-on-top':
 					overrides.alwaysOnTop = true;
 					break;
+				case 'window-keep-above-parent':
+					keepAboveParent = value === 'yes';
+					break;
 				case 'window-frameless':
 					overrides.frameless = true;
 					break;
@@ -161,7 +168,7 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
 
 		this.logService.trace('[aux window] using window state', state);
 
-		return { state, overrides, disableMaximize };
+		return { state, overrides, disableMaximize, keepAboveParent };
 	}
 
 	registerWindow(webContents: WebContents): void {

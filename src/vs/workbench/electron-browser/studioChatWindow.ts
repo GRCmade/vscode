@@ -7,6 +7,7 @@ import { $ } from '../../base/browser/dom.js';
 import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
 import { Disposable, DisposableMap, DisposableStore, toDisposable } from '../../base/common/lifecycle.js';
 import { URI } from '../../base/common/uri.js';
+import { INativeHostService } from '../../platform/native/common/native.js';
 import { IOpenerService } from '../../platform/opener/common/opener.js';
 import { IWebviewElement, IWebviewService } from '../contrib/webview/browser/webview.js';
 import { IAuxiliaryWindow, IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
@@ -22,6 +23,7 @@ export class StudioChatWindow extends Disposable {
 	private readonly opening = new Map<string, Promise<MountedChat | undefined>>();
 
 	constructor(private readonly windows: IAuxiliaryWindowService, private readonly webviews: IWebviewService, private readonly opener: IOpenerService,
+		private readonly native: INativeHostService,
 		private readonly openConversation: (conversation?: string, user?: string) => Promise<boolean>) { super(); }
 
 	prepare(key: string, app: LaunchpadApp): boolean {
@@ -41,10 +43,12 @@ export class StudioChatWindow extends Disposable {
 			try { chat = await pending; } finally { if (this.opening.get(view.id) === pending) { this.opening.delete(view.id); } }
 		}
 		if (!chat || !await chat.ready || this.chats.get(view.id) !== chat || this.prepared !== prepared) { return false; }
-		chat.window.window.focus(); chat.webview.focus(); return true;
+		await this.native.focusWindow({ targetWindowId: chat.window.window.vscodeWindowId });
+		if (this.chats.get(view.id) !== chat || this.prepared !== prepared) { return false; }
+		chat.webview.focus(); return true;
 	}
 	private async mount(prepared: { key: string; app: LaunchpadApp }, view: LaunchpadAppView): Promise<MountedChat | undefined> {
-		const window = await this.windows.open({ bounds: { width: 780, height: 680 }, nativeTitlebar: true });
+		const window = await this.windows.open({ bounds: { width: 780, height: 680 }, nativeTitlebar: true, keepAboveParent: true });
 		if (this.prepared !== prepared || this._store.isDisposed) { window.dispose(); return undefined; }
 		const life = new DisposableStore();
 		try {

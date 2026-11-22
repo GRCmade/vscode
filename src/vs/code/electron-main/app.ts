@@ -620,10 +620,11 @@ export class CodeApplication extends Disposable {
 				// about:blank windows can open as window witho our default options
 				if (details.url === 'about:blank') {
 					this.logService.trace('[aux window] webContents#setWindowOpenHandler: Allowing auxiliary window to open on about:blank');
+					const owner = this.windowsMainService?.getWindowByWebContents(contents);
 
 					return {
 						action: 'allow',
-						overrideBrowserWindowOptions: this.auxiliaryWindowsMainService?.createWindow(details)
+						overrideBrowserWindowOptions: this.auxiliaryWindowsMainService?.createWindow(details, owner?.isStudioLaunchpad ? owner.win ?? undefined : undefined)
 					};
 				}
 

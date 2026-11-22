@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { BrowserWindowConstructorOptions, HandlerDetails, WebContents } from 'electron';
+import { BrowserWindow, BrowserWindowConstructorOptions, HandlerDetails, WebContents } from 'electron';
 import { Event } from '../../../base/common/event.js';
 import { IAuxiliaryWindow } from './auxiliaryWindow.js';
 import { createDecorator } from '../../instantiation/common/instantiation.js';
@@ -20,7 +20,7 @@ export interface IAuxiliaryWindowsMainService {
 	readonly onDidChangeAlwaysOnTop: Event<{ window: IAuxiliaryWindow; alwaysOnTop: boolean }>;
 	readonly onDidTriggerSystemContextMenu: Event<{ readonly window: IAuxiliaryWindow; readonly x: number; readonly y: number }>;
 
-	createWindow(details: HandlerDetails): BrowserWindowConstructorOptions;
+	createWindow(details: HandlerDetails, parent?: BrowserWindow): BrowserWindowConstructorOptions;
 	registerWindow(webContents: WebContents): void;
 
 	getWindowByWebContents(webContents: WebContents): IAuxiliaryWindow | undefined;

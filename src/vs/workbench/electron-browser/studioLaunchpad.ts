@@ -91,7 +91,7 @@ export class StudioLaunchpad extends Disposable {
 		@IClipboardService clipboard: IClipboardService,
 	) {
 		super();
-		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener,
+		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener, native,
 			(conversation, user) => this.openInbox(conversation, user).catch(error => { notifications.error(error); return false; })));
 		// Read the extension's profile memento synchronously; native history still owns membership and ordering.
 		const saved = extensionStorage.getExtensionState('studio.studio-workstation', true)?.['studio.recentProjects'];

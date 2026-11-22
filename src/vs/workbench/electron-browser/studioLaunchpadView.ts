@@ -114,7 +114,7 @@ export class StudioLaunchpadView extends Disposable {
 	get canDropProject(): boolean { return !this.element.hidden && !this.picker.dialog.open; }
 	setProjectDropActive(active: boolean): void { this.drop.hidden = !active; }
 	setVisible(visible: boolean): void { this.element.hidden = !visible; this.drop.hidden = true; }
-	setInboxBusy(busy: boolean): void { this.inboxButton.disabled = busy; this.inboxButton.setAttribute('aria-busy', String(busy)); }
+	setInboxBusy(busy: boolean): void { this.inboxButton.disabled = busy; this.inboxButton.setAttribute('aria-busy', String(busy)); this.profile.setInboxBusy(busy); }
 	focusInbox(): void { if (this.state?.platform) { this.inboxButton.focus({ preventScroll: true }); } }
 	focusAccount(): void { this.accountButton.focus({ preventScroll: true }); }
 	closePicker(): void { this.picker.close(); }

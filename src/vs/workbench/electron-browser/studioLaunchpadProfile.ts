@@ -20,6 +20,7 @@ export type SocialResult = SocialSnapshot | { unavailable: 'unsupported' };
 export interface SocialAction { action: 'accept-invite' | 'decline-invite' | 'remove' | 'unfavorite' | 'read'; id: string }
 export interface ProfileActions {
 	settings(): void; signIn(): void; inbox(id?: string): void; chatUser(id: string): void;
+	addContact(): void;
 	confirmRemoveFriend(name: string): Promise<boolean>;
 	social(query: string): Promise<SocialResult>; change(action: SocialAction): Promise<void>;
 }
@@ -71,6 +72,8 @@ export class LaunchpadProfile extends Disposable {
 	private readonly empty = element('div', 'lp-profile-empty');
 	private readonly search = element('label', 'lp-search-field');
 	private readonly filter = element('input', 'lp-query');
+	private readonly peopleTools = element('div', 'lp-social-actions');
+	private readonly addContact: HTMLButtonElement;
 	private readonly status = element('div', 'lp-message lp-profile-status');
 	private readonly debounce = this._register(new RunOnceScheduler(() => void this.load(), 220));
 	// The default snapshot serves all sections. Keep at most one additional friend search, in memory only.
@@ -92,6 +95,9 @@ export class LaunchpadProfile extends Disposable {
 		this.status.setAttribute('role', 'status'); this.filter.type = 'search'; this.filter.maxLength = 100;
 		this.filter.placeholder = t('Search friends', '搜索好友'); this.filter.setAttribute('aria-label', this.filter.placeholder);
 		this.search.append(icon('search'), this.filter);
+		this.addContact = button(t('Add friend', '添加好友'), 'add', this.actions.addContact, 'lp-primary');
+		this.peopleTools.hidden = true;
+		this.peopleTools.append(this.search, this.addContact);
 		this.filter.addEventListener('input', () => { if (this.pending?.query !== this.query) { this.pending = undefined; } this.failure = undefined; this.renderRows(); this.debounce.schedule(); });
 		this.content.id = 'lp-profile-section'; this.content.setAttribute('role', 'tabpanel'); this.content.tabIndex = 0;
 		this.nav.setAttribute('role', 'tablist'); this.nav.setAttribute('aria-label', t('My Studio sections', '我的分区'));
@@ -116,9 +122,11 @@ export class LaunchpadProfile extends Disposable {
 			this.select(id); this.tabs.get(id)!.focus();
 		});
 		const rail = element('aside', 'lp-profile-rail lp-scroll'), body = element('div', 'lp-profile-body'), toolbar = element('header', 'lp-profile-toolbar');
-		const title = element('div', 'lp-profile-title'); title.append(this.heading, this.count); toolbar.append(title, this.search);
+		const title = element('div', 'lp-profile-title'); title.append(this.heading, this.count); toolbar.append(title, this.peopleTools);
 		rail.append(this.header, this.nav); body.append(toolbar, this.status, this.rows, this.empty); this.content.append(body); this.element.append(rail, this.content);
 	}
+
+	setInboxBusy(busy: boolean): void { this.addContact.disabled = busy; }
 
 	select(section: Section): void {
 		if (this.section === section || (!this.platform && section !== 'notifications')) { return; }
@@ -197,7 +205,7 @@ export class LaunchpadProfile extends Disposable {
 			const selected = this.section === id; b.hidden = !this.platform && id !== 'notifications'; b.setAttribute('aria-selected', String(selected)); b.tabIndex = selected ? 0 : -1;
 			if (selected) { this.heading.textContent = b.title; this.content.setAttribute('aria-labelledby', b.id); }
 		}
-		this.search.hidden = this.section !== 'people' || !this.account?.signedIn;
+		this.peopleTools.hidden = this.section !== 'people' || !this.platform || !this.account?.signedIn;
 		this.renderRows();
 	}
 

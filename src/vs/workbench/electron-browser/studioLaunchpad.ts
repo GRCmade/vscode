@@ -137,6 +137,7 @@ export class StudioLaunchpad extends Disposable {
 				return response === 0;
 			},
 			chatUser: user => run(this.openInbox(undefined, user)),
+			addContact: () => run(this.openInbox(undefined, undefined, 'add-contact')),
 			readNotice: id => this.notices.read(id),
 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
 		}));
@@ -345,7 +346,7 @@ export class StudioLaunchpad extends Disposable {
 		}
 	}
 
-	private async openInbox(conversation?: string, user?: string): Promise<void> {
+	private async openInbox(conversation?: string, user?: string, action?: 'add-contact'): Promise<void> {
 		if (this.requestId) { return; }
 		const id = this.requestId = generateUuid();
 		this.view.closePicker();
@@ -354,7 +355,7 @@ export class StudioLaunchpad extends Disposable {
 		try {
 			let reason: string | undefined; let opened = false;
 			try {
-				const result = await this.commands.executeCommand<string | true>('studio.openLaunchpadInbox', id, conversation, user);
+				const result = await this.commands.executeCommand<string | true>('studio.openLaunchpadInbox', id, conversation, user, action);
 				opened = result === true; reason = typeof result === 'string' ? result : undefined;
 			} catch { /* An unavailable extension or webview gets the same modal, never an editor fallback. */ }
 			if (!opened && id === this.requestId) {

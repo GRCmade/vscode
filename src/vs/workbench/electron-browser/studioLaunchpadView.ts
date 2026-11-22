@@ -31,7 +31,8 @@ export class StudioLaunchpadView extends Disposable {
 	private readonly panels = element('main', 'lp-panels');
 	private readonly commandCenter: HTMLButtonElement;
 	private readonly accountButton: HTMLButtonElement;
-	private readonly inboxButton: HTMLButtonElement;
+	private readonly latestNotice: HTMLButtonElement;
+	private readonly noticeContent = element('span');
 	private readonly bell: HTMLButtonElement;
 	private readonly consoleButton: HTMLButtonElement;
 	private readonly picker: LaunchpadPicker;
@@ -82,14 +83,19 @@ export class StudioLaunchpadView extends Disposable {
 		});
 		navigation.append(this.tabs);
 		this.library = new LaunchpadLibrary(t, actions);
-		this.store = this._register(new LaunchpadStore(t, actions)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice));
+		this.store = this._register(new LaunchpadStore(t, actions)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice, this.picker));
 		const community = element('div', 'lp-community'); community.append(icon('organization'), element('h1', '', t('Community', '社区')), element('p', '', t('Coming soon', '暂未开放')));
 		for (const [id, page] of [['store', this.store.element], ['library', this.library.element], ['community', community], ['profile', this.profile.element]] as const) {
 			page.id = `lp-page-${id}`; page.setAttribute('role', 'tabpanel'); page.setAttribute('aria-labelledby', `lp-tab-${id}`); this.panels.append(page);
 		}
 		const foot = element('footer', 'lp-statusbar'); const open = button(t('Open project…', '打开项目…'), 'folder-opened', () => this.openOptions(open));
-		this.inboxButton = button(t('Friends & chat', '好友与聊天'), 'comment-discussion', () => actions.inbox(), 'lp-chat-launch');
-		foot.append(open, this.inboxButton); this.drop.append(icon('folder-opened'), t('Drop folders to import projects', '松开以导入项目文件夹')); this.drop.hidden = true;
+		this.latestNotice = button('', 'bell', () => {
+			const notice = this.state?.inbox?.latestNotice;
+			if (notice?.conversation) { actions.inbox(notice.conversation, notice.title); }
+		}, 'lp-latest-notice');
+		this.latestNotice.hidden = true;
+		this.latestNotice.append(this.noticeContent);
+		foot.append(open, this.latestNotice); this.drop.append(icon('folder-opened'), t('Drop folders to import projects', '松开以导入项目文件夹')); this.drop.hidden = true;
 		this.element.append(chrome, navigation, this.panels, foot, this.drop, this.picker.dialog); this.select(this.active);
 	}
 
@@ -105,7 +111,7 @@ export class StudioLaunchpadView extends Disposable {
 	private fileOptions(): LaunchpadOption[] { return [{ label: this.t('Open folder…', '打开文件夹…'), glyph: 'folder-opened', run: this.actions.open }, { label: this.t('Open workspace…', '打开工作区…'), glyph: 'project', run: this.actions.workspace }]; }
 	private openOptions(origin: HTMLElement): void { this.picker.choices(this.t('Open project…', '打开项目…'), this.fileOptions(), origin); }
 	private search(commands: boolean): void {
-		this.picker.search(commands, this.commandCenter, mode => mode ? [...this.fileOptions(), ...(this.state?.platform ? [{ label: this.t('Open chat', '打开聊天'), glyph: 'comment', run: () => this.actions.inbox() }] : [])] : (this.state?.recent ?? []).map(p => ({ label: p.name, glyph: glyph(p), detail: p.path, run: () => this.select('library', p.uri) })));
+		this.picker.search(commands, this.commandCenter, mode => mode ? [...this.fileOptions(), ...(this.state?.platform ? [{ label: this.t('View recent chats', '查看最近会话'), glyph: 'comment', run: () => this.showSocial('activity') }] : [])] : (this.state?.recent ?? []).map(p => ({ label: p.name, glyph: glyph(p), detail: p.path, run: () => this.select('library', p.uri) })));
 	}
 	shortcut(event: KeyboardEvent): void {
 		if (this.element.hidden || event.defaultPrevented || event.isComposing || event.altKey || !(event.target instanceof Node) || (!this.element.contains(event.target) && event.target !== document.body) || (this.picker.dialog.open && !this.picker.dialog.classList.contains('lp-quick'))) { return; }
@@ -115,19 +121,23 @@ export class StudioLaunchpadView extends Disposable {
 	get canDropProject(): boolean { return !this.element.hidden && !this.picker.dialog.open; }
 	setProjectDropActive(active: boolean): void { this.drop.hidden = !active; }
 	setVisible(visible: boolean): void { this.element.hidden = !visible; this.drop.hidden = true; }
-	setInboxBusy(busy: boolean): void { this.inboxButton.disabled = busy; this.inboxButton.setAttribute('aria-busy', String(busy)); this.profile.setInboxBusy(busy); }
-	focusInbox(): void { if (this.state?.platform) { this.inboxButton.focus({ preventScroll: true }); } }
+	setAddContactBusy(busy: boolean): void { this.profile.setInboxBusy(busy); }
 	focusAccount(): void { this.accountButton.focus({ preventScroll: true }); }
 	closePicker(): void { this.picker.close(); }
 	refreshSocial(): void { void this.profile.refresh(); }
-	showSocial(section: 'people' | 'favorites'): void { this.select('profile'); this.profile.select(section); }
+	refreshDirectory(): void { this.profile.refreshDirectory(); }
+	showSocial(section: 'activity' | 'people' | 'favorites'): void { this.select('profile'); this.profile.select(section); }
 	showImportedProjects(singleUri?: string): void { this.library.resetFilters(); this.select('library', singleUri); }
 	update(state: LaunchpadState): void {
 		const previous = this.state; this.state = state;
-		this.consoleButton.hidden = this.inboxButton.hidden = !state.platform;
+		this.consoleButton.hidden = !state.platform;
+		if (previous?.account?.scopeKey !== state.account?.scopeKey || previous?.account?.signedIn !== state.account?.signedIn) { this.picker.close(); }
 		if (!previous || JSON.stringify(previous.account) !== JSON.stringify(state.account)) { this.accountButton.replaceChildren(avatar(state.account?.name ?? '', state.account?.avatarUrl)); }
-		const unread = state.inbox?.items.reduce((sum, c) => sum + c.unread, 0) ?? 0;
-		this.inboxButton.dataset.count = unread ? String(unread) : ''; this.bell.classList.toggle('lp-has-unread', state.notificationUnread);
+		const notice = state.platform && state.account?.signedIn ? state.inbox?.latestNotice : undefined;
+		this.latestNotice.hidden = !notice?.conversation;
+		const preview = notice ? `${notice.title}${notice.detail ? `: ${notice.detail}` : ''}` : '';
+		if (this.noticeContent.textContent !== preview) { this.noticeContent.textContent = this.latestNotice.title = preview; }
+		this.bell.classList.toggle('lp-has-unread', state.notificationUnread);
 		this.library.update(state.recent, state.windows, state.canCreate, state.platform && state.account?.signedIn ? state.account.scopeKey ?? 'signed-in' : '', state.libraryCategory);
 		this.store.update(this.active === 'store', state.platform, state.account?.scopeKey ?? state.account?.storeScopeKey, state.store?.items ?? []);
 		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices, state.notificationUnread);

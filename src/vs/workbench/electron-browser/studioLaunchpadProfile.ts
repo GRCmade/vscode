@@ -4,30 +4,39 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { mainWindow } from '../../base/browser/window.js';
+import { IAction, Separator, toAction } from '../../base/common/actions.js';
 import { RunOnceScheduler } from '../../base/common/async.js';
 import { Disposable, toDisposable } from '../../base/common/lifecycle.js';
+import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
 import { picture } from './studioLaunchpadCards.js';
-import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
+import { button, element, icon, LaunchpadLabel, LaunchpadPicker } from './studioLaunchpadPicker.js';
 
 export interface LaunchpadAccount { name: string; email?: string | null; avatarUrl?: string; scopeKey?: string; storeScopeKey?: string; statusLabel?: string; hasAccount: boolean; signedIn: boolean }
 interface NamedIdentity { name: string; avatarUrl?: string; badge?: string }
-export interface LaunchpadInbox { connection?: 'connected' | 'offline' | 'connecting' | 'guest'; message?: string; items: (NamedIdentity & { id?: string; preview: string; unread: number; time?: number; group?: boolean })[] }
+interface ConversationState { id: string; peerId?: string; unread: number; time?: number; pinned?: boolean; starred?: boolean; muted?: boolean }
+interface RecentChat extends NamedIdentity, ConversationState { preview: string; group?: boolean }
+export interface LaunchpadInbox { connection?: 'connected' | 'offline' | 'connecting' | 'guest'; message?: string; items: RecentChat[]; latestNotice?: StudioNotice }
 export interface StudioPerson extends NamedIdentity { id: string; relation?: 'friend' | 'incoming' | 'outgoing' }
+interface StudioGroup extends NamedIdentity { id: string; conversation: string; members?: number }
+export interface LaunchpadDirectory { groups: StudioGroup[]; conversations: ConversationState[] }
 export interface StudioFavorite { id: string; title: string; detail?: string; conversation?: string }
-export interface StudioNotice { id: string; title: string; source: 'studio' | 'im'; read: boolean; conversation?: string; inviteId?: string; legacyInvite?: boolean; avatarUrl?: string }
-export interface SocialSnapshot { people: StudioPerson[]; favorites: StudioFavorite[]; notices: StudioNotice[] }
+export interface StudioNotice { id: string; title: string; source: 'studio' | 'im'; read: boolean; conversation?: string; inviteId?: string; legacyInvite?: boolean; avatarUrl?: string; time?: number; detail?: string }
+export interface SocialSnapshot { people: StudioPerson[]; favorites: StudioFavorite[]; notices: StudioNotice[]; directory?: LaunchpadDirectory; directoryUnavailable?: boolean }
 export type SocialResult = SocialSnapshot | { unavailable: 'unsupported' };
 export interface SocialAction { action: 'accept-invite' | 'decline-invite' | 'remove' | 'unfavorite' | 'read'; id: string }
+export interface ConversationAction { setting: 'pin' | 'star' | 'mute' | 'read' | 'hide'; id: string; value: boolean }
 export interface ProfileActions {
-	settings(): void; signIn(): void; inbox(id?: string): void; chatUser(id: string): void;
+	settings(): void; signIn(): void; inbox(id: string, title?: string): void; chatUser(id: string, title?: string): void;
 	addContact(): void;
+	contextMenu: IContextMenuService;
 	confirmRemoveFriend(name: string): Promise<boolean>;
-	social(query: string): Promise<SocialResult>; change(action: SocialAction): Promise<void>;
+	social(query: string, directory: boolean): Promise<SocialResult>; change(action: SocialAction): Promise<void>;
+	changeConversation(action: ConversationAction): Promise<void>;
 	readAllNotices(): Promise<void>;
 }
-export function avatar(name: string, src?: string): HTMLElement {
+export function avatar(name: string, src?: string, glyph = 'account'): HTMLElement {
 	const mark = element('span', 'lp-avatar');
-	const fallback = name ? element('span', '', Array.from(name)[0]) : icon('account');
+	const fallback = glyph !== 'account' || !name ? icon(glyph) : element('span', '', Array.from(name)[0]);
 	mark.append(fallback);
 	if (src && /^(?:https?:\/\/|data:image\/)/i.test(src)) {
 		const img = picture(src);
@@ -46,17 +55,16 @@ function tool(label: string, glyph: string, action: () => void): HTMLButtonEleme
 	const b = button('', glyph, action, 'lp-profile-tool'); b.title = label; b.setAttribute('aria-label', label); return b;
 }
 
-function row(identity: string | NamedIdentity, detail: string, mark: HTMLElement, ...buttons: HTMLButtonElement[]): HTMLLIElement {
-	const item = element('li', 'lp-social-row'), text = element('div', 'lp-social-text');
-	const name = element('strong', '', typeof identity === 'string' ? identity : identity.name);
-	if (typeof identity !== 'string' && identity.badge) {
-		const title = element('div', 'lp-social-title'), badge = element('span', 'lp-social-badge');
-		if (identity.avatarUrl?.startsWith('data:image/')) { badge.append(picture(identity.avatarUrl)); }
-		badge.append(identity.badge);
-		title.append(name, badge); text.append(title);
-	} else { text.append(name); }
+function socialText(name: string, detail: string): HTMLElement {
+	const text = element('span', 'lp-social-text');
+	text.append(element('strong', '', name));
 	if (detail) { text.append(element('small', '', detail)); }
-	item.append(mark, text);
+	return text;
+}
+
+function row(name: string, detail: string, mark: HTMLElement, ...buttons: HTMLButtonElement[]): HTMLLIElement {
+	const item = element('li', 'lp-social-row');
+	item.append(mark, socialText(name, detail));
 	if (buttons.length) { const actions = element('div', 'lp-social-actions'); actions.append(...buttons); item.append(actions); }
 	return item;
 }
@@ -79,9 +87,9 @@ export class LaunchpadProfile extends Disposable {
 	private readonly status = element('div', 'lp-message lp-profile-status');
 	private readonly debounce = this._register(new RunOnceScheduler(() => void this.load(), 220));
 	// The default snapshot serves all sections. Keep at most one additional friend search, in memory only.
-	private readonly cache = new Map<string, { snapshot: SocialSnapshot; generation: number }>();
+	private readonly cache = new Map<string, { snapshot: SocialSnapshot; generation: number; directory: boolean }>();
 	private generation = 0;
-	private pending?: { query: string; generation: number };
+	private pending?: { query: string; generation: number; directory: boolean };
 	private failure?: { query: string; reason: Failure };
 	private changing = new Set<string>();
 	private markingAll = false;
@@ -95,10 +103,10 @@ export class LaunchpadProfile extends Disposable {
 	private platform = false;
 	private account?: LaunchpadAccount;
 
-	constructor(private readonly t: LaunchpadLabel, private readonly actions: ProfileActions, private readonly readNative: (id: string) => void) {
+	constructor(private readonly t: LaunchpadLabel, private readonly actions: ProfileActions, private readonly readNative: (id: string) => void, private readonly picker: LaunchpadPicker) {
 		super();
 		this.status.setAttribute('role', 'status'); this.filter.type = 'search'; this.filter.maxLength = 100;
-		this.filter.placeholder = t('Search friends', '搜索好友'); this.filter.setAttribute('aria-label', this.filter.placeholder);
+		this.filter.placeholder = t('Search friends and groups', '搜索好友和群聊'); this.filter.setAttribute('aria-label', this.filter.placeholder);
 		this.search.append(icon('search'), this.filter);
 		this.addContact = button(t('Add friend', '添加好友'), 'add', this.actions.addContact, 'lp-primary');
 		this.readAll = button(t('Mark all as read', '全部已读'), 'check-all', () => void this.markAllRead(), 'lp-outline');
@@ -138,7 +146,7 @@ export class LaunchpadProfile extends Disposable {
 	select(section: Section): void {
 		if (this.section === section || (!this.platform && section !== 'notifications')) { return; }
 		this.debounce.cancel(); this.section = section; this.failure = undefined;
-		if (section === 'activity' || this.pending?.query !== this.query) { this.pending = undefined; }
+		if (section === 'activity' || this.pending?.query !== this.query || this.pending.directory !== (section === 'people')) { this.pending = undefined; }
 		this.renderSection(); this.content.scrollTop = 0;
 		void this.load();
 	}
@@ -161,16 +169,18 @@ export class LaunchpadProfile extends Disposable {
 
 	private async load(): Promise<void> {
 		if (!this.active || !this.platform || !this.account?.signedIn || this.section === 'activity') { return; }
-		const query = this.query, generation = this.generation;
-		if (this.cache.get(query)?.generation === generation || (this.pending?.query === query && this.pending.generation === generation)) { return; }
-		const request = this.pending = { query, generation };
+		const query = this.query, generation = this.generation, directory = this.section === 'people';
+		const cached = this.cache.get(query);
+		if ((cached?.generation === generation && (!directory || cached.directory)) ||
+			(this.pending?.query === query && this.pending.generation === generation && (!directory || this.pending.directory))) { return; }
+		const request = this.pending = { query, generation, directory };
 		try {
-			const result = await this.actions.social(query);
+			const result = await this.actions.social(query, directory);
 			if (this.pending !== request) { return; }
 			if ('unavailable' in result) { this.failure = { query, reason: result.unavailable }; }
 			else {
 				if (query) { for (const key of this.cache.keys()) { if (key && key !== query) { this.cache.delete(key); } } }
-				this.cache.set(query, { snapshot: { ...result, people: result.people.filter(p => p.relation === 'friend') }, generation }); this.failure = undefined;
+				this.cache.set(query, { snapshot: { ...result, directory: result.directory ?? cached?.snapshot.directory, people: result.people.filter(p => p.relation === 'friend') }, generation, directory }); this.failure = undefined;
 			}
 		} catch {
 			if (this.pending !== request) { return; }
@@ -178,6 +188,102 @@ export class LaunchpadProfile extends Disposable {
 		}
 		this.pending = undefined;
 		if (this.active && this.query === query) { this.renderRows(); }
+	}
+
+	refreshDirectory(): void { if (this.active && this.section === 'people') { this.refresh(); } }
+
+	private entries(identity: NamedIdentity, preview: string, key: string, open: () => void, state?: ConversationState, contact?: StudioPerson | StudioGroup, group = false): HTMLLIElement {
+		const t = this.t;
+		const item = element('li', 'lp-conversation-row');
+		const activate = button('', '', () => {
+			const selection = mainWindow.getSelection();
+			if (!selection?.isCollapsed && selection?.anchorNode && activate.contains(selection.anchorNode)) { return; }
+			open();
+		}, 'lp-conversation-open');
+		activate.dataset.key = key;
+		activate.setAttribute('aria-haspopup', 'menu');
+		const meta = element('span', 'lp-conversation-meta');
+		const badges = element('span', 'lp-conversation-badges');
+		const statusIcon = (glyph: string, label: string) => {
+			const mark = icon(glyph); mark.title = label; mark.setAttribute('aria-label', label); mark.setAttribute('aria-hidden', 'false'); badges.append(mark);
+		};
+		if (identity.badge) {
+			const badge = element('span', 'lp-social-badge');
+			if (identity.avatarUrl?.startsWith('data:image/')) { badge.append(picture(identity.avatarUrl)); }
+			badge.append(identity.badge); badges.append(badge);
+		}
+		if (group) { statusIcon('organization', t('Group chat', '群聊')); }
+		if (state?.pinned) { statusIcon('pinned', t('Pinned', '已置顶')); }
+		if (state?.starred) { statusIcon('star-full', t('Starred', '已加星标')); }
+		if (state?.muted) { statusIcon('bell-slash', t('Muted', '免打扰')); }
+		if (state?.unread) {
+			const unread = element('span', 'lp-unread-count', state.unread > 99 ? '99+' : String(state.unread));
+			unread.title = t(`${state.unread} unread`, `${state.unread} 条未读`); badges.append(unread);
+		}
+		if (state?.time) {
+			const date = new Date(state.time), now = new Date(), language = t('en', 'zh-CN');
+			if (Number.isFinite(date.getTime())) {
+				const today = date.toDateString() === now.toDateString();
+				const options: Intl.DateTimeFormatOptions = today ? { hour: 'numeric', minute: '2-digit' }
+					: { month: 'short', day: 'numeric', ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) };
+				const time = element('time', '', date.toLocaleString(language, options));
+				time.dateTime = date.toISOString(); time.title = date.toLocaleString(language); meta.append(time);
+			}
+		}
+		if (badges.childElementCount) { meta.append(badges); }
+		activate.append(group && !identity.avatarUrl ? avatar('', undefined, 'organization') : avatar(identity.name, identity.avatarUrl), socialText(identity.name, preview));
+		if (meta.childElementCount) { activate.append(meta); }
+		item.append(activate);
+		const menu = (point?: { x: number; y: number }) => this.showConversationMenu(identity, activate, open, state, contact, point);
+		activate.addEventListener('contextmenu', e => {
+			e.preventDefault(); e.stopPropagation(); activate.focus({ preventScroll: true });
+			menu(e.button === 2 ? { x: e.clientX, y: e.clientY } : undefined);
+		});
+		activate.addEventListener('keydown', e => {
+			if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); e.stopPropagation(); menu(); }
+		});
+		return item;
+	}
+
+	private showConversationMenu(identity: NamedIdentity, origin: HTMLElement, open: () => void, state?: ConversationState, contact?: StudioPerson | StudioGroup, point?: { x: number; y: number }): void {
+		const t = this.t, scope = this.changing;
+		const action = (id: string, label: string, run: () => void | Promise<void>) => toAction({ id: `studio.social.${id}`, label, run: () => { if (scope === this.changing) { return run(); } } });
+		const items: IAction[] = [action('open', t('Open conversation', '打开会话'), open)];
+		if (state) {
+			const toggle = (setting: ConversationAction['setting'], label: string, value: boolean) => action(setting, label, () => this.changeConversation({ id: state.id, setting, value }));
+			items.push(new Separator(), toggle('pin', state.pinned ? t('Unpin', '取消置顶') : t('Pin', '置顶'), !state.pinned),
+				toggle('star', state.starred ? t('Remove star', '取消星标') : t('Star', '加星标'), !state.starred),
+				toggle('read', state.unread ? t('Mark as read', '标为已读') : t('Mark as unread', '标为未读'), !!state.unread),
+				toggle('mute', state.muted ? t('Unmute', '取消免打扰') : t('Mute', '消息免打扰'), !state.muted));
+			if (!contact) { items.push(toggle('hide', t('Hide conversation', '从最近会话中移除'), true)); }
+		}
+		if (contact) {
+			const group = 'conversation' in contact;
+			const title = group ? t('Group info', '群聊信息') : t('Friend info', '好友资料');
+			items.push(new Separator(), action('info', group ? t('View group info', '查看群聊信息') : t('View friend info', '查看好友资料'), () => {
+				const detail = element('span', 'lp-contact-detail');
+				const description = group ? (contact.members !== undefined ? t(`${contact.members} members`, `${contact.members} 位成员`) : t('Group chat', '群聊')) : contact.badge ?? t('Friend', '好友');
+				detail.append(avatar(identity.name, identity.avatarUrl, group ? 'organization' : undefined), socialText(identity.name, description),
+					element('small', 'lp-contact-id', `${group ? t('Group ID', '群 ID') : t('User ID', '用户 ID')}: ${contact.id}`));
+				this.picker.choices(title, [{ label: t('Open conversation', '打开会话'), glyph: 'comment', run: open }], origin, detail);
+			}));
+			if (!group) { items.push(action('remove', t('Remove friend…', '删除好友…'), () => this.removeFriend(contact))); }
+		}
+		this.actions.contextMenu.showContextMenu({ getAnchor: () => point ?? origin, getActions: () => items, autoSelectFirstItem: !point });
+	}
+
+	private async changeConversation(action: ConversationAction): Promise<void> {
+		const changing = this.changing;
+		if (changing.has(action.id)) { return; }
+		changing.add(action.id);
+		try {
+			await this.actions.changeConversation(action);
+			if (changing === this.changing) { this.failure = undefined; }
+		} catch {
+			if (changing === this.changing) {
+				this.failure = { query: this.query, reason: 'change' }; this.renderRows();
+			}
+		} finally { changing.delete(action.id); }
 	}
 
 	private async mutate(action: SocialAction): Promise<void> {
@@ -243,6 +349,8 @@ export class LaunchpadProfile extends Disposable {
 	private renderRows(): void {
 		const t = this.t, needsSocial = this.section !== 'activity' && this.platform && !!this.account?.signedIn;
 		const query = this.query, data = this.cache.get(query)?.snapshot;
+		const directory = data?.directory ?? this.cache.get('')?.snapshot.directory;
+		const directoryUnavailable = this.section === 'people' && data?.directoryUnavailable;
 		this.readAll.hidden = this.section !== 'notifications';
 		this.readAll.disabled = this.markingAll || !(this.markAllFailed || this.notificationUnread || data?.notices.some(notice => !notice.read));
 		const failure = this.failure?.query === query ? this.failure.reason : undefined;
@@ -250,33 +358,46 @@ export class LaunchpadProfile extends Disposable {
 		this.status.replaceChildren();
 		if (this.section === 'notifications' && this.markAllFailed) {
 			this.status.textContent = t('Could not mark all notifications as read. Try again.', '未能将所有通知标为已读，请重试。');
+		} else if (failure === 'change') {
+			this.status.textContent = t('Change could not be saved.', '更改未能保存。');
 		} else if (needsSocial) {
-			if (failure === 'change') { this.status.textContent = t('Change could not be saved.', '更改未能保存。'); }
-			else if (failure) {
+			if (failure) {
 				const message = failure === 'unsupported'
 					? t('This server does not provide Studio social data. Check the server version and retry.', '当前服务器未提供 Studio 社交接口，请确认服务器版本后重试。')
 					: t('Studio social data is unavailable.', '暂时无法读取 Studio 社交数据。');
 				this.status.append(icon('warning'), message, button(t('Retry', '重试'), 'refresh', () => this.refresh()));
+			} else if (directoryUnavailable) {
+				this.status.append(icon('warning'), t('Could not refresh groups.', '暂时无法刷新群聊。'), button(t('Retry', '重试'), 'refresh', () => this.refresh()));
 			} else if (!data && !friends?.length) { this.status.textContent = t('Loading…', '正在加载…'); }
 		}
 		const items: HTMLLIElement[] = [];
 		const change = (label: string, glyph: string, action: SocialAction) => { const b = button(label, glyph, () => void this.mutate(action)); b.disabled = this.changing.has(action.id); return b; };
 		if (this.section === 'activity') {
 			for (const c of this.inbox?.items ?? []) {
-				const item = row(c, c.preview, avatar(c.name, c.avatarUrl), button(t('Chat', '聊天'), 'comment', () => this.actions.inbox(c.id), 'lp-outline'));
-				if (c.unread) { const unread = element('span', 'lp-unread-count', String(c.unread)); unread.title = t(`${c.unread} unread`, `${c.unread} 条未读`); item.lastElementChild?.prepend(unread); }
-				items.push(item);
+				items.push(this.entries(c, c.preview, c.id, () => this.actions.inbox(c.id, c.name), c, undefined, c.group));
 			}
 		} else if (this.section === 'people') {
+			const byPeer = new Map(directory?.conversations.flatMap(c => c.peerId ? [[c.peerId, c] as const] : []));
+			const byId = new Map(directory?.conversations.map(c => [c.id, c] as const));
 			for (const p of friends ?? []) {
-				const remove = tool(t('Remove friend', '移除好友'), 'trash', () => void this.removeFriend(p)); remove.disabled = this.changing.has(p.id);
-				items.push(row(p, '', avatar(p.name, p.avatarUrl), button(t('Chat', '聊天'), 'comment', () => this.actions.chatUser(p.id), 'lp-outline'), remove));
+				const chat = byPeer.get(p.id);
+				items.push(this.entries(p, '', 'person:' + p.id, () => chat ? this.actions.inbox(chat.id, p.name) : this.actions.chatUser(p.id, p.name), chat, p));
+			}
+			for (const g of directory?.groups ?? []) {
+				if (query && !g.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()) && !g.id.includes(query)) { continue; }
+				const detail = g.members !== undefined ? t(`${g.members} members`, `${g.members} 位成员`) : '';
+				items.push(this.entries(g, detail, 'group:' + g.id, () => this.actions.inbox(g.conversation, g.name), byId.get(g.conversation), g, true));
 			}
 		} else if (this.section === 'favorites') {
-			for (const f of data?.favorites ?? []) { items.push(row(f.title, f.detail ?? '', icon('star-full'), ...(f.conversation ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(f.conversation), 'lp-outline')] : []), change(t('Remove', '移除'), 'remove', { action: 'unfavorite', id: f.id }))); }
+			for (const f of data?.favorites ?? []) {
+				const id = f.conversation;
+				items.push(row(f.title, f.detail ?? '', icon('star-full'), ...(id ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(id), 'lp-outline')] : []), change(t('Remove', '移除'), 'remove', { action: 'unfavorite', id: f.id })));
+			}
 		} else {
 			for (const n of [...this.nativeNotices, ...data?.notices ?? []]) {
-				const controls = n.conversation || n.source === 'im' ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(n.conversation), 'lp-outline')] : [];
+				const id = n.conversation;
+				const controls = id ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(id), 'lp-outline')]
+					: n.source === 'im' ? [button(t('View recent chats', '查看最近会话'), 'comment', () => this.select('activity'), 'lp-outline')] : [];
 				if (n.inviteId && n.id === 'request:' + n.inviteId) {
 					controls.push(change(t('Accept', '接受'), 'check', { action: 'accept-invite', id: n.inviteId }), change(t('Decline', '拒绝'), 'close', { action: 'decline-invite', id: n.inviteId }));
 				}
@@ -288,12 +409,14 @@ export class LaunchpadProfile extends Disposable {
 				const item = row(title, detail, mark, ...controls); item.classList.toggle('lp-unread', !n.read); items.push(item);
 			}
 		}
+		const focused = this.rows.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.key : undefined;
 		this.rows.replaceChildren(...items);
+		if (focused) { Array.from(this.rows.querySelectorAll<HTMLButtonElement>('button[data-key]')).find(el => el.dataset.key === focused)?.focus({ preventScroll: true }); }
 		this.count.textContent = String(items.length); this.count.hidden = !items.length;
-		this.empty.hidden = items.length > 0 || (needsSocial && (!data || !!failure));
+		this.empty.hidden = items.length > 0 || (needsSocial && (!data || !!failure || !!directoryUnavailable));
 		if (!this.empty.hidden) {
 			const guest = this.platform && !this.account?.signedIn;
-			const label = this.section === 'people' ? guest ? t('Sign in to see your friends.', '登录后可查看好友。') : query ? t('No matching friends.', '没有匹配的好友。') : t('No friends yet.', '暂无好友。')
+			const label = this.section === 'people' ? guest ? t('Sign in to see your friends and groups.', '登录后可查看好友和群聊。') : query ? t('No matching friends or groups.', '没有匹配的好友或群聊。') : t('No friends or groups yet.', '暂无好友或群聊。')
 				: this.section === 'favorites' ? guest ? t('Sign in to see your favorites.', '登录后可查看收藏。') : t('No favorites yet.', '暂无收藏。')
 					: this.section === 'activity' ? this.inbox?.message || t('No recent chats.', '暂无最近会话。') : t('No notifications.', '暂无通知。');
 			this.empty.replaceChildren(icon(this.section === 'people' ? query ? 'search' : 'organization' : this.section === 'favorites' ? 'star-empty' : this.section === 'activity' ? 'comment-discussion' : 'bell'), element('p', '', label));

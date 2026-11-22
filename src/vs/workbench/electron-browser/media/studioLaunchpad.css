@@ -183,16 +183,27 @@
 .lp-social-row > :is(.lp-avatar,.codicon) { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 6px; background: var(--lp-side); }
 .lp-social-row > .codicon { font-size: 17px; color: var(--lp-muted); } .lp-social-row.lp-unread > .codicon { color: var(--lp-accent); }
 .lp-social-text { flex: 1 1 90px; min-width: 0; display: grid; gap: 2px; overflow-wrap: anywhere; } .lp-social-text strong { font-weight: 550; }
-.lp-social-title { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
-.lp-social-title strong { min-width: 0; }
 .lp-social-badge { display: inline-flex; align-items: center; flex: none; gap: 4px; padding: 1px 5px 1px 3px; color: var(--lp-text); border: 1px solid var(--lp-edge); border-radius: 4px; font-size: 11px; line-height: 15px; }
 .lp-social-badge img { width: 15px; height: 15px; border-radius: 3px; }
 .lp-social-actions { flex-wrap: wrap; justify-content: flex-end; margin-inline-start: auto; gap: 4px; }
+.lp-conversation-row { border-bottom: 1px solid var(--lp-line); }
+.studio-launchpad .lp-conversation-open { display: flex; gap: 10px; width: 100%; min-height: 56px; padding: 7px 8px; justify-content: flex-start; }
+.lp-conversation-open > .lp-avatar { width: 36px; height: 36px; }
+.lp-conversation-open .lp-social-text { flex: 1 1 0; }
+.lp-conversation-open .lp-social-text > * { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.lp-conversation-meta { display: grid; justify-items: end; gap: 3px; min-width: 0; max-width: 55%; flex: 0 1 auto; color: var(--lp-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.lp-conversation-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 3px 6px; }
+.lp-conversation-badges > .codicon { font-size: 13px; }
+.lp-contact-detail { display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 6px 10px; }
+.lp-contact-detail .lp-contact-id { grid-column: 2; }
 .lp-profile-empty { display: grid; justify-items: center; text-align: center; gap: 10px; padding: 48px 12px; color: var(--lp-muted); }
 .lp-profile-empty > .codicon { font-size: 28px; }
 .lp-empty { padding: 30px 0; color: var(--lp-muted); display: flex; align-items: center; gap: 8px; }
 .lp-statusbar { padding-inline: 12px; border-top: 1px solid var(--lp-line); background: var(--lp-chrome); }
-.lp-chat-launch { margin-inline-start: auto; } .lp-chat-launch:not([data-count=""])::after { content: attr(data-count); color: var(--vscode-badge-foreground); background: var(--vscode-badge-background); padding: 0 5px; border-radius: 4px; }
+.lp-statusbar > :first-child { flex: none; }
+.studio-launchpad .lp-latest-notice { margin-inline-start: auto; min-width: 0; overflow: hidden; max-width: min(65%,520px); color: var(--lp-muted); }
+.lp-latest-notice > .codicon { flex: none; }
+.lp-latest-notice > span:last-child { min-width: 0; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
 .lp-dialog { width: min(420px,calc(100% - 20px)); max-height: calc(100% - 20px); padding: 16px; margin: auto; background: var(--lp-panel); color: var(--lp-text); border: 1px solid var(--lp-edge); border-radius: 6px; box-shadow: 0 12px 38px #0005; }
 .lp-dialog::backdrop { background: #0006; } .lp-dialog.lp-quick::backdrop { background: transparent; }
 .lp-dialog-detail { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--lp-muted); padding-block: 7px; }

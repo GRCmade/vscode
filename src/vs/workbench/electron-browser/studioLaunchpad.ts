@@ -37,8 +37,8 @@ import { IWebviewViewService } from '../contrib/webviewView/browser/webviewViewS
 import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layoutService.js';
 import { removeStudioLaunchpadSplash } from './studioLaunchpadSplash.js';
 import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
-import { LaunchpadApp, StudioChatWindow } from './studioChatWindow.js';
-import { SocialResult } from './studioLaunchpadProfile.js';
+import { LaunchpadApp, LaunchpadAppView, StudioChatWindow } from './studioChatWindow.js';
+import { LaunchpadDirectory, SocialResult } from './studioLaunchpadProfile.js';
 import { CatalogPage } from './studioLaunchpadStore.js';
 import { StoreListingDetails } from './studioLaunchpadCards.js';
 import type { LibraryProjectCategory } from './studioLaunchpadLibrary.js';
@@ -53,7 +53,7 @@ export class StudioLaunchpad extends Disposable {
 	private readonly chat: StudioChatWindow;
 	private readonly covers = new Map<string, Promise<string | undefined>>();
 	private readonly settings = this._register(new MutableDisposable<{ webview: IOverlayWebview; dispose(): void }>());
-	private requestId?: string;
+	private readonly appRequests = new Map<string, string>();
 	private windows: LaunchpadProject[] = [];
 	private recent: LaunchpadProject[] = [];
 	private readonly savedProjects = new Map<string, LibraryMetadata & { name?: string; lastOpened?: number }>();
@@ -91,9 +91,8 @@ export class StudioLaunchpad extends Disposable {
 		@IClipboardService clipboard: IClipboardService,
 	) {
 		super();
-		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener, section => {
-			this.showHome(); this.view.showSocial(section); void this.native.focusWindow({ mode: FocusMode.Force });
-		}));
+		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener,
+			(conversation, user) => { void this.openInbox(conversation, user).catch(error => notifications.error(error)); }));
 		// Read the extension's profile memento synchronously; native history still owns membership and ordering.
 		const saved = extensionStorage.getExtensionState('studio.studio-workstation', true)?.['studio.recentProjects'];
 		if (Array.isArray(saved)) {
@@ -119,29 +118,41 @@ export class StudioLaunchpad extends Disposable {
 			copyPath: project => run(clipboard.writeText(project.path)), contextMenu,
 			signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
-			inbox: conversation => run(this.openInbox(conversation)),
+			inbox: (conversation, title) => run(this.openInbox(conversation, undefined, undefined, title)),
 			cover: project => this.cover(project),
 			detailActions: async project => this.start.state?.platform && !project.missing && project.uri.startsWith('file:') ? await commands.executeCommand<{ id: string; label: string }[]>('studio.listLibraryProjectActions', project) ?? [] : [],
 			runDetailAction: async (project, id) => {
 				if (!this.start.state?.platform) { return; }
 				try {
 					const result = await commands.executeCommand<{ chatUser?: string }>('studio.runLibraryProjectAction', project.uri, id);
-					if (result?.chatUser) { await this.openInbox(undefined, result.chatUser); }
+					if (result?.chatUser) { await this.openInbox(undefined, result.chatUser, undefined, project.name); }
 				} catch (error) { notifications.error(error); }
 			},
 			catalog: async (request, platform) => { const page = await commands.executeCommand<CatalogPage>(platform ? 'studio.getStoreCatalog' : 'studio.getLocalCatalog', request); if (!page) { throw new Error('Catalog unavailable'); } return page; },
 			listingDetails: async id => { const item = await commands.executeCommand<StoreListingDetails>('studio.getStoreListingDetails', id); if (!item) { throw new Error('Project details unavailable'); } return item; },
 			storeImage: async src => src.startsWith('http:') ? commands.executeCommand<string | undefined>('studio.readLocalStoreImage', src) : src,
 			getListing: (id, platform) => run(commands.executeCommand(platform ? 'studio.getStoreListing' : 'studio.createExample', id)),
-			social: async query => { const result = await commands.executeCommand<SocialResult>('studio.getSocialSnapshot', query); if (!result) { throw new Error('Social data unavailable'); } return result; },
+			social: async (query, includeDirectory) => {
+				const [result, directory] = await Promise.all([
+					commands.executeCommand<SocialResult>('studio.getSocialSnapshot', query),
+					includeDirectory ? commands.executeCommand<LaunchpadDirectory>('studio.getLaunchpadDirectory').catch(() => undefined) : undefined,
+				]);
+				if (!result) { throw new Error('Social data unavailable'); }
+				if ('unavailable' in result) { return directory ? { people: [], favorites: [], notices: [], directory } : result; }
+				return { ...result, directory, directoryUnavailable: includeDirectory && !directory };
+			},
 			change: async action => { await commands.executeCommand('studio.changeSocial', action); this.refreshNotices.schedule(); },
+			changeConversation: async action => {
+				await commands.executeCommand('studio.changeLaunchpadConversation', action);
+				this.refreshInbox.schedule(); this.view.refreshDirectory();
+			},
 			confirmRemoveFriend: async name => {
 				const zh = this.language.startsWith('zh');
 				const { response } = await native.showMessageBox({ type: 'question', message: zh ? `从好友中移除「${name}」？` : `Remove “${name}” from your friends?`,
 					buttons: zh ? ['移除好友', '取消'] : ['Remove friend', 'Cancel'], cancelId: 1, defaultId: 1, noLink: true });
 				return response === 0;
 			},
-			chatUser: user => run(this.openInbox(undefined, user)),
+			chatUser: (user, title) => run(this.openInbox(undefined, user, undefined, title)),
 			addContact: () => run(this.openInbox(undefined, undefined, 'add-contact')),
 			readNotice: id => this.notices.read(id),
 			readAllNotices: async () => {
@@ -194,9 +205,9 @@ export class StudioLaunchpad extends Disposable {
 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpad', () => this.showHome()));
 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadSettings', (_accessor, title: string) => this.showSettings(title)));
 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadSettings', () => { if (this.settings.value) { this.showHome(); } }));
-		this._register(CommandsRegistry.registerCommand('studio.internalOpenLaunchpadInbox', () => run(this.openInbox())));
+		this._register(CommandsRegistry.registerCommand('studio.internalOpenLaunchpadInbox', () => { this.showHome(); this.view.showSocial('activity'); }));
 		this._register(CommandsRegistry.registerCommand('studio.internalPrepareLaunchpadApp', (_accessor, key: string, app: LaunchpadApp) => this.chat.prepare(key, app)));
-		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, requestId: string, conversation?: string) => this.requestId === requestId && this.chat.show(key, conversation)));
+		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, requestId: string, view: LaunchpadAppView) => Array.from(this.appRequests.values()).includes(requestId) && this.chat.show(key, view)));
 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => this.chat.clear(key)));
 		this._register(CommandsRegistry.registerCommand('studio.internalOpenStoreTab', () => { this.showHome(); this.view.select('store'); }));
 		this._register(CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', () => this.refreshSocialState()));
@@ -208,11 +219,13 @@ export class StudioLaunchpad extends Disposable {
 				this.paint();
 			}
 			this.refreshInbox.schedule();
+			this.view.refreshDirectory();
 		}));
 		let platform = false, accountRevision = 0;
 		const setAccount = (state?: LaunchpadMenuAccount) => {
 			const scopeChanged = state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn;
 			if (scopeChanged) {
+				this.appRequests.clear(); this.view.setAddContactBusy(false);
 				++this.noticeRevision; this.socialUnread = false; this.refreshNotices.schedule();
 				++this.inboxRevision; this.inbox = undefined; this.refreshInbox.schedule();
 				this.libraryCategory = undefined;
@@ -270,7 +283,7 @@ export class StudioLaunchpad extends Disposable {
 		for (const part of parts) { part.inert = true; }
 		this._register(toDisposable(() => {
 			++this.windowRevision; ++this.inboxRevision; ++this.libraryCategoryRevision;
-			this.requestId = undefined;
+			this.appRequests.clear();
 			this.start.setVisible('launchpad', false);
 			for (const part of parts) { part.inert = false; }
 			this.view.element.remove();
@@ -285,9 +298,7 @@ export class StudioLaunchpad extends Disposable {
 		const fromSettings = !!this.settings.value;
 		this.settings.clear();
 		this.view.closePicker();
-		this.requestId = undefined;
 		this.view.setVisible(true);
-		this.view.setInboxBusy(false);
 		this.start.setVisible('launchpad', !document.hidden);
 		if (fromSettings) { this.view.focusAccount(); }
 		else { this.view.element.focus({ preventScroll: true }); }
@@ -365,24 +376,29 @@ export class StudioLaunchpad extends Disposable {
 		}
 	}
 
-	private async openInbox(conversation?: string, user?: string, action?: 'add-contact'): Promise<void> {
-		if (this.requestId) { return; }
-		const id = this.requestId = generateUuid();
+	private async openInbox(conversation?: string, user?: string, action?: 'add-contact', title?: string): Promise<void> {
+		const target = conversation ? `conversation:${conversation}` : user ? `user:${user}` : action;
+		if (!target || this.appRequests.has(target)) { return; }
+		const id = generateUuid();
+		this.appRequests.set(target, id);
 		this.view.closePicker();
-		this.view.setInboxBusy(true);
 		const zh = this.language.startsWith('zh');
+		if (action === 'add-contact') { this.view.setAddContactBusy(true); title = zh ? '添加好友' : 'Add friend'; }
 		try {
 			let reason: string | undefined; let opened = false;
 			try {
-				const result = await this.commands.executeCommand<string | true>('studio.openLaunchpadInbox', id, conversation, user, action);
+				const result = await this.commands.executeCommand<string | true>('studio.openLaunchpadInbox', id, conversation, user, action, title);
 				opened = result === true; reason = typeof result === 'string' ? result : undefined;
 			} catch { /* An unavailable extension or webview gets the same modal, never an editor fallback. */ }
-			if (!opened && id === this.requestId) {
+			if (!opened && id === this.appRequests.get(target)) {
 				await this.native.showMessageBox({ type: 'warning', message: zh ? '无法打开 IM' : 'Could not open IM', detail: reason,
 					buttons: [zh ? '确定' : 'OK'], noLink: true });
 			}
 		} finally {
-			if (id === this.requestId) { this.requestId = undefined; this.view.setInboxBusy(false); }
+			if (id === this.appRequests.get(target)) {
+				this.appRequests.delete(target);
+				if (action === 'add-contact') { this.view.setAddContactBusy(false); }
+			}
 		}
 	}
 

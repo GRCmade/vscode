@@ -18,6 +18,8 @@ export interface LibraryActions {
 	copyPath(p: LaunchpadProject): void;
 	contextMenu: IContextMenuService;
 	cover(p: LaunchpadProject): Promise<string | undefined>;
+	detailActions?(p: LaunchpadProject): Promise<{ id: string; label: string }[]>;
+	runDetailAction?(p: LaunchpadProject, id: string): Promise<void>;
 }
 
 export class LaunchpadLibrary {
@@ -54,9 +56,9 @@ export class LaunchpadLibrary {
 		this.element.append(rail, this.shelf);
 	}
 
-	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean): void {
+	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean, actionScope: string): void {
 		this.createButton.disabled = !canCreate;
-		const signature = JSON.stringify([recent, windows]); if (signature === this.signature) { return; }
+		const signature = JSON.stringify([recent, windows, actionScope]); if (signature === this.signature) { return; }
 		this.signature = signature; this.history = new Set(recent.map(p => p.uri));
 		this.projects = new Map(recent.map(p => [p.uri, p]));
 		for (const p of windows) { if (!this.projects.has(p.uri)) { this.projects.set(p.uri, p); } }
@@ -117,7 +119,19 @@ export class LaunchpadLibrary {
 		this.toolbar.hidden = !!selected;
 		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };
 		if (selected) {
-			this.content.replaceChildren(projectDetails(selected, t, () => this.actions.project(selected), origin => this.manage(selected, origin))); restoreFocus(); return;
+			const detail = projectDetails(selected, t, () => this.actions.project(selected), origin => this.manage(selected, origin));
+			this.content.replaceChildren(detail); restoreFocus();
+			void this.actions.detailActions?.(selected).then(items => {
+				if (detail.parentElement !== this.content) { return; }
+				const controls = detail.querySelector('.lp-detail-actions');
+				for (const item of items.slice(0, 4)) {
+					const action = button(item.label, '', () => {
+						action.disabled = true;
+						void this.actions.runDetailAction?.(selected, item.id).finally(() => { if (detail.parentElement === this.content) { this.render(); } });
+					}, 'lp-outline');
+					controls?.insertBefore(action, controls.lastElementChild);
+				}
+			}).catch(() => undefined); return;
 		}
 		this.content.replaceChildren();
 		if (!rows.length) {

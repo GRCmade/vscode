@@ -10,8 +10,9 @@ import { picture } from './studioLaunchpadCards.js';
 import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
 
 export interface LaunchpadAccount { name: string; email?: string | null; avatarUrl?: string; scopeKey?: string; storeScopeKey?: string; statusLabel?: string; hasAccount: boolean; signedIn: boolean }
-export interface LaunchpadInbox { connection?: 'connected' | 'offline' | 'connecting' | 'guest'; message?: string; items: { id?: string; name: string; preview: string; unread: number; avatarUrl?: string; time?: number; group?: boolean }[] }
-export interface StudioPerson { id: string; name: string; avatarUrl?: string; relation?: 'friend' | 'incoming' | 'outgoing' }
+interface NamedIdentity { name: string; avatarUrl?: string; badge?: string }
+export interface LaunchpadInbox { connection?: 'connected' | 'offline' | 'connecting' | 'guest'; message?: string; items: (NamedIdentity & { id?: string; preview: string; unread: number; time?: number; group?: boolean })[] }
+export interface StudioPerson extends NamedIdentity { id: string; relation?: 'friend' | 'incoming' | 'outgoing' }
 export interface StudioFavorite { id: string; title: string; detail?: string; conversation?: string }
 export interface StudioNotice { id: string; title: string; source: 'studio' | 'im'; read: boolean; conversation?: string; inviteId?: string; legacyInvite?: boolean; avatarUrl?: string }
 export interface SocialSnapshot { people: StudioPerson[]; favorites: StudioFavorite[]; notices: StudioNotice[] }
@@ -43,9 +44,15 @@ function tool(label: string, glyph: string, action: () => void): HTMLButtonEleme
 	const b = button('', glyph, action, 'lp-profile-tool'); b.title = label; b.setAttribute('aria-label', label); return b;
 }
 
-function row(name: string, detail: string, mark: HTMLElement, ...buttons: HTMLButtonElement[]): HTMLLIElement {
+function row(identity: string | NamedIdentity, detail: string, mark: HTMLElement, ...buttons: HTMLButtonElement[]): HTMLLIElement {
 	const item = element('li', 'lp-social-row'), text = element('div', 'lp-social-text');
-	text.append(element('strong', '', name));
+	const name = element('strong', '', typeof identity === 'string' ? identity : identity.name);
+	if (typeof identity !== 'string' && identity.badge) {
+		const title = element('div', 'lp-social-title'), badge = element('span', 'lp-social-badge');
+		if (identity.avatarUrl?.startsWith('data:image/')) { badge.append(picture(identity.avatarUrl)); }
+		badge.append(identity.badge);
+		title.append(name, badge); text.append(title);
+	} else { text.append(name); }
 	if (detail) { text.append(element('small', '', detail)); }
 	item.append(mark, text);
 	if (buttons.length) { const actions = element('div', 'lp-social-actions'); actions.append(...buttons); item.append(actions); }
@@ -213,14 +220,14 @@ export class LaunchpadProfile extends Disposable {
 		const change = (label: string, glyph: string, action: SocialAction) => { const b = button(label, glyph, () => void this.mutate(action)); b.disabled = this.changing.has(action.id); return b; };
 		if (this.section === 'activity') {
 			for (const c of this.inbox?.items ?? []) {
-				const item = row(c.name, c.preview, avatar(c.name, c.avatarUrl), button(t('Chat', '聊天'), 'comment', () => this.actions.inbox(c.id), 'lp-outline'));
+				const item = row(c, c.preview, avatar(c.name, c.avatarUrl), button(t('Chat', '聊天'), 'comment', () => this.actions.inbox(c.id), 'lp-outline'));
 				if (c.unread) { const unread = element('span', 'lp-unread-count', String(c.unread)); unread.title = t(`${c.unread} unread`, `${c.unread} 条未读`); item.lastElementChild?.prepend(unread); }
 				items.push(item);
 			}
 		} else if (this.section === 'people') {
 			for (const p of friends ?? []) {
 				const remove = tool(t('Remove friend', '移除好友'), 'trash', () => void this.removeFriend(p)); remove.disabled = this.changing.has(p.id);
-				items.push(row(p.name, '', avatar(p.name, p.avatarUrl), button(t('Chat', '聊天'), 'comment', () => this.actions.chatUser(p.id), 'lp-outline'), remove));
+				items.push(row(p, '', avatar(p.name, p.avatarUrl), button(t('Chat', '聊天'), 'comment', () => this.actions.chatUser(p.id), 'lp-outline'), remove));
 			}
 		} else if (this.section === 'favorites') {
 			for (const f of data?.favorites ?? []) { items.push(row(f.title, f.detail ?? '', icon('star-full'), ...(f.conversation ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(f.conversation), 'lp-outline')] : []), change(t('Remove', '移除'), 'remove', { action: 'unfavorite', id: f.id }))); }

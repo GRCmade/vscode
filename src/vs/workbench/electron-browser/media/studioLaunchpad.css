@@ -195,6 +195,10 @@
 .lp-social-row > :is(.lp-avatar,.codicon) { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 6px; background: var(--lp-side); }
 .lp-social-row > .codicon { font-size: 17px; color: var(--lp-muted); } .lp-social-row.lp-unread > .codicon { color: var(--lp-accent); }
 .lp-social-text { flex: 1 1 90px; min-width: 0; display: grid; gap: 2px; overflow-wrap: anywhere; } .lp-social-text strong { font-weight: 550; }
+.lp-social-title { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+.lp-social-title strong { min-width: 0; }
+.lp-social-badge { display: inline-flex; align-items: center; flex: none; gap: 4px; padding: 1px 5px 1px 3px; color: var(--lp-text); border: 1px solid var(--lp-edge); border-radius: 4px; font-size: 11px; line-height: 15px; }
+.lp-social-badge img { width: 15px; height: 15px; border-radius: 3px; }
 .lp-social-actions { flex-wrap: wrap; justify-content: flex-end; margin-inline-start: auto; gap: 4px; }
 .lp-profile-empty { display: grid; justify-items: center; text-align: center; gap: 10px; padding: 48px 12px; color: var(--lp-muted); }
 .lp-profile-empty > .codicon { font-size: 28px; }

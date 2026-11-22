@@ -25,9 +25,10 @@ export interface SocialSnapshot { people: StudioPerson[]; favorites: StudioFavor
 export type SocialResult = SocialSnapshot | { unavailable: 'unsupported' };
 export interface SocialAction { action: 'accept-invite' | 'decline-invite' | 'remove' | 'unfavorite' | 'read'; id: string }
 export interface ConversationAction { setting: 'pin' | 'star' | 'mute' | 'read' | 'hide'; id: string; value: boolean }
+export type InboxAction = 'add-contact' | 'create-group';
 export interface ProfileActions {
 	settings(): void; signIn(): void; inbox(id: string, title?: string): void; chatUser(id: string, title?: string): void;
-	addContact(): void;
+	addContact(): void; createGroup(): void;
 	contextMenu: IContextMenuService;
 	confirmRemoveFriend(name: string): Promise<boolean>;
 	social(query: string, directory: boolean): Promise<SocialResult>; change(action: SocialAction): Promise<void>;
@@ -79,6 +80,11 @@ export class LaunchpadProfile extends Disposable {
 	private readonly count = element('span', 'lp-profile-count');
 	private readonly rows = element('ul', 'lp-profile-rows');
 	private readonly empty = element('div', 'lp-profile-empty');
+	private readonly recentTools = element('div', 'lp-recent-tools');
+	private readonly recentSearch = element('label', 'lp-search-field lp-recent-search');
+	private readonly recentFilter = element('input', 'lp-query');
+	private readonly searchChats: HTMLButtonElement;
+	private readonly createGroup: HTMLButtonElement;
 	private readonly search = element('label', 'lp-search-field');
 	private readonly filter = element('input', 'lp-query');
 	private readonly peopleTools = element('div', 'lp-social-actions');
@@ -86,6 +92,9 @@ export class LaunchpadProfile extends Disposable {
 	private readonly readAll: HTMLButtonElement;
 	private readonly status = element('div', 'lp-message lp-profile-status');
 	private readonly debounce = this._register(new RunOnceScheduler(() => void this.load(), 220));
+	private readonly filterChats = this._register(new RunOnceScheduler(() => {
+		if (this.active && this.section === 'activity') { this.renderRows(); this.content.scrollTop = 0; }
+	}, 120));
 	// The default snapshot serves all sections. Keep at most one additional friend search, in memory only.
 	private readonly cache = new Map<string, { snapshot: SocialSnapshot; generation: number; directory: boolean }>();
 	private generation = 0;
@@ -108,6 +117,23 @@ export class LaunchpadProfile extends Disposable {
 		this.status.setAttribute('role', 'status'); this.filter.type = 'search'; this.filter.maxLength = 100;
 		this.filter.placeholder = t('Search friends and groups', '搜索好友和群聊'); this.filter.setAttribute('aria-label', this.filter.placeholder);
 		this.search.append(icon('search'), this.filter);
+		const searchLabel = t('Search recent chats', '搜索最近会话');
+		this.recentSearch.id = 'lp-recent-search'; this.recentSearch.hidden = true;
+		this.recentFilter.type = 'search'; this.recentFilter.maxLength = 100;
+		this.recentFilter.placeholder = searchLabel; this.recentFilter.setAttribute('aria-label', searchLabel);
+		this.recentSearch.append(icon('search'), this.recentFilter);
+		const recentTool = (label: string, glyph: string, action: () => void) => {
+			const b = button('', glyph, action); b.title = label; b.setAttribute('aria-label', label); return b;
+		};
+		this.searchChats = recentTool(searchLabel, 'search', () => this.toggleRecentSearch(this.recentSearch.hidden === true));
+		this.searchChats.setAttribute('aria-controls', this.recentSearch.id); this.searchChats.setAttribute('aria-expanded', 'false');
+		this.createGroup = recentTool(t('Start a group chat', '发起群聊'), 'new-session', this.actions.createGroup);
+		this.recentTools.hidden = true; this.recentTools.append(this.searchChats, this.createGroup);
+		this.recentFilter.addEventListener('input', e => { if (!(e as InputEvent).isComposing) { this.filterChats.schedule(); } });
+		this.recentFilter.addEventListener('compositionend', () => this.filterChats.schedule());
+		this.recentFilter.addEventListener('keydown', e => {
+			if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); e.stopPropagation(); this.toggleRecentSearch(false); }
+		});
 		this.addContact = button(t('Add friend', '添加好友'), 'add', this.actions.addContact, 'lp-primary');
 		this.readAll = button(t('Mark all as read', '全部已读'), 'check-all', () => void this.markAllRead(), 'lp-outline');
 		this.readAll.hidden = true;
@@ -137,14 +163,24 @@ export class LaunchpadProfile extends Disposable {
 			this.select(id); this.tabs.get(id)!.focus();
 		});
 		const rail = element('aside', 'lp-profile-rail lp-scroll'), body = element('div', 'lp-profile-body'), toolbar = element('header', 'lp-profile-toolbar');
-		const title = element('div', 'lp-profile-title'); title.append(this.heading, this.count); toolbar.append(title, this.peopleTools, this.readAll);
-		rail.append(this.header, this.nav); body.append(toolbar, this.status, this.rows, this.empty); this.content.append(body); this.element.append(rail, this.content);
+		const title = element('div', 'lp-profile-title'); title.append(this.heading, this.count); toolbar.append(title, this.recentTools, this.peopleTools, this.readAll);
+		rail.append(this.header, this.nav); body.append(toolbar, this.recentSearch, this.status, this.rows, this.empty); this.content.append(body); this.element.append(rail, this.content);
 	}
 
-	setInboxBusy(busy: boolean): void { this.addContact.disabled = busy; }
+	setInboxActionBusy(action: InboxAction, busy: boolean): void { (action === 'add-contact' ? this.addContact : this.createGroup).disabled = busy; }
+
+	private toggleRecentSearch(open: boolean, focus = true): void {
+		this.recentSearch.hidden = !open; this.searchChats.setAttribute('aria-expanded', String(open));
+		if (!open) { this.filterChats.cancel(); this.recentFilter.value = ''; }
+		if (focus) {
+			(open ? this.recentFilter : this.searchChats).focus();
+			if (!open) { this.renderRows(); }
+		}
+	}
 
 	select(section: Section): void {
 		if (this.section === section || (!this.platform && section !== 'notifications')) { return; }
+		if (this.section === 'activity') { this.toggleRecentSearch(false, false); }
 		this.debounce.cancel(); this.section = section; this.failure = undefined;
 		if (section === 'activity' || this.pending?.query !== this.query || this.pending.directory !== (section === 'people')) { this.pending = undefined; }
 		this.renderSection(); this.content.scrollTop = 0;
@@ -158,7 +194,7 @@ export class LaunchpadProfile extends Disposable {
 			(notificationUnread !== this.notificationUnread || JSON.stringify(notices) !== JSON.stringify(this.nativeNotices)));
 		if (!platform) { this.section = 'notifications'; } else if (!this.platform) { this.section = 'activity'; }
 		this.active = active; this.platform = platform; this.account = account; this.inbox = inbox; this.nativeNotices = notices; this.notificationUnread = notificationUnread;
-		if (changed) { this.pending = undefined; this.cache.clear(); this.changing = new Set(); this.markingAll = this.markAllFailed = false; this.debounce.cancel(); this.failure = undefined; this.scope = scope; this.filter.value = ''; }
+		if (changed) { this.pending = undefined; this.cache.clear(); this.changing = new Set(); this.markingAll = this.markAllFailed = false; this.debounce.cancel(); this.failure = undefined; this.scope = scope; this.filter.value = ''; this.toggleRecentSearch(false, false); }
 		if (identityChanged) { this.renderAccount(); }
 		if (changed || (active && repaint)) { this.renderSection(); }
 		if (active && (enter || changed)) { this.refresh(); }
@@ -343,11 +379,13 @@ export class LaunchpadProfile extends Disposable {
 			if (selected) { this.heading.textContent = b.title; this.content.setAttribute('aria-labelledby', b.id); }
 		}
 		this.peopleTools.hidden = this.section !== 'people' || !this.platform || !this.account?.signedIn;
+		this.recentTools.hidden = this.section !== 'activity' || !this.platform || !this.account?.signedIn;
 		this.renderRows();
 	}
 
 	private renderRows(): void {
 		const t = this.t, needsSocial = this.section !== 'activity' && this.platform && !!this.account?.signedIn;
+		const recentQuery = this.section === 'activity' ? this.recentFilter.value.trim().toLocaleLowerCase() : '';
 		const query = this.query, data = this.cache.get(query)?.snapshot;
 		const directory = data?.directory ?? this.cache.get('')?.snapshot.directory;
 		const directoryUnavailable = this.section === 'people' && data?.directoryUnavailable;
@@ -374,6 +412,7 @@ export class LaunchpadProfile extends Disposable {
 		const change = (label: string, glyph: string, action: SocialAction) => { const b = button(label, glyph, () => void this.mutate(action)); b.disabled = this.changing.has(action.id); return b; };
 		if (this.section === 'activity') {
 			for (const c of this.inbox?.items ?? []) {
+				if (recentQuery && !c.name.toLocaleLowerCase().includes(recentQuery) && !c.preview.toLocaleLowerCase().includes(recentQuery)) { continue; }
 				items.push(this.entries(c, c.preview, c.id, () => this.actions.inbox(c.id, c.name), c, undefined, c.group));
 			}
 		} else if (this.section === 'people') {
@@ -416,10 +455,11 @@ export class LaunchpadProfile extends Disposable {
 		this.empty.hidden = items.length > 0 || (needsSocial && (!data || !!failure || !!directoryUnavailable));
 		if (!this.empty.hidden) {
 			const guest = this.platform && !this.account?.signedIn;
+			const noRecentMatches = recentQuery && !!this.inbox?.items.length;
 			const label = this.section === 'people' ? guest ? t('Sign in to see your friends and groups.', '登录后可查看好友和群聊。') : query ? t('No matching friends or groups.', '没有匹配的好友或群聊。') : t('No friends or groups yet.', '暂无好友或群聊。')
 				: this.section === 'favorites' ? guest ? t('Sign in to see your favorites.', '登录后可查看收藏。') : t('No favorites yet.', '暂无收藏。')
-					: this.section === 'activity' ? this.inbox?.message || t('No recent chats.', '暂无最近会话。') : t('No notifications.', '暂无通知。');
-			this.empty.replaceChildren(icon(this.section === 'people' ? query ? 'search' : 'organization' : this.section === 'favorites' ? 'star-empty' : this.section === 'activity' ? 'comment-discussion' : 'bell'), element('p', '', label));
+					: this.section === 'activity' ? noRecentMatches ? t('No matching chats.', '没有匹配的会话。') : this.inbox?.message || t('No recent chats.', '暂无最近会话。') : t('No notifications.', '暂无通知。');
+			this.empty.replaceChildren(icon(this.section === 'people' ? query ? 'search' : 'organization' : this.section === 'favorites' ? 'star-empty' : this.section === 'activity' ? noRecentMatches ? 'search' : 'comment-discussion' : 'bell'), element('p', '', label));
 		}
 	}
 

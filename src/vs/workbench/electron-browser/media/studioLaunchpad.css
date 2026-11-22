@@ -174,6 +174,10 @@
 .lp-profile-body { max-width: 960px; margin-inline: auto; }
 .lp-profile-toolbar,.lp-profile-title,.lp-profile-status,.lp-social-actions { display: flex; align-items: center; gap: 8px; }
 .lp-profile-toolbar { min-height: 45px; padding-bottom: 12px; border-bottom: 1px solid var(--lp-line); justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.lp-recent-tools { display: flex; flex: none; align-items: center; gap: 4px; margin-inline-start: auto; }
+.studio-launchpad .lp-recent-tools > button { width: 28px; height: 28px; padding: 0; color: var(--lp-muted); }
+.studio-launchpad .lp-recent-tools [aria-expanded=true] { color: var(--lp-strong); background: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover)); }
+.lp-recent-search { width: min(100%,360px); margin-block: 10px 4px; margin-inline-start: auto; color: var(--lp-muted); }
 .lp-profile-toolbar .lp-search-field { width: 230px; min-width: 0; color: var(--lp-muted); }
 .lp-profile-toolbar > .lp-social-actions { flex-wrap: nowrap; min-width: 0; max-width: 100%; gap: 8px; }
 .lp-profile-toolbar > .lp-social-actions > button { flex: none; min-height: 32px; white-space: nowrap; }

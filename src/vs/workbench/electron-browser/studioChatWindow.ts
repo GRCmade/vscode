@@ -22,7 +22,7 @@ export class StudioChatWindow extends Disposable {
 	private readonly opening = new Map<string, Promise<MountedChat | undefined>>();
 
 	constructor(private readonly windows: IAuxiliaryWindowService, private readonly webviews: IWebviewService, private readonly opener: IOpenerService,
-		private readonly openConversation: (conversation?: string, user?: string) => void) { super(); }
+		private readonly openConversation: (conversation?: string, user?: string) => Promise<boolean>) { super(); }
 
 	prepare(key: string, app: LaunchpadApp): boolean {
 		if (this.prepared?.key !== key) { this.clear(this.prepared?.key); this.prepared = { key, app }; }
@@ -64,8 +64,10 @@ export class StudioChatWindow extends Disposable {
 				if (message?.type === 'studio-launchpad-ready') { deadline.cancel(); void ready.complete(true); }
 				else if (message?.type === 'studio-launchpad-close') { close(); }
 				else if (message?.type === 'studio-launchpad-open-conversation') {
-					if (typeof message.conversation === 'string') { this.openConversation(message.conversation); }
-					else if (typeof message.user === 'string') { this.openConversation(undefined, message.user); }
+					const { conversation, user, closeSource } = message;
+					if (typeof conversation === 'string') {
+						void this.openConversation(conversation).then(opened => { if (opened && closeSource === true && conversation !== view.id) { close(); } });
+					} else if (typeof user === 'string') { void this.openConversation(undefined, user); }
 				} else if (message?.type === 'studio-sidebar-account' && app.accountUrl) {
 					const uri = URI.parse(app.accountUrl); if (uri.scheme === 'https' || uri.scheme === 'http') { void this.opener.open(uri, { openExternal: true }); }
 				}

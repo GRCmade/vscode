@@ -8,7 +8,7 @@ import { STEAMHARNESS_ICON_DATA_URI } from '../common/studioBranding.js';
 import { glyph, LaunchpadProject, picture, StoreListing } from './studioLaunchpadCards.js';
 import { LaunchpadLibrary, LibraryActions, LibraryProjectCategory } from './studioLaunchpadLibrary.js';
 import { button, element, icon, LaunchpadLabel, LaunchpadOption, LaunchpadPicker } from './studioLaunchpadPicker.js';
-import { avatar, LaunchpadAccount, LaunchpadInbox, LaunchpadProfile, ProfileActions, StudioNotice } from './studioLaunchpadProfile.js';
+import { avatar, InboxAction, LaunchpadAccount, LaunchpadInbox, LaunchpadProfile, ProfileActions, StudioNotice } from './studioLaunchpadProfile.js';
 import { LaunchpadStore, StoreActions } from './studioLaunchpadStore.js';
 
 export type { LaunchpadProject, LaunchpadAccount, LaunchpadInbox };
@@ -121,7 +121,7 @@ export class StudioLaunchpadView extends Disposable {
 	get canDropProject(): boolean { return !this.element.hidden && !this.picker.dialog.open; }
 	setProjectDropActive(active: boolean): void { this.drop.hidden = !active; }
 	setVisible(visible: boolean): void { this.element.hidden = !visible; this.drop.hidden = true; }
-	setAddContactBusy(busy: boolean): void { this.profile.setInboxBusy(busy); }
+	setInboxActionBusy(action: InboxAction, busy: boolean): void { this.profile.setInboxActionBusy(action, busy); }
 	focusAccount(): void { this.accountButton.focus({ preventScroll: true }); }
 	closePicker(): void { this.picker.close(); }
 	refreshSocial(): void { void this.profile.refresh(); }

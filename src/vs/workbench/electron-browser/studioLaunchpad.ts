@@ -38,7 +38,7 @@ import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layou
 import { removeStudioLaunchpadSplash } from './studioLaunchpadSplash.js';
 import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
 import { LaunchpadApp, LaunchpadAppView, StudioChatWindow } from './studioChatWindow.js';
-import { LaunchpadDirectory, SocialResult } from './studioLaunchpadProfile.js';
+import { InboxAction, LaunchpadDirectory, SocialResult } from './studioLaunchpadProfile.js';
 import { CatalogPage } from './studioLaunchpadStore.js';
 import { StoreListingDetails } from './studioLaunchpadCards.js';
 import type { LibraryProjectCategory } from './studioLaunchpadLibrary.js';
@@ -92,7 +92,7 @@ export class StudioLaunchpad extends Disposable {
 	) {
 		super();
 		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener,
-			(conversation, user) => { void this.openInbox(conversation, user).catch(error => notifications.error(error)); }));
+			(conversation, user) => this.openInbox(conversation, user).catch(error => { notifications.error(error); return false; })));
 		// Read the extension's profile memento synchronously; native history still owns membership and ordering.
 		const saved = extensionStorage.getExtensionState('studio.studio-workstation', true)?.['studio.recentProjects'];
 		if (Array.isArray(saved)) {
@@ -154,6 +154,7 @@ export class StudioLaunchpad extends Disposable {
 			},
 			chatUser: (user, title) => run(this.openInbox(undefined, user, undefined, title)),
 			addContact: () => run(this.openInbox(undefined, undefined, 'add-contact')),
+			createGroup: () => run(this.openInbox(undefined, undefined, 'create-group')),
 			readNotice: id => this.notices.read(id),
 			readAllNotices: async () => {
 				this.notices.readAll();
@@ -225,7 +226,7 @@ export class StudioLaunchpad extends Disposable {
 		const setAccount = (state?: LaunchpadMenuAccount) => {
 			const scopeChanged = state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn;
 			if (scopeChanged) {
-				this.appRequests.clear(); this.view.setAddContactBusy(false);
+				this.appRequests.clear(); this.view.setInboxActionBusy('add-contact', false); this.view.setInboxActionBusy('create-group', false);
 				++this.noticeRevision; this.socialUnread = false; this.refreshNotices.schedule();
 				++this.inboxRevision; this.inbox = undefined; this.refreshInbox.schedule();
 				this.libraryCategory = undefined;
@@ -376,14 +377,17 @@ export class StudioLaunchpad extends Disposable {
 		}
 	}
 
-	private async openInbox(conversation?: string, user?: string, action?: 'add-contact', title?: string): Promise<void> {
+	private async openInbox(conversation?: string, user?: string, action?: InboxAction, title?: string): Promise<boolean> {
 		const target = conversation ? `conversation:${conversation}` : user ? `user:${user}` : action;
-		if (!target || this.appRequests.has(target)) { return; }
+		if (!target || this.appRequests.has(target)) { return false; }
 		const id = generateUuid();
 		this.appRequests.set(target, id);
 		this.view.closePicker();
 		const zh = this.language.startsWith('zh');
-		if (action === 'add-contact') { this.view.setAddContactBusy(true); title = zh ? '添加好友' : 'Add friend'; }
+		if (action) {
+			this.view.setInboxActionBusy(action, true);
+			title = action === 'add-contact' ? (zh ? '添加好友' : 'Add friend') : (zh ? '发起群聊' : 'Start a group chat');
+		}
 		try {
 			let reason: string | undefined; let opened = false;
 			try {
@@ -394,10 +398,11 @@ export class StudioLaunchpad extends Disposable {
 				await this.native.showMessageBox({ type: 'warning', message: zh ? '无法打开 IM' : 'Could not open IM', detail: reason,
 					buttons: [zh ? '确定' : 'OK'], noLink: true });
 			}
+			return opened && id === this.appRequests.get(target);
 		} finally {
 			if (id === this.appRequests.get(target)) {
 				this.appRequests.delete(target);
-				if (action === 'add-contact') { this.view.setAddContactBusy(false); }
+				if (action) { this.view.setInboxActionBusy(action, false); }
 			}
 		}
 	}

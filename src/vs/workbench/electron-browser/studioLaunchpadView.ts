@@ -18,7 +18,7 @@ export interface LaunchpadState {
 	libraryCategory?: LibraryProjectCategory;
 }
 interface LaunchpadActions extends ProfileActions, LibraryActions, StoreActions {
-	open(): void; workspace(): void;
+	open(): void; workspace(): void; settings(): void;
 	readNotice(id: string): void;
 	resource(id: 'docs' | 'github' | 'server'): void;
 }
@@ -30,6 +30,7 @@ export class StudioLaunchpadView extends Disposable {
 	private readonly tabs = element('nav', 'lp-tabs');
 	private readonly panels = element('main', 'lp-panels');
 	private readonly commandCenter: HTMLButtonElement;
+	private readonly settingsButton: HTMLButtonElement;
 	private readonly accountButton: HTMLButtonElement;
 	private readonly latestNotice: HTMLButtonElement;
 	private readonly noticeContent = element('span');
@@ -68,9 +69,10 @@ export class StudioLaunchpadView extends Disposable {
 		this.commandCenter.setAttribute('aria-haspopup', 'dialog');
 		this.commandCenter.setAttribute('aria-expanded', 'false');
 		this.bell = tool(t('Studio notifications', 'Studio 通知'), 'bell', () => { this.select('profile'); this.profile.select('notifications'); });
+		this.settingsButton = tool(t('Settings', '设置'), 'settings-gear', actions.settings);
 		this.accountButton = tool(t('Studio account', 'Studio 账号'), 'account', () => this.select('profile'));
 		this.accountButton.classList.add('lp-account');
-		const utilities = element('div', 'lp-utilities'); utilities.append(resources, this.bell, this.accountButton);
+		const utilities = element('div', 'lp-utilities'); utilities.append(resources, this.bell, this.settingsButton, this.accountButton);
 		chrome.append(brand, this.commandCenter, utilities);
 		const navigation = element('div', 'lp-navigation'); this.tabs.setAttribute('role', 'tablist'); this.tabs.setAttribute('aria-label', t('Launchpad navigation', '启动台导航'));
 		for (const [id, name] of [['store', t('Store', '商店')], ['library', t('Library', '仓库')], ['community', t('Community', '社区')], ['profile', t('My Studio', '我的')]] as const) {
@@ -122,7 +124,7 @@ export class StudioLaunchpadView extends Disposable {
 	setProjectDropActive(active: boolean): void { this.drop.hidden = !active; }
 	setVisible(visible: boolean): void { this.element.hidden = !visible; this.drop.hidden = true; }
 	setInboxActionBusy(action: InboxAction, busy: boolean): void { this.profile.setInboxActionBusy(action, busy); }
-	focusAccount(): void { this.accountButton.focus({ preventScroll: true }); }
+	focusSettings(): void { this.settingsButton.focus({ preventScroll: true }); }
 	closePicker(): void { this.picker.close(); }
 	refreshSocial(): void { void this.profile.refresh(); }
 	refreshDirectory(): void { this.profile.refreshDirectory(); }

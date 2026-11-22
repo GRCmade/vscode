@@ -27,7 +27,7 @@ export interface SocialAction { action: 'accept-invite' | 'decline-invite' | 're
 export interface ConversationAction { setting: 'pin' | 'star' | 'mute' | 'read' | 'hide'; id: string; value: boolean }
 export type InboxAction = 'add-contact' | 'create-group';
 export interface ProfileActions {
-	settings(): void; signIn(): void; inbox(id: string, title?: string): void; chatUser(id: string, title?: string): void;
+	signIn(): void; inbox(id: string, title?: string): void; chatUser(id: string, title?: string): void;
 	addContact(): void; createGroup(): void;
 	contextMenu: IContextMenuService;
 	confirmRemoveFriend(name: string): Promise<boolean>;
@@ -51,10 +51,6 @@ export function avatar(name: string, src?: string, glyph = 'account'): HTMLEleme
 
 type Section = 'activity' | 'people' | 'favorites' | 'notifications';
 type Failure = 'unsupported' | 'unavailable' | 'change';
-
-function tool(label: string, glyph: string, action: () => void): HTMLButtonElement {
-	const b = button('', glyph, action, 'lp-profile-tool'); b.title = label; b.setAttribute('aria-label', label); return b;
-}
 
 function socialText(name: string, detail: string): HTMLElement {
 	const text = element('span', 'lp-social-text');
@@ -369,7 +365,7 @@ export class LaunchpadProfile extends Disposable {
 		const name = a?.hasAccount ? a.name : this.platform ? t('Not signed in', '尚未登录') : t('Local profile', '本机用户');
 		const identity = element('div', 'lp-profile-identity'); identity.append(element('strong', '', name));
 		if (a?.email) { identity.append(element('small', '', a.email)); }
-		this.header.replaceChildren(avatar(name, a?.avatarUrl), identity, tool(t('Settings', '设置'), 'settings-gear', this.actions.settings));
+		this.header.replaceChildren(avatar(name, a?.avatarUrl), identity);
 		if (this.platform && !a?.signedIn) { this.header.append(button(t('Sign in', '登录'), 'sign-in', this.actions.signIn, 'lp-primary')); }
 	}
 

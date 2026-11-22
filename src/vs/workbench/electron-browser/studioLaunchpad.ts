@@ -301,7 +301,7 @@ export class StudioLaunchpad extends Disposable {
 		this.view.closePicker();
 		this.view.setVisible(true);
 		this.start.setVisible('launchpad', !document.hidden);
-		if (fromSettings) { this.view.focusAccount(); }
+		if (fromSettings) { this.view.focusSettings(); }
 		else { this.view.element.focus({ preventScroll: true }); }
 		this.refreshInbox.schedule();
 		this.refreshSocialState();

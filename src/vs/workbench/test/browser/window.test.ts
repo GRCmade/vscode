@@ -8,7 +8,7 @@ import { setZoomFactor, setZoomLevel } from '../../../base/browser/browser.js';
 import { IRegisteredCodeWindow, trackAttributes } from '../../../base/browser/dom.js';
 import { CodeWindow, mainWindow } from '../../../base/browser/window.js';
 import { timeout } from '../../../base/common/async.js';
-import { DisposableStore, toDisposable } from '../../../base/common/lifecycle.js';
+import { DisposableStore, GCBasedDisposableTracker, IDisposable, setDisposableTracker, toDisposable } from '../../../base/common/lifecycle.js';
 import { mock } from '../../../base/test/common/mock.js';
 import { runWithFakedTimers } from '../../../base/test/common/timeTravelScheduler.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../base/test/common/utils.js';
@@ -217,5 +217,57 @@ suite('Window', () => {
 
 			disposables.dispose();
 		});
+	});
+
+	test('multi-window timers are not tracked again after firing or cancellation', async () => {
+		const disposed = new WeakSet<IDisposable>();
+		let trackedAfterDisposal = 0;
+		setDisposableTracker(new class extends GCBasedDisposableTracker {
+			override trackDisposable(disposable: IDisposable): void {
+				if (disposed.has(disposable)) {
+					trackedAfterDisposal++;
+				}
+				super.trackDisposable(disposable);
+			}
+			override markAsDisposed(disposable: IDisposable): void {
+				disposed.add(disposable);
+				super.markAsDisposed(disposable);
+			}
+		}());
+		try {
+			await runWithFakedTimers({ useFakeTimers: true }, async () => {
+				const disposables = new DisposableStore();
+				try {
+					const windows = [1, 2].map(id => ({
+						window: new class extends mock<CodeWindow>() {
+							override readonly vscodeWindowId = id;
+							override readonly document = new class extends mock<Document>() {
+								override readonly visibilityState = 'visible';
+							}();
+							override readonly setTimeout = mainWindow.setTimeout.bind(mainWindow);
+							override readonly clearTimeout = mainWindow.clearTimeout.bind(mainWindow);
+						}(),
+						disposables
+					}));
+					const dom = { getWindowsCount: () => windows.length, getWindows: () => windows };
+					for (const { window } of windows) {
+						disposables.add(new TestWindow(window, dom));
+					}
+					const { window } = windows[0];
+					let fired = 0;
+					let firedAfterCancellation = 0;
+					window.setTimeout(() => fired++, 1);
+					window.clearTimeout(window.setTimeout(() => firedAfterCancellation++, 1));
+					await timeout(2);
+					assert.deepStrictEqual({ fired, firedAfterCancellation, trackedAfterDisposal }, {
+						fired: 1, firedAfterCancellation: 0, trackedAfterDisposal: 0,
+					});
+				} finally {
+					disposables.dispose();
+				}
+			});
+		} finally {
+			setDisposableTracker(null);
+		}
 	});
 });

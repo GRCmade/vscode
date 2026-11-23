@@ -224,7 +224,9 @@ export class StudioLaunchpad extends Disposable {
 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, requestId: string, view: LaunchpadAppView) => Array.from(this.appRequests.values()).includes(requestId) && this.chat.show(key, view)));
 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => this.chat.clear(key)));
 		this._register(CommandsRegistry.registerCommand('studio.internalOpenStoreTab', () => { this.showHome(); this.view.select('store'); }));
-		this._register(CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', () => this.refreshSocialState()));
+		const socialChanged = () => this.refreshSocialState();
+		ipcRenderer.on('vscode:studioSocialChanged', socialChanged);
+		this._register(toDisposable(() => ipcRenderer.removeListener('vscode:studioSocialChanged', socialChanged)));
 		this._register(CommandsRegistry.registerCommand('studio.internalLibraryProjectCategoryChanged', () => this.scheduleLibraryCategory()));
 		this._register(CommandsRegistry.registerCommand('studio.internalForgetFolderBotWindow', (_accessor, uri: string) => this.workspaces.removeRecentlyOpened([URI.parse(uri)])));
 		this._register(CommandsRegistry.registerCommand('studio.internalLaunchpadInboxChanged', (_accessor, reset?: boolean) => {

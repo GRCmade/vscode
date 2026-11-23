@@ -136,7 +136,7 @@ export function registerNotificationCommands(center: INotificationsCenterControl
 			const accessibilitySignalService = accessor.get(IAccessibilitySignalService);
 			const notification = getNotificationFromContext(accessor.get(IListService), args);
 			if (notification && !notification.hasActiveProgress) {
-				notification.close();
+				notification.dismiss();
 				accessibilitySignalService.playSignal(AccessibilitySignal.clear);
 			}
 		}

@@ -181,7 +181,7 @@ function getActionsFromNotification(notification: INotificationViewItem, accessi
 	}
 	actions.push({
 		id: 'clearNotification', label: localize('clearNotification', "Clear Notification"), tooltip: localize('clearNotification', "Clear Notification"), run: () => {
-			notification.close();
+			notification.dismiss();
 			accessibilitySignalService.playSignal(AccessibilitySignal.clear);
 		}, enabled: true, class: ThemeIcon.asClassName(Codicon.clearAll)
 	});

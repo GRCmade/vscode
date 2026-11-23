@@ -5,9 +5,11 @@
 
 import assert from 'assert';
 import { Dimension, getWindow } from '../../../base/browser/dom.js';
+import { timeout } from '../../../base/common/async.js';
 import { Event } from '../../../base/common/event.js';
 import { DisposableStore, toDisposable } from '../../../base/common/lifecycle.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../base/test/common/utils.js';
+import { runWithFakedTimers } from '../../../base/test/common/virtualScheduling/index.js';
 import { Severity } from '../../../platform/notification/common/notification.js';
 import { NotificationsToasts } from '../../browser/parts/notifications/notificationsToasts.js';
 import { NotificationsModel } from '../../common/notifications.js';
@@ -63,6 +65,27 @@ suite('NotificationsToasts', () => {
 			flushAnimationFrame: () => new Promise(resolve => targetWindow.requestAnimationFrame(() => resolve()))
 		};
 	}
+
+	test('acknowledges a message click or explicit dismissal, but not selecting text or timing out', () => runWithFakedTimers({ useFakeTimers: true }, async () => {
+		const { container, model, toasts } = await createToasts();
+		const visible = Event.toPromise(toasts.onDidChangeVisibility);
+		let acknowledged = 0;
+		model.addNotification({ severity: Severity.Info, message: 'New message', onDidAcknowledge: () => acknowledged++ });
+		await visible;
+		const message = container.querySelector<HTMLElement>('.notification-list-item-message')!;
+		const selection = getWindow(message).getSelection()!;
+		selection.selectAllChildren(message);
+		message.click();
+		assert.strictEqual(acknowledged, 0);
+		selection.removeAllRanges();
+		message.click();
+		assert.strictEqual(acknowledged, 1);
+
+		await timeout(10_001);
+		assert.deepStrictEqual([toasts.isVisible, acknowledged], [false, 1]);
+		model.notifications[0].dismiss();
+		assert.deepStrictEqual([model.notifications.length, acknowledged], [0, 2]);
+	}));
 
 	test('shows one toast for rapidly added duplicate notifications', async () => {
 		const { container, model, toasts } = await createToasts();

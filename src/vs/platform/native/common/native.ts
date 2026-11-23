@@ -289,6 +289,7 @@ export interface ICommonNativeHostService {
 	openWindow(toOpen: IWindowOpenable[], options?: IOpenWindowOptions): Promise<void>;
 	openStudioLaunchpadInbox(): Promise<boolean>;
 	openStudioLaunchpadStore(): Promise<boolean>;
+	notifyStudioSocialChanged(): Promise<void>;
 
 	openAgentsWindow(options?: IOpenAgentsWindowOptions): Promise<void>;
 

@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { IListVirtualDelegate, IListRenderer } from '../../../../base/browser/ui/list/list.js';
-import { clearNode, addDisposableListener, EventType, EventHelper, $, isEventLike } from '../../../../base/browser/dom.js';
+import { clearNode, addDisposableListener, EventType, EventHelper, $, getWindow, isEventLike } from '../../../../base/browser/dom.js';
 import { IOpenerService } from '../../../../platform/opener/common/opener.js';
 import { URI } from '../../../../base/common/uri.js';
 import { localize } from '../../../../nls.js';
@@ -398,7 +398,7 @@ export class NotificationTemplateRenderer extends Disposable {
 			if (!notification.hasActiveProgress && e.button === 1 /* Middle Button */) {
 				EventHelper.stop(e, true);
 
-				notification.close();
+				notification.dismiss();
 			}
 		}));
 
@@ -406,6 +406,14 @@ export class NotificationTemplateRenderer extends Disposable {
 		this.renderSeverity(notification);
 
 		// Message
+		if (notification.acknowledge) {
+			this.inputDisposables.add(addDisposableListener(this.template.message, EventType.CLICK, () => {
+				const selection = getWindow(this.template.message).getSelection();
+				if (!selection || selection.isCollapsed || !selection.containsNode(this.template.message, true)) {
+					notification.acknowledge?.();
+				}
+			}));
+		}
 		const messageCustomHover = this.inputDisposables.add(this.hoverService.setupManagedHover(getDefaultHoverDelegate('mouse'), this.template.message, ''));
 		const messageOverflows = this.renderMessage(notification, messageCustomHover);
 

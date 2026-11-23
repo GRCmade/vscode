@@ -293,6 +293,11 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 		return true;
 	}
 
+	async notifyStudioSocialChanged(): Promise<void> {
+		const launchpad = this.windowsMainService.getWindows().find(window => window.isStudioLaunchpad && window.isReady);
+		launchpad?.send('vscode:studioSocialChanged');
+	}
+
 	openWindow(windowId: number | undefined, options?: IOpenEmptyWindowOptions): Promise<void>;
 	openWindow(windowId: number | undefined, toOpen: IWindowOpenable[], options?: IOpenWindowOptions): Promise<void>;
 	openWindow(windowId: number | undefined, arg1?: IOpenEmptyWindowOptions | IWindowOpenable[], arg2?: IOpenWindowOptions): Promise<void> {

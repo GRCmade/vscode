@@ -32,6 +32,7 @@ const workbenchKey = 'studio.notifications.workbench';
 CommandsRegistry.registerCommand('studio.internalIsNotificationWindow', accessor => accessor.get(INativeHostService).isStudioNotificationWindow());
 CommandsRegistry.registerCommand('studio.internalGetDesktopNotificationStatus', accessor => accessor.get(INativeHostService).getStudioDesktopNotificationStatus());
 CommandsRegistry.registerCommand('studio.internalOpenNotificationSettings', accessor => accessor.get(INativeHostService).openStudioNotificationSettings());
+CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', accessor => accessor.get(INativeHostService).notifyStudioSocialChanged());
 
 CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async (accessor, notice: DesktopNotice) => {
 	if (!safeId(notice?.id) || !safeId(notice.source?.id) || !text(notice.source.label, 80) || !text(notice.title, 120) ||
@@ -58,6 +59,7 @@ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async
 	if (!native && !workbench) { return true; }
 	const lifetime = new DisposableStore();
 	let closed = false;
+	let activating = false;
 	let handle: INotificationHandle | undefined;
 	const clearNative = () => {
 		if (native) { void nativeHost.clearToast(id).catch(() => undefined); }
@@ -71,24 +73,36 @@ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async
 		handle?.close();
 		clearNative();
 	};
-	const closeIfIdle = () => { if (!handle && !native) { close(); } };
-	const activate = async (focus: boolean) => {
-		if (closed) { return; }
-		const target = await commands.executeCommand<boolean | 'launchpadInbox'>('studio.internalDesktopNotificationAction', id);
-		if (!target || closed) { return; }
-		if (target === 'launchpadInbox') {
-			if (!await nativeHost.openStudioLaunchpadInbox()) { return; }
-		} else if (focus) {
-			await host.focus(mainWindow, { mode: FocusMode.Force });
+	const closeIfIdle = () => { if (!handle && !native && !activating) { close(); } };
+	const acknowledge = () => {
+		if (!closed) {
+			void commands.executeCommand('studio.internalAcknowledgeDesktopNotification', id).catch(() => undefined);
 		}
-		close();
+	};
+	const activate = async (focus: boolean) => {
+		if (closed || activating) { return; }
+		activating = true;
+		try {
+			const target = await commands.executeCommand<boolean | 'launchpadInbox'>('studio.internalDesktopNotificationAction', id);
+			if (!target || closed) { return; }
+			if (target === 'launchpadInbox') {
+				if (!await nativeHost.openStudioLaunchpadInbox()) { return; }
+			} else if (focus) {
+				await host.focus(mainWindow, { mode: FocusMode.Force });
+			}
+			close();
+		} finally {
+			activating = false;
+			closeIfIdle();
+		}
 	};
 	live.set(source.id, { id, close });
 	if (workbench) {
 		// The normal workbench notification model handles its own Do Not Disturb and source filters.
 		handle = notifications.notify({
 			id, source, message: NotificationText.concat(message), severity: Severity.Info,
-			actions: { primary: [toAction({ id: 'studio.openDesktopNotification', label: actionLabel, run: () => activate(false) })] },
+			onDidAcknowledge: acknowledge,
+			actions: { primary: [toAction({ id: 'studio.openDesktopNotification', label: actionLabel, run: () => { acknowledge(); return activate(false); } })] },
 		});
 		lifetime.add(handle.onDidClose(() => { handle = undefined; closeIfIdle(); }));
 	}

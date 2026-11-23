@@ -324,6 +324,7 @@ export interface INotificationViewItem {
 	readonly onDidChangeVisibility: Event<boolean>;
 	readonly onDidChangeContent: Event<INotificationViewItemContentChangeEvent>;
 	readonly onDidClose: Event<void>;
+	readonly acknowledge?: () => void;
 
 	expand(): void;
 	collapse(skipEvents?: boolean): void;
@@ -336,6 +337,7 @@ export interface INotificationViewItem {
 	updateVisibility(visible: boolean): void;
 
 	close(): void;
+	dismiss(): void;
 
 	equals(item: INotificationViewItem): boolean;
 }
@@ -510,7 +512,7 @@ export class NotificationViewItem extends Disposable implements INotificationVie
 			}
 		}
 
-		return new NotificationViewItem(notification.id, severity, notification.sticky, priority, message, parseLegacyLinks, notification.source, notification.progress, actions);
+		return new NotificationViewItem(notification.id, severity, notification.sticky, priority, message, parseLegacyLinks, notification.source, notification.progress, actions, notification.onDidAcknowledge);
 	}
 
 	private static parseNotificationMessage(input: NotificationMessage, parseLegacyLinks = false): INotificationMessage | undefined {
@@ -580,7 +582,8 @@ export class NotificationViewItem extends Disposable implements INotificationVie
 		private readonly parseLegacyLinks: boolean,
 		private _source: string | INotificationSource | undefined,
 		progress: INotificationProgressProperties | undefined,
-		actions?: INotificationActions
+		actions?: INotificationActions,
+		readonly acknowledge?: () => void
 	) {
 		super();
 
@@ -739,6 +742,7 @@ export class NotificationViewItem extends Disposable implements INotificationVie
 		}
 
 		this._expanded = true;
+		this.acknowledge?.();
 		this._onDidChangeExpansion.fire();
 	}
 
@@ -766,6 +770,11 @@ export class NotificationViewItem extends Disposable implements INotificationVie
 		this._onDidClose.fire();
 
 		this.dispose();
+	}
+
+	dismiss(): void {
+		this.acknowledge?.();
+		this.close();
 	}
 
 	equals(other: INotificationViewItem): boolean {

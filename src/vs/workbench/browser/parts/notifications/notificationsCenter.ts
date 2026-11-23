@@ -459,7 +459,7 @@ export class NotificationsCenter extends Themable implements INotificationsCente
 		// Close all
 		for (const notification of [...this.model.notifications] /* copy array since we modify it from closing */) {
 			if (!notification.hasActiveProgress) {
-				notification.close();
+				notification.dismiss();
 			}
 			this.accessibilitySignalService.playSignal(AccessibilitySignal.clear);
 		}

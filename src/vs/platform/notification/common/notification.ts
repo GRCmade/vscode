@@ -153,6 +153,9 @@ export interface INotification extends INotificationProperties {
 	 */
 	readonly message: NotificationMessage;
 
+	/** Called on explicit interactions with the message, not when the notification is hidden or removed by the system. */
+	readonly onDidAcknowledge?: () => void;
+
 	/**
 	 * The source of the notification appears as additional information.
 	 */

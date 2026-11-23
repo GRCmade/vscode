@@ -37,6 +37,7 @@ import { IThemeMainService } from '../../theme/electron-main/themeMainService.js
 import { defaultWindowState, ICodeWindow } from '../../window/electron-main/window.js';
 import { IColorScheme, IOpenedAuxiliaryWindow, IOpenedMainWindow, IOpenEmptyWindowOptions, IOpenWindowOptions, IPoint, IRectangle, IWindowOpenable } from '../../window/common/window.js';
 import { studioEntryForOpenables } from '../../window/common/studioProjectWindow.js';
+import type { IStudioTrayNotifications } from '../../windows/common/studioTrayNotifications.js';
 import { defaultBrowserWindowOptions, IWindowsMainService, OpenContext } from '../../windows/electron-main/windows.js';
 import { openWithProjectWindowChoice } from '../../windows/electron-main/studioProjectWindow.js';
 import { isWorkspaceIdentifier, toWorkspaceIdentifier } from '../../workspace/common/workspace.js';
@@ -1417,10 +1418,12 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 		catch { return false; }
 	}
 
-	async setStudioUnreadCount(windowId: number | undefined, count: number): Promise<void> {
-		if (windowId !== undefined && Number.isSafeInteger(count) && count >= 0 && count <= 1e9) {
-			this.windowsMainService.setStudioUnreadCount(windowId, count);
-		}
+	async setStudioTrayNotifications(windowId: number | undefined, notices: IStudioTrayNotifications, scope: string): Promise<void> {
+		if (windowId !== undefined) { this.windowsMainService.setStudioTrayNotifications(windowId, notices, scope); }
+	}
+
+	async finishStudioTrayMarkAll(windowId: number | undefined, requestId: string, success: boolean): Promise<void> {
+		if (windowId !== undefined) { this.windowsMainService.finishStudioTrayMarkAll(windowId, requestId, success); }
 	}
 
 	private readonly activeToasts = this._register(new DisposableMap<string>());

@@ -39,6 +39,7 @@ const desktopResourcePatterns = [
 	'vs/code/electron-browser/workbench/workbench-dev.html',
 	'vs/sessions/electron-browser/sessions.html',
 	'vs/sessions/electron-browser/sessions-dev.html',
+	'vs/platform/windows/electron-browser/studioTrayPreview.html',
 	'vs/workbench/services/extensions/worker/webWorkerExtensionHostIframe.html',
 	'vs/workbench/contrib/webview/browser/pre/*.html',
 

@@ -23,6 +23,14 @@ export interface StudioFavorite { id: string; title: string; detail?: string; co
 export interface StudioNotice { id: string; title: string; source: 'studio' | 'im'; read: boolean; conversation?: string; inviteId?: string; legacyInvite?: boolean; avatarUrl?: string; time?: number; detail?: string }
 export interface SocialSnapshot { people: StudioPerson[]; favorites: StudioFavorite[]; notices: StudioNotice[]; directory?: LaunchpadDirectory; directoryUnavailable?: boolean }
 export type SocialResult = SocialSnapshot | { unavailable: 'unsupported' };
+
+export function studioNoticeTitle(notice: StudioNotice, t: LaunchpadLabel): string {
+	const { id, title } = notice;
+	return id.startsWith('im-unread:') ? t(`${title} unread IM messages`, `${title} 条未读 IM 消息`)
+		: id.startsWith('request:') ? t(`${title} sent you a friend request`, `${title} 请求添加你为好友`)
+			: id.startsWith('friend:') ? t(`${title} accepted your request`, `${title} 已接受好友申请`) : title;
+}
+
 export interface SocialAction { action: 'accept-invite' | 'decline-invite' | 'remove' | 'unfavorite' | 'read'; id: string }
 export interface ConversationAction { setting: 'pin' | 'star' | 'mute' | 'read' | 'hide'; id: string; value: boolean }
 export type InboxAction = 'add-contact' | 'create-group';
@@ -438,7 +446,7 @@ export class LaunchpadProfile extends Disposable {
 				}
 				if (!n.read) { controls.push(this.nativeNotices.includes(n) ? button(t('Mark read', '标为已读'), 'check', () => this.readNative(n.id)) : change(t('Mark read', '标为已读'), 'check', { action: 'read', id: n.id })); }
 				const isRequest = n.id.startsWith('request:');
-				const title = n.id.startsWith('im-unread:') ? t(`${n.title} unread IM messages`, `${n.title} 条未读 IM 消息`) : isRequest ? t(`${n.title} sent you a friend request`, `${n.title} 请求添加你为好友`) : n.id.startsWith('friend:') ? t(`${n.title} accepted your request`, `${n.title} 已接受好友申请`) : n.title;
+				const title = studioNoticeTitle(n, t);
 				const detail = n.legacyInvite ? t('Update the Studio server to respond to this request.', '更新 Studio 服务器后可处理此申请。') : n.source === 'im' ? 'IM' : 'Studio';
 				const mark = isRequest ? avatar(n.title, n.avatarUrl) : icon(n.read ? 'mail-read' : 'mail');
 				const item = row(title, detail, mark, ...controls); item.classList.toggle('lp-unread', !n.read); items.push(item);

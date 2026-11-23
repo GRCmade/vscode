@@ -50,6 +50,7 @@ export class StudioNotificationInbox extends Disposable {
 	private keys(): string[] { return this.storage.keys(scope, target).filter(k => k.startsWith(prefix)).sort().reverse(); }
 	private owned(): Notice[] { return this.stored ??= this.owner ? this.keys().map(k => this.storage.getObject(k, scope) as Notice | undefined).filter((n): n is Notice => !!n && n.owner === this.owner) : []; }
 	list(): StudioNotice[] { return this.owned().slice(0, 100); }
+	unread(): StudioNotice[] { return this.owned().filter(notice => !notice.read); }
 	hasUnread(): boolean { return this.owned().some(notice => !notice.read); }
 	readAll(): void {
 		for (const notice of this.owned()) {

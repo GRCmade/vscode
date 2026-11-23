@@ -7,6 +7,8 @@ import { Menu, type NativeImage, nativeImage, Tray } from 'electron';
 import { isLinux, isMacintosh } from '../../../base/common/platform.js';
 import { IDisposable, toDisposable } from '../../../base/common/lifecycle.js';
 import { getNLSLanguage } from '../../../nls.js';
+import { emptyStudioTrayNotifications, IStudioTrayNotifications } from '../common/studioTrayNotifications.js';
+import { StudioTrayPreview } from './studioTrayPreview.js';
 
 // 2x SteamHarness brand assets from docs/assets/brand, embedded for packaged builds.
 // The macOS template frames the mark with viewBox="234 197 544 544" to fill the 18 pt canvas.
@@ -49,10 +51,10 @@ function withBadge(image: NativeImage, label: string): NativeImage {
 }
 
 export interface IStudioTray extends IDisposable {
-	setUnreadCount(count: number): void;
+	setNotifications(notices: IStudioTrayNotifications, reset?: boolean): void;
 }
 
-export function createStudioTray(show: () => void, quit: () => void): IStudioTray {
+export function createStudioTray(show: () => void, quit: () => void, markAll: () => Promise<boolean>, onError: (error: unknown) => void): IStudioTray {
 	const zh = getNLSLanguage()?.toLowerCase().startsWith('zh');
 	const image = nativeImage.createFromBuffer(Buffer.from(isMacintosh ? templatePng : colorPng, 'base64'), { scaleFactor: 2 });
 	if (isMacintosh) { image.setTemplateImage(true); }
@@ -63,21 +65,33 @@ export function createStudioTray(show: () => void, quit: () => void): IStudioTra
 		{ label: zh ? '退出 SteamHarness Studio' : 'Quit SteamHarness Studio', click: quit },
 	]);
 	tray.setToolTip('SteamHarness Studio');
-	tray.on('click', show);
+	let notices = emptyStudioTrayNotifications;
+	let preview: StudioTrayPreview | undefined;
+	tray.on('click', (_event, bounds) => {
+		if (preview) { preview.close(); return; }
+		if (!notices.count) { show(); return; }
+		try {
+			preview = new StudioTrayPreview(bounds, notices, markAll, () => { preview = undefined; }, onError);
+		} catch (error) { onError(error); }
+	});
 	if (isLinux) {
 		tray.setContextMenu(menu);
 	} else {
-		tray.on('right-click', () => tray.popUpContextMenu(menu));
+		tray.on('right-click', () => { preview?.close(); tray.popUpContextMenu(menu); });
 	}
-	const lifetime = toDisposable(() => tray.destroy());
-	let unread = 0;
+	const lifetime = toDisposable(() => { preview?.close(); tray.destroy(); });
 	return {
 		dispose: () => lifetime.dispose(),
-		setUnreadCount(count) {
-			if (tray.isDestroyed() || unread === count) { return; }
+		setNotifications(next, reset) {
+			if (tray.isDestroyed()) { return; }
+			const previousCount = notices.count;
+			notices = next;
+			if (reset) { preview?.close(); }
+			else { preview?.update(next); }
+			const count = next.count;
+			if (previousCount === count) { return; }
 			const label = count > 99 ? '99+' : count ? String(count) : '';
-			const previous = unread > 99 ? '99+' : unread ? String(unread) : '';
-			unread = count;
+			const previous = previousCount > 99 ? '99+' : previousCount ? String(previousCount) : '';
 			if (label !== previous) {
 				if (isMacintosh) { tray.setTitle(label ? ` ${label}` : ''); }
 				else { tray.setImage(label ? withBadge(image, label) : image); }

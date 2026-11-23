@@ -13,6 +13,7 @@ import { Event } from '../../base/common/event.js';
 import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
 import { Schemas } from '../../base/common/network.js';
 import { basenameOrAuthority } from '../../base/common/resources.js';
+import { MicrotaskDelay } from '../../base/common/symbols.js';
 import { URI } from '../../base/common/uri.js';
 import { generateUuid } from '../../base/common/uuid.js';
 import { ipcRenderer, webUtils } from '../../base/parts/sandbox/electron-browser/globals.js';
@@ -28,6 +29,7 @@ import { FocusMode, INativeHostService } from '../../platform/native/common/nati
 import { INotificationService } from '../../platform/notification/common/notification.js';
 import { IOpenerService } from '../../platform/opener/common/opener.js';
 import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../platform/workspace/common/workspace.js';
+import { emptyStudioTrayNotifications, IStudioTrayNotifications, studioTrayPreviewLimit } from '../../platform/windows/common/studioTrayNotifications.js';
 import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
 import { IStudioStartService } from '../browser/parts/editor/studioStart.js';
 import { IOverlayWebview, IWebviewService } from '../contrib/webview/browser/webview.js';
@@ -38,7 +40,7 @@ import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layou
 import { removeStudioLaunchpadSplash } from './studioLaunchpadSplash.js';
 import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
 import { LaunchpadApp, LaunchpadAppView, StudioChatWindow } from './studioChatWindow.js';
-import { InboxAction, LaunchpadDirectory, SocialResult } from './studioLaunchpadProfile.js';
+import { InboxAction, LaunchpadDirectory, SocialResult, StudioNotice, studioNoticeTitle } from './studioLaunchpadProfile.js';
 import { CatalogPage } from './studioLaunchpadStore.js';
 import { StoreListingDetails } from './studioLaunchpadCards.js';
 import type { LibraryProjectCategory } from './studioLaunchpadLibrary.js';
@@ -67,6 +69,11 @@ export class StudioLaunchpad extends Disposable {
 	private inboxRevision = 0;
 	private noticeRevision = 0;
 	private socialUnread = false;
+	private socialTrayNotices: StudioNotice[] = [];
+	private imTrayNotices?: IStudioTrayNotifications;
+	private imTrayRevision = 0;
+	private trayScope = generateUuid();
+	private trayPublished?: string;
 	private readonly refreshNotices = this._register(new RunOnceScheduler(() => void this.readNotices(), 250));
 	private readonly language = getNLSLanguage() ?? 'en';
 	private readonly refreshInbox = this._register(new RunOnceScheduler(() => void this.readInbox(), 160));
@@ -156,18 +163,14 @@ export class StudioLaunchpad extends Disposable {
 			addContact: () => run(this.openInbox(undefined, undefined, 'add-contact')),
 			createGroup: () => run(this.openInbox(undefined, undefined, 'create-group')),
 			readNotice: id => this.notices.read(id),
-			readAllNotices: async () => {
-				this.notices.readAll();
-				if (this.start.state?.platform && this.account?.signedIn) {
-					++this.noticeRevision;
-					try { await commands.executeCommand('studio.markAllNoticesRead'); }
-					finally { this.refreshNotices.schedule(); }
-				}
-			},
+			readAllNotices: () => this.markAllNoticesRead(),
 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
 		}));
 		const repaintNotices = this._register(new RunOnceScheduler(() => this.paint(), 100));
-		this._register(notices.onDidChange(() => repaintNotices.schedule()));
+		this._register(Event.debounce(notices.onDidChange, () => undefined, MicrotaskDelay)(() => {
+			repaintNotices.schedule();
+			void this.publishTrayNotifications();
+		}));
 		layout.mainContainer.append(this.view.element);
 		const clearProjectDrop = () => this.view.setProjectDropActive(false);
 		this._register(new DragAndDropObserver(this.view.element, {
@@ -220,20 +223,41 @@ export class StudioLaunchpad extends Disposable {
 				this.paint();
 			}
 			this.refreshInbox.schedule();
+			// The IM listener already debounces pushes. Don't wait on throttled timers in the hidden Launchpad.
+			void this.readImTrayNotices();
 			this.view.refreshDirectory();
 		}));
+		const onTrayMarkAll = async (_event: unknown, requestId: unknown, scope: unknown) => {
+			if (typeof requestId !== 'string') { return; }
+			let success = false;
+			try {
+				if (scope === this.trayScope) {
+					await this.markAllNoticesRead(true);
+					success = scope === this.trayScope;
+				}
+			} catch { /* The tray reports a retryable error without generating another notification. */ }
+			await native.finishStudioTrayMarkAll(requestId, success).catch(() => undefined);
+		};
+		ipcRenderer.on('vscode:studioTrayMarkAll', onTrayMarkAll);
+		this._register(toDisposable(() => ipcRenderer.removeListener('vscode:studioTrayMarkAll', onTrayMarkAll)));
 		let platform = false, accountRevision = 0;
 		const setAccount = (state?: LaunchpadMenuAccount) => {
 			const scopeChanged = state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn;
 			if (scopeChanged) {
 				this.appRequests.clear(); this.view.setInboxActionBusy('add-contact', false); this.view.setInboxActionBusy('create-group', false);
-				++this.noticeRevision; this.socialUnread = false; this.refreshNotices.schedule();
+				++this.noticeRevision; this.socialUnread = false; this.socialTrayNotices = []; this.refreshNotices.schedule();
+				++this.imTrayRevision; this.imTrayNotices = undefined;
+				this.trayScope = generateUuid();
 				++this.inboxRevision; this.inbox = undefined; this.refreshInbox.schedule();
 				this.libraryCategory = undefined;
 			}
 			this.account = state && { name: state.name, email: state.email, avatarUrl: state.avatarUrl, hasAccount: state.hasAccount,
 				scopeKey: state.scopeKey, storeScopeKey: state.storeScopeKey, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
-			if (scopeChanged) { this.scheduleLibraryCategory(); }
+			if (scopeChanged) {
+				this.scheduleLibraryCategory();
+				void this.publishTrayNotifications();
+				void this.readImTrayNotices();
+			}
 		};
 		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
 			if (commandId === 'studio.internalUpdateAccountMenuState' && platform) {
@@ -283,7 +307,7 @@ export class StudioLaunchpad extends Disposable {
 		const parts = Array.from(layout.mainContainer.querySelectorAll<HTMLElement>('.part:not(.titlebar)')).filter(part => !part.inert);
 		for (const part of parts) { part.inert = true; }
 		this._register(toDisposable(() => {
-			++this.windowRevision; ++this.inboxRevision; ++this.libraryCategoryRevision;
+			++this.windowRevision; ++this.inboxRevision; ++this.libraryCategoryRevision; ++this.imTrayRevision;
 			this.appRequests.clear();
 			this.start.setVisible('launchpad', false);
 			for (const part of parts) { part.inert = false; }
@@ -308,9 +332,9 @@ export class StudioLaunchpad extends Disposable {
 	}
 
 	private refreshSocialState(): void {
-		if (!this.account?.signedIn || document.hidden || this.view.element.hidden) { return; }
+		if (!this.account?.signedIn) { return; }
 		this.refreshNotices.schedule();
-		this.view.refreshSocial();
+		if (!document.hidden && !this.view.element.hidden) { this.view.refreshSocial(); }
 	}
 
 	private createBackButton(title: string, lifetime: DisposableStore): HTMLButtonElement {
@@ -568,12 +592,78 @@ export class StudioLaunchpad extends Disposable {
 		}
 	}
 	private async readNotices(): Promise<void> {
-		if (!this.account?.signedIn || document.hidden || this.view.element.hidden) { return; }
+		if (!this.account?.signedIn) { return; }
 		const revision = ++this.noticeRevision;
 		try {
 			const unread = await this.commands.executeCommand<boolean>('studio.hasUnreadNotices');
-			if (revision === this.noticeRevision && typeof unread === 'boolean' && unread !== this.socialUnread) { this.socialUnread = unread; this.paint(); }
+			if (revision !== this.noticeRevision || typeof unread !== 'boolean') { return; }
+			const feed = unread ? await this.commands.executeCommand<SocialResult>('studio.getSocialSnapshot', '', 'notices').catch(() => undefined) : undefined;
+			if (revision !== this.noticeRevision) { return; }
+			const changed = unread !== this.socialUnread;
+			this.socialUnread = unread;
+			if (!unread) { this.socialTrayNotices = []; }
+			else if (feed && 'notices' in feed) { this.socialTrayNotices = feed.notices.filter(notice => !notice.read); }
+			if (changed) { this.paint(); }
+			await this.publishTrayNotifications();
 		} catch { /* Keep the last known badge while the same account is offline. */ }
+	}
+
+	private async readImTrayNotices(): Promise<void> {
+		if (!this.account?.signedIn) { return; }
+		const revision = ++this.imTrayRevision;
+		try {
+			const notices = await this.commands.executeCommand<IStudioTrayNotifications | undefined>('studio.getTrayImNotices');
+			if (revision === this.imTrayRevision) {
+				this.imTrayNotices = notices;
+				await this.publishTrayNotifications();
+			}
+		} catch { /* Preserve the last confirmed snapshot on a transient failure. */ }
+	}
+
+	private async publishTrayNotifications(): Promise<void> {
+		const scope = this.trayScope;
+		const im = this.imTrayNotices ?? emptyStudioTrayNotifications;
+		const local = this.notices.unread();
+		// The hosted unread summary describes the same chats as the live IM preview.
+		const social = this.socialTrayNotices.filter(notice => !this.imTrayNotices || !notice.id.startsWith('im-unread:'));
+		const t = (en: string, zh: string) => this.language.startsWith('zh') ? zh : en;
+		const items = [...im.items, ...[...local, ...social].map(notice => ({ title: studioNoticeTitle(notice, t), detail: notice.detail }))].slice(0, studioTrayPreviewLimit);
+		const count = Math.min(1e9, im.count + local.length + (social.length || Number(this.socialUnread && !this.socialTrayNotices.length)));
+		const snapshot = JSON.stringify([scope, count, items]);
+		if (snapshot === this.trayPublished) { return; }
+		this.trayPublished = snapshot;
+		await this.native.setStudioTrayNotifications({ count, items }, scope).catch(() => {
+			if (this.trayPublished === snapshot) { this.trayPublished = undefined; }
+		});
+	}
+
+	private async markAllNoticesRead(includeIm = false): Promise<void> {
+		const scope = this.trayScope;
+		const checkScope = () => { if (scope !== this.trayScope) { throw new Error('The notification account changed'); } };
+		try {
+			this.notices.readAll();
+			if (!this.start.state?.platform || !this.account?.signedIn) { return; }
+			// The hosted summary may be the only IM notice until the first live snapshot arrives.
+			const hasImUnread = this.imTrayNotices ? this.imTrayNotices.count > 0 : this.socialTrayNotices.some(notice => notice.id.startsWith('im-unread:'));
+			if (includeIm && hasImUnread && await this.commands.executeCommand<boolean>('studio.markAllImMessagesRead') !== true) {
+				throw new Error('IM unread messages could not be marked as read');
+			}
+			checkScope();
+			// Run this after IM so a pending hosted summary can't be posted after read-all.
+			await this.commands.executeCommand('studio.markAllNoticesRead');
+			checkScope();
+			++this.noticeRevision;
+			this.socialUnread = false;
+			this.socialTrayNotices = [];
+		} finally {
+			if (scope === this.trayScope) {
+				await this.readImTrayNotices();
+				await this.publishTrayNotifications();
+				this.paint();
+				this.refreshInbox.schedule();
+				this.refreshSocialState();
+			}
+		}
 	}
 
 	private paint(): void {

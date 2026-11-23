@@ -12,6 +12,7 @@ import { URI } from '../../../base/common/uri.js';
 import { IAuxiliaryWindow } from '../../auxiliaryWindow/electron-main/auxiliaryWindow.js';
 import { IConfigurationService } from '../../configuration/common/configuration.js';
 import type { IStudioProjectEntry } from '../../window/common/studioProjectWindow.js';
+import type { IStudioTrayNotifications } from '../common/studioTrayNotifications.js';
 import { NativeParsedArgs } from '../../environment/common/argv.js';
 import { IEnvironmentMainService } from '../../environment/electron-main/environmentMainService.js';
 import { ServicesAccessor, createDecorator } from '../../instantiation/common/instantiation.js';
@@ -39,7 +40,8 @@ export interface IWindowsMainService {
 
 	readonly hasStudioLaunchpad: boolean;
 	enableStudioLaunchpad(): void;
-	setStudioUnreadCount(windowId: number, count: number): void;
+	setStudioTrayNotifications(windowId: number, notices: IStudioTrayNotifications, scope: string): void;
+	finishStudioTrayMarkAll(windowId: number, requestId: string, success: boolean): void;
 	openStudioLaunchpad(background?: boolean, page?: 'home' | 'inbox' | 'store'): Promise<ICodeWindow>;
 	open(openConfig: IOpenConfiguration): Promise<ICodeWindow[]>;
 	openEmptyWindow(openConfig: IOpenEmptyConfiguration, options?: IOpenEmptyWindowOptions): Promise<ICodeWindow[]>;

@@ -37,6 +37,10 @@ const preloads = [
 		file: 'vs/platform/browserView/electron-browser/preload-browserView.ts',
 		markers: ['isTrusted', 'exposeInMainWorld(', 'getBoundingClientRect(', '_onPicked('],
 	},
+	{
+		file: 'vs/platform/windows/electron-browser/preload-studioTrayPreview.ts',
+		markers: ['replaceChildren(', 'invoke('],
+	},
 ];
 const javascriptFiles = preloads.map(({ file }) => file.replace(/\.ts$/, '.js')).sort();
 

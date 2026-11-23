@@ -212,7 +212,8 @@ export class TestNativeHostService implements INativeHostService {
 	async isStudioNotificationWindow(): Promise<boolean> { return false; }
 	async getStudioDesktopNotificationStatus(): Promise<IStudioDesktopNotificationStatus> { return { platform: 'linux', appName: 'Studio', permission: 'unsupported' }; }
 	async openStudioNotificationSettings(): Promise<boolean> { return false; }
-	async setStudioUnreadCount(count: number): Promise<void> { }
+	async setStudioTrayNotifications(): Promise<void> { }
+	async finishStudioTrayMarkAll(): Promise<void> { }
 
 	// Power APIs
 	async getSystemIdleState(idleThreshold: number): Promise<SystemIdleState> { return 'unknown'; }

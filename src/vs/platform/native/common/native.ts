@@ -14,6 +14,7 @@ import { IV8Profile } from '../../profiling/common/profiling.js';
 import { AuthInfo, Credentials } from '../../request/common/request.js';
 import { IPartsSplash } from '../../theme/common/themeService.js';
 import { AgentsWindowOpenSource, IAgentsWindowDraft, IColorScheme, IOpenedAuxiliaryWindow, IOpenedMainWindow, IOpenEmptyWindowOptions, IOpenWindowOptions, IPoint, IRectangle, IWindowOpenable } from '../../window/common/window.js';
+import type { IStudioTrayNotifications } from '../../windows/common/studioTrayNotifications.js';
 
 export interface IToastOptions {
 	readonly id: string;
@@ -443,7 +444,8 @@ export interface ICommonNativeHostService {
 	isStudioNotificationWindow(): Promise<boolean>;
 	getStudioDesktopNotificationStatus(): Promise<IStudioDesktopNotificationStatus>;
 	openStudioNotificationSettings(): Promise<boolean>;
-	setStudioUnreadCount(count: number): Promise<void>;
+	setStudioTrayNotifications(notices: IStudioTrayNotifications, scope: string): Promise<void>;
+	finishStudioTrayMarkAll(requestId: string, success: boolean): Promise<void>;
 
 	// Zip
 	/**

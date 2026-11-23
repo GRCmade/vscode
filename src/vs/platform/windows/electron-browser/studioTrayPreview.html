@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
+	<style>
+		:root { color-scheme: light dark; font: 13px system-ui, sans-serif; color: CanvasText; background: Canvas; }
+		* { box-sizing: border-box; }
+		body { margin: 0; height: 100vh; display: flex; flex-direction: column; }
+		header { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 49px; padding: 7px 14px; border-bottom: 1px solid color-mix(in srgb, CanvasText 16%, transparent); }
+		h1 { font-size: 13px; font-weight: 650; margin: 0; overflow-wrap: anywhere; }
+		button { font: inherit; min-width: 126px; min-height: 30px; padding: 4px 9px; border: 1px solid color-mix(in srgb, CanvasText 22%, transparent); border-radius: 6px; color: CanvasText; background: Canvas; cursor: pointer; }
+		button:hover:enabled { background: color-mix(in srgb, CanvasText 7%, Canvas); }
+		button:focus-visible, ul:focus-visible { outline: 2px solid Highlight; outline-offset: -2px; }
+		button:disabled { color: GrayText; cursor: default; }
+		ul { flex: 1; list-style: none; overflow: auto; min-height: 0; margin: 0; padding: 0 14px; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+		ul:hover, ul:focus-visible { scrollbar-color: GrayText transparent; }
+		li { padding: 9px 0; overflow-wrap: anywhere; }
+		li + li { border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent); }
+		li strong { display: block; font-weight: 600; }
+		li p { margin: 3px 0 0; color: color-mix(in srgb, CanvasText 76%, Canvas); white-space: pre-wrap; }
+		#status { margin: 0; padding: 8px 14px; border-top: 1px solid color-mix(in srgb, CanvasText 16%, transparent); }
+	</style>
+</head>
+<body>
+	<header><h1 id="heading"></h1><button id="read-all" type="button" disabled></button></header>
+	<ul id="notices" aria-labelledby="heading" tabindex="0"></ul>
+	<p id="status" role="alert" hidden></p>
+</body>
+</html>

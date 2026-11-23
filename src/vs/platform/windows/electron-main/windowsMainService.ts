@@ -8,6 +8,7 @@ import { app, BrowserWindow, WebContents, shell } from 'electron';
 import { addUNCHostToAllowlist } from '../../../base/node/unc.js';
 import { hostname, release, arch } from 'os';
 import { coalesce, distinct } from '../../../base/common/arrays.js';
+import { DeferredPromise, raceTimeout } from '../../../base/common/async.js';
 import { CancellationToken } from '../../../base/common/cancellation.js';
 import { CharCode } from '../../../base/common/charCode.js';
 import { Emitter, Event } from '../../../base/common/event.js';
@@ -22,6 +23,7 @@ import { cwd } from '../../../base/common/process.js';
 import { extUriBiasedIgnorePathCase, isEqual, isEqualAuthority, normalizePath, originalFSPath, removeTrailingPathSeparator } from '../../../base/common/resources.js';
 import { assertReturnsDefined } from '../../../base/common/types.js';
 import { URI } from '../../../base/common/uri.js';
+import { generateUuid } from '../../../base/common/uuid.js';
 import { getNLSLanguage, getNLSMessages, localize } from '../../../nls.js';
 import { IBackupMainService } from '../../backup/electron-main/backup.js';
 import { IEmptyWindowBackupInfo } from '../../backup/node/backup.js';
@@ -61,6 +63,7 @@ import { ResourceSet } from '../../../base/common/map.js';
 import { VSBuffer } from '../../../base/common/buffer.js';
 import { resolveAgentsWindowFolder } from './agentsWindow.js';
 import { createStudioTray, IStudioTray } from './studioTray.js';
+import { emptyStudioTrayNotifications, IStudioTrayNotifications, studioTrayPreviewLimit } from '../common/studioTrayNotifications.js';
 import { readStudioReleaseProject } from '../node/studioReleaseProject.js';
 import { studioEntryForFolder, type IStudioProjectEntry } from '../../window/common/studioProjectWindow.js';
 
@@ -250,8 +253,11 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 	}
 
 	private registerListeners(): void {
+		this._register(this.lifecycleMainService.onWillLoadWindow(({ window }) => {
+			if (window.isStudioLaunchpad) { this.updateStudioTrayNotifications(emptyStudioTrayNotifications); }
+		}));
 		this._register(this.onDidDestroyWindow(window => {
-			if (window.isStudioLaunchpad) { this.updateStudioUnreadCount(0); }
+			if (window.isStudioLaunchpad) { this.updateStudioTrayNotifications(emptyStudioTrayNotifications); }
 		}));
 
 		this._register(Event.any(this.onDidSignalReadyWindow, Event.map(this.onDidChangeWindowsCount, () => undefined))(() => {
@@ -286,16 +292,42 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 	private studioLaunchpadEnabled = false;
 	private launchpadOpening?: Promise<ICodeWindow>;
 	private studioTray?: IStudioTray;
+	private studioTrayScope?: string;
+	private studioTrayMarkAll?: { readonly windowId: number; readonly requestId: string; readonly result: DeferredPromise<boolean> };
 	get hasStudioLaunchpad(): boolean { return this.studioLaunchpadEnabled; }
 
-	setStudioUnreadCount(windowId: number, count: number): void {
-		// The resident launchpad reports an account snapshot, not a per-window delta.
-		if (this.getWindowById(windowId)?.isStudioLaunchpad) { this.updateStudioUnreadCount(count); }
+	setStudioTrayNotifications(windowId: number, notices: IStudioTrayNotifications, scope: string): void {
+		if (!this.getWindowById(windowId)?.isStudioLaunchpad || typeof scope !== 'string' || scope.length > 36 ||
+			!Number.isSafeInteger(notices?.count) || notices.count < 0 || notices.count > 1e9 || !Array.isArray(notices.items)) { return; }
+		const items = notices.items.slice(0, studioTrayPreviewLimit).flatMap(item => typeof item?.title === 'string' ? [{
+			title: item.title.slice(0, 500), detail: typeof item.detail === 'string' ? item.detail.slice(0, 500) : undefined,
+		}] : []);
+		this.updateStudioTrayNotifications({ count: notices.count, items }, scope);
 	}
 
-	private updateStudioUnreadCount(count: number): void {
-		setStudioDockUnreadCount(count);
-		this.studioTray?.setUnreadCount(count);
+	private updateStudioTrayNotifications(notices: IStudioTrayNotifications, scope?: string): void {
+		const reset = scope !== this.studioTrayScope;
+		if (reset) {
+			this.studioTrayScope = scope;
+			void this.studioTrayMarkAll?.result.complete(false);
+		}
+		setStudioDockUnreadCount(notices.count);
+		this.studioTray?.setNotifications(notices, reset);
+	}
+
+	private async markAllStudioTrayNotifications(): Promise<boolean> {
+		const window = this.getWindows().find(window => window.isStudioLaunchpad && window.isReady && !window.win?.isDestroyed());
+		if (!window?.win || !this.studioTrayScope || this.studioTrayMarkAll) { return false; }
+		const request = this.studioTrayMarkAll = { windowId: window.id, requestId: generateUuid(), result: new DeferredPromise<boolean>() };
+		try {
+			window.send('vscode:studioTrayMarkAll', request.requestId, this.studioTrayScope);
+			return await raceTimeout(request.result.p, 60_000) === true;
+		} finally { this.studioTrayMarkAll = undefined; }
+	}
+
+	finishStudioTrayMarkAll(windowId: number, requestId: string, success: boolean): void {
+		const request = this.studioTrayMarkAll;
+		if (request?.windowId === windowId && request.requestId === requestId) { void request.result.complete(success === true); }
 	}
 
 	enableStudioLaunchpad(): void {
@@ -308,6 +340,8 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 			this.studioTray = this._register(createStudioTray(
 				() => { void this.openStudioLaunchpad().catch(error => this.logService.error(error)); },
 				() => { void this.lifecycleMainService.quit(); },
+				() => this.markAllStudioTrayNotifications(),
+				error => this.logService.warn('Studio could not show its tray notification preview', error),
 			));
 		} catch (error) {
 			this.logService.warn('Studio could not install its tray icon', error);
@@ -1829,7 +1863,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 	}
 
 	private onWindowClosed(window: ICodeWindow, disposables: IDisposable): void {
-		if (window.isStudioLaunchpad) { this.updateStudioUnreadCount(0); }
+		if (window.isStudioLaunchpad) { this.updateStudioTrayNotifications(emptyStudioTrayNotifications); }
 
 		// Remove from our list so that Electron can clean it up
 		this.windows.delete(window.id);

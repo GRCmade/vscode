@@ -175,6 +175,7 @@ export class StudioLaunchpad extends Disposable {
 			readNotice: id => this.notices.read(id),
 			readAllNotices: () => this.markAllNoticesRead(),
 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
+			openStore: () => run(commands.executeCommand('studio.openStore')),
 		}));
 		const repaintNotices = this._register(new RunOnceScheduler(() => this.paint(), 100));
 		this._register(Event.debounce(notices.onDidChange, () => undefined, MicrotaskDelay)(() => {

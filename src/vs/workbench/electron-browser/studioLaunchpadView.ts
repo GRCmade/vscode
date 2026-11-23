@@ -21,6 +21,7 @@ interface LaunchpadActions extends ProfileActions, LibraryActions, StoreActions 
 	open(): void; workspace(): void; settings(): void;
 	readNotice(id: string): void;
 	resource(id: 'docs' | 'github' | 'server'): void;
+	openStore(): void;
 }
 type Tab = 'store' | 'library' | 'community' | 'profile';
 
@@ -76,12 +77,12 @@ export class StudioLaunchpadView extends Disposable {
 		chrome.append(brand, this.commandCenter, utilities);
 		const navigation = element('div', 'lp-navigation'); this.tabs.setAttribute('role', 'tablist'); this.tabs.setAttribute('aria-label', t('Launchpad navigation', '启动台导航'));
 		for (const [id, name] of [['store', t('Store', '商店')], ['library', t('Library', '仓库')], ['community', t('Community', '社区')], ['profile', t('My Studio', '我的')]] as const) {
-			const b = button(name, '', () => this.select(id)); b.id = `lp-tab-${id}`; b.dataset.tab = id; b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', `lp-page-${id}`); this.tabs.append(b);
+			const b = button(name, '', () => id === 'store' ? actions.openStore() : this.select(id)); b.id = `lp-tab-${id}`; b.dataset.tab = id; b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', `lp-page-${id}`); this.tabs.append(b);
 		}
 		this.tabs.addEventListener('keydown', e => {
 			const buttons = Array.from(this.tabs.querySelectorAll('button')), i = buttons.indexOf(document.activeElement as HTMLButtonElement);
 			if (i < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) { return; }
-			e.preventDefault(); const next = buttons[e.key === 'Home' ? 0 : e.key === 'End' ? buttons.length - 1 : (i + (e.key === 'ArrowLeft' ? -1 : 1) + buttons.length) % buttons.length]; this.select(next.dataset.tab as Tab); next.focus();
+			e.preventDefault(); const next = buttons[e.key === 'Home' ? 0 : e.key === 'End' ? buttons.length - 1 : (i + (e.key === 'ArrowLeft' ? -1 : 1) + buttons.length) % buttons.length]; next.focus(); if (next.dataset.tab === 'store') actions.openStore(); else this.select(next.dataset.tab as Tab);
 		});
 		navigation.append(this.tabs);
 		this.library = new LaunchpadLibrary(t, actions);

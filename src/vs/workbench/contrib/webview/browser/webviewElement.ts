@@ -98,6 +98,9 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 	private _encodedWebviewOrigin: string | undefined;
 
 	protected get platform(): string { return 'browser'; }
+	protected get useNativeClipboard(): boolean {
+		return this._options.nativeClipboard === true || this.extension?.id.value === 'studio.studio-workstation';
+	}
 
 	private static readonly _supportsTransferableStreams = new Lazy<boolean>(() => {
 		try {
@@ -271,10 +274,10 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 		this._register(this.on('did-keydown', (data) => {
 			this.handleKeyEvent('keydown', data);
 		}));
-		this._register(this.on('did-paste', () => {
-			if (this.extension?.id.value === 'studio.studio-workstation' && this.isActiveElement()) {
+		this._register(this.on('did-paste', (data) => {
+			if (this.useNativeClipboard && this.isActiveElement()) {
 				this.handleFocusChange(true);
-				this.paste();
+				this.paste(data?.requestId);
 			}
 		}));
 
@@ -794,7 +797,7 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 		this.execCommand('copy');
 	}
 
-	public paste() {
+	public paste(_requestId?: string) {
 		this.execCommand('paste');
 	}
 

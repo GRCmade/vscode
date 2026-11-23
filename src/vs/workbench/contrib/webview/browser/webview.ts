@@ -98,6 +98,8 @@ export interface WebviewOptions {
 	readonly enableFindWidget?: boolean;
 	/** Leave native menu handling alone for webviews with their own desktop window. */
 	readonly preserveNativeMenuShortcuts?: boolean;
+	/** Route clipboard commands through the Studio host for webviews with their own desktop window. */
+	readonly nativeClipboard?: boolean;
 
 	/**
 	 * Disable the service worker used for loading local resources in the webview.

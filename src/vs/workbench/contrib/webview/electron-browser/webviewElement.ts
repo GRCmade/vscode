@@ -65,7 +65,7 @@ export class ElectronWebviewElement extends WebviewElement {
 
 		this._webviewMainService = ProxyChannel.toService<IWebviewManagerService>(mainProcessService.getChannel('webview'));
 		this._register(this.on('did-copy', async text => {
-			if (this.extension?.id.value !== 'studio.studio-workstation' || !this.isFocused || typeof text !== 'string' || !text) {
+			if (!this.useNativeClipboard || !this.isFocused || typeof text !== 'string' || !text) {
 				return;
 			}
 			try {
@@ -108,24 +108,24 @@ export class ElectronWebviewElement extends WebviewElement {
 	}
 
 	public override copy(): void {
-		if (this.extension?.id.value === 'studio.studio-workstation') {
+		if (this.useNativeClipboard) {
 			this.execCommand({ command: 'copy' });
 		} else {
 			super.copy();
 		}
 	}
 
-	public override paste(): void {
-		if (this.extension?.id.value !== 'studio.studio-workstation') {
+	public override paste(requestId?: string): void {
+		if (!this.useNativeClipboard) {
 			super.paste();
 			return;
 		}
-		void this.pasteWithHostClipboard();
+		void this.pasteWithHostClipboard(requestId);
 	}
 
-	private async pasteWithHostClipboard(): Promise<void> {
+	private async pasteWithHostClipboard(requestId?: string): Promise<void> {
 		const element = this.element;
-		if (!element) {
+		if (!element || !this.isFocused || (requestId && !element.ownerDocument.hasFocus())) {
 			return;
 		}
 		try {
@@ -134,11 +134,11 @@ export class ElectronWebviewElement extends WebviewElement {
 				this._nativeHostService.readClipboardText(),
 				this._nativeHostService.readImage()
 			]);
-			if (this.element === element && this.isFocused) {
-				this.execCommand({ command: 'paste', clipboard: { text, image } });
+			if (this.element === element && this.isFocused && (!requestId || element.ownerDocument.hasFocus())) {
+				this.execCommand({ command: 'paste', clipboard: { text, image }, requestId });
 			}
 		} catch {
-			if (this.element === element && this.isFocused) {
+			if (!requestId && this.element === element && this.isFocused) {
 				super.paste();
 			}
 		}

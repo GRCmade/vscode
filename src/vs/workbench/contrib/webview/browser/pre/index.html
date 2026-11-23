@@ -5,7 +5,7 @@
 	<meta charset="UTF-8">
 
 	<meta http-equiv="Content-Security-Policy"
-		content="default-src 'none'; script-src 'sha256-ZeqMNjSz2deq6uofl/jzH/n9wgLXytk87cOCLOVG7Qo=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
+		content="default-src 'none'; script-src 'sha256-tHU/0z09eV3s9+3DWUqizRixqyCr0f7+JsmdW1reE5E=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
 
 	<!-- Disable pinch zooming -->
 	<meta name="viewport"
@@ -1179,9 +1179,10 @@
 					contentWindow.addEventListener('click', handleInnerClick);
 					contentWindow.addEventListener('auxclick', handleAuxClick);
 					contentWindow.addEventListener('keydown', handleInnerKeydown);
-					contentWindow.addEventListener('vscode-webview-paste', () => {
+					contentWindow.addEventListener('vscode-webview-paste', event => {
 						if (onElectron) {
-							hostMessaging.postMessage('did-paste', undefined);
+							const requestId = event instanceof contentWindow.CustomEvent ? event.detail?.requestId : undefined;
+							hostMessaging.postMessage('did-paste', typeof requestId === 'string' && requestId.length > 0 && requestId.length <= 128 ? { requestId } : undefined);
 						}
 					});
 					contentWindow.addEventListener('keyup', handleInnerKeyup);

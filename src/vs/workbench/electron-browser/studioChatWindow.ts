@@ -5,10 +5,13 @@
 
 import { getWCOTitlebarAreaRect, getZoomFactor, isFullscreen, onDidChangeFullscreen, onDidChangeZoomLevel } from '../../base/browser/browser.js';
 import { $, addDisposableListener } from '../../base/browser/dom.js';
+import { toAction } from '../../base/common/actions.js';
 import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
 import { Disposable, DisposableMap, DisposableStore, toDisposable } from '../../base/common/lifecycle.js';
 import { isMacintosh } from '../../base/common/platform.js';
 import { URI } from '../../base/common/uri.js';
+import { isIMenuItem, MenuId, MenuRegistry } from '../../platform/actions/common/actions.js';
+import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
 import { INativeHostService } from '../../platform/native/common/native.js';
 import { IOpenerService } from '../../platform/opener/common/opener.js';
 import { COMPACT_AUXILIARY_TITLEBAR_HEIGHT, IRectangle } from '../../platform/window/common/window.js';
@@ -27,7 +30,7 @@ export class StudioChatWindow extends Disposable {
 	private readonly opening = new Map<string, Promise<MountedChat | undefined>>();
 
 	constructor(private readonly windows: IAuxiliaryWindowService, private readonly webviews: IWebviewService, private readonly opener: IOpenerService,
-		private readonly native: INativeHostService,
+		private readonly native: INativeHostService, private readonly contextMenu: IContextMenuService,
 		private readonly openConversation: (conversation?: string, user?: string) => Promise<boolean>) { super(); }
 
 	prepare(key: string, app: LaunchpadApp): boolean {
@@ -61,16 +64,17 @@ export class StudioChatWindow extends Disposable {
 			window.window.document.title = view.title;
 			// Auxiliary windows adopt workbench elements from the main document.
 			const host = window.container.appendChild($('.studio-chat-window'));
-			const webview = life.add(this.webviews.createWebviewElement({ title: view.title, options: { preserveNativeMenuShortcuts: true }, extension: undefined,
+			const webview = life.add(this.webviews.createWebviewElement({ title: view.title, options: { preserveNativeMenuShortcuts: true, nativeClipboard: true }, extension: undefined,
 				contentOptions: { allowScripts: true, localResourceRoots: [], portMapping: [{ webviewPort: app.port, extensionHostPort: app.port }] } }));
 			const chat = { window, webview, ready: ready.p, dispose: () => life.dispose() };
 			const close = () => { if (this.chats.get(view.id) === chat) { this.chats.deleteAndLeak(view.id)?.dispose(); } };
+			const isCurrent = () => this.chats.get(view.id) === chat && this.prepared === prepared;
 			this.chats.set(view.id, chat); life.add(window.onUnload(close)); life.add(webview.onFatalError(close));
 			life.add(window);
 			const deadline = life.add(new RunOnceScheduler(close, 20_000));
 			const titlebar = titlebarOverlay ? this.installTitlebar(window.window, host, webview, life) : undefined;
 			life.add(webview.onMessage(({ message }) => {
-				if (this.chats.get(view.id) !== chat || this.prepared !== prepared) { return; }
+				if (!isCurrent()) { return; }
 				if (message?.type === 'studio-launchpad-ready') { deadline.cancel(); void ready.complete(true); }
 				else if (message?.type === 'studio-launchpad-titlebar-request') { titlebar?.sync(); }
 				else if (message?.type === 'studio-launchpad-titlebar-controls') { titlebar?.update(message); }
@@ -82,12 +86,47 @@ export class StudioChatWindow extends Disposable {
 					} else if (typeof user === 'string') { void this.openConversation(undefined, user); }
 				} else if (message?.type === 'studio-sidebar-account' && app.accountUrl) {
 					const uri = URI.parse(app.accountUrl); if (uri.scheme === 'https' || uri.scheme === 'http') { void this.opener.open(uri, { openExternal: true }); }
+				} else if (message?.type === 'studio-web-app-clipboard') {
+					const { requestId, text } = message;
+					if (validRequestId(requestId) && typeof text === 'string' && text.length > 0 && text.length <= 1_000_000 && window.window.document.hasFocus()) {
+						void this.native.writeClipboardText(text).then(() => {
+							if (isCurrent()) { void webview.postMessage({ type: 'studio-web-app-clipboard-result', requestId, ok: true }); }
+						}, () => {
+							if (isCurrent()) { void webview.postMessage({ type: 'studio-web-app-clipboard-result', requestId, ok: false }); }
+						});
+					}
+				} else if (message?.type === 'studio-web-app-contextmenu' && window.window.document.hasFocus()) {
+					const { requestId, x, y, editable, selection } = message;
+					if (validRequestId(requestId) && Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x <= host.clientWidth && y <= host.clientHeight
+						&& typeof editable === 'boolean' && typeof selection === 'boolean') {
+						this.showClipboardMenu(host, x, y, editable, selection, command => {
+							if (isCurrent() && window.window.document.hasFocus()) {
+								void webview.postMessage({ type: 'studio-web-app-contextmenu-action', requestId, command });
+							}
+						});
+					}
 				}
 			}));
 			webview.mountTo(host, window.window); deadline.schedule(); webview.setHtml(view.html); return chat;
 		} catch (e) {
 			if (this.chats.get(view.id)?.window === window) { this.chats.deleteAndLeak(view.id); }
 			life.dispose(); window.dispose(); throw e;
+		}
+	}
+
+	private showClipboardMenu(host: HTMLElement, x: number, y: number, editable: boolean, selection: boolean, run: (command: 'copy' | 'paste') => void): void {
+		const actions = MenuRegistry.getMenuItems(MenuId.WebviewContext).filter(isIMenuItem).flatMap(({ command }) => {
+			const edit = command.id === 'editor.action.clipboardCopyAction' && (editable || selection) ? 'copy'
+				: command.id === 'editor.action.clipboardPasteAction' && editable ? 'paste' : undefined;
+			if (!edit) {
+				return [];
+			}
+			// Use the existing localized labels, but bind the actions to the chat that opened the menu.
+			return [toAction({ id: command.id, label: typeof command.title === 'string' ? command.title : command.title.value, enabled: edit === 'paste' || selection, run: () => run(edit) })];
+		});
+		if (actions.length) {
+			const rect = host.getBoundingClientRect();
+			this.contextMenu.showContextMenu({ getActions: () => actions, getAnchor: () => ({ x: rect.left + x, y: rect.top + y }) });
 		}
 	}
 
@@ -133,4 +172,8 @@ export class StudioChatWindow extends Disposable {
 			drag.classList.add('has-layout');
 		} };
 	}
+}
+
+function validRequestId(id: unknown): id is string {
+	return typeof id === 'string' && id.length > 0 && id.length <= 128;
 }

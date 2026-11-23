@@ -67,12 +67,13 @@ export function createStudioTray(show: () => void, quit: () => void, markAll: ()
 	tray.setToolTip('SteamHarness Studio');
 	let notices = emptyStudioTrayNotifications;
 	let preview: StudioTrayPreview | undefined;
+	const openLaunchpadInstead = (error: unknown) => { onError(error); show(); };
 	tray.on('click', (_event, bounds) => {
 		if (preview) { preview.close(); return; }
 		if (!notices.count) { show(); return; }
 		try {
-			preview = new StudioTrayPreview(bounds, notices, markAll, () => { preview = undefined; }, onError);
-		} catch (error) { onError(error); }
+			preview = new StudioTrayPreview(bounds, notices, markAll, () => { preview = undefined; }, openLaunchpadInstead);
+		} catch (error) { openLaunchpadInstead(error); }
 	});
 	if (isLinux) {
 		tray.setContextMenu(menu);

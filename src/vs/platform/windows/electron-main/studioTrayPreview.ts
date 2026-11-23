@@ -53,7 +53,14 @@ export class StudioTrayPreview {
 		});
 		win.on('closed', onClose);
 		win.on('blur', () => this.close());
-		win.webContents.on('render-process-gone', () => this.close());
+		const fail = (error: unknown) => {
+			if (!win.isDestroyed()) { this.close(); onError(error); }
+		};
+		win.webContents.on('preload-error', (_event, _path, error) => fail(error));
+		win.webContents.on('render-process-gone', (_event, { reason }) => {
+			if (this.ready) { this.close(); }
+			else { fail(new Error(`Studio tray preview renderer exited: ${reason}`)); }
+		});
 		win.webContents.on('will-frame-navigate', event => event.preventDefault());
 		win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 		win.webContents.on('before-input-event', (event, input) => {
@@ -71,20 +78,19 @@ export class StudioTrayPreview {
 			}
 			this.marking = true;
 			try {
-				const success = await markAll();
-				if (success && !this.notices.count) { this.close(); }
-				return success;
-			} finally { this.marking = false; }
+				return await markAll();
+			} finally {
+				this.marking = false;
+				if (!this.notices.count) { this.close(); }
+			}
 		});
 		void win.loadURL(url).then(() => {
 			if (!win.isDestroyed()) {
-				this.ready = true;
 				this.render();
 				win.show();
+				this.ready = true;
 			}
-		}, error => {
-			if (!win.isDestroyed()) { onError(error); this.close(); }
-		});
+		}).catch(fail);
 	}
 
 	private bounds(): Rectangle {

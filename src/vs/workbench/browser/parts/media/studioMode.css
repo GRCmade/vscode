@@ -343,11 +343,10 @@
 	display: flex;
 	align-items: center;
 	height: 52px;
-	-webkit-app-region: drag;
 }
-.monaco-workbench .studio-steam-window-chrome { left: 0; }
+.monaco-workbench .studio-steam-window-chrome { left: 0; -webkit-app-region: drag; }
 .monaco-workbench .studio-steam-window-chrome.studio-mode-in-ide .studio-mode-switcher { margin: 0; }
-.monaco-workbench .studio-steam-tools-chrome { right: 0; height: var(--vscode-spacing-size400); }
+.monaco-workbench .studio-steam-tools-chrome { right: 0; height: var(--vscode-spacing-size400); -webkit-app-region: no-drag; }
 .monaco-workbench .studio-steam-tools-chrome.tools-hidden { height: 52px; }
 .monaco-workbench .studio-steam-window-chrome[hidden],
 .monaco-workbench .studio-steam-tools-chrome[hidden] { display: none; }

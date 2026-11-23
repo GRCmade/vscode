@@ -34,9 +34,13 @@ export class StudioWindowDragRegions extends Disposable {
 		for (const region of regions) {
 			const element = this.element.ownerDocument.createElement('div');
 			element.className = 'studio-project-drag-region';
+			const left = region.x / message.width * 100;
 			Object.assign(element.style, {
-				left: `${region.x / message.width * 100}%`, top: `${region.y / message.height * 100}%`,
+				left: `${left}%`, top: `${region.y / message.height * 100}%`,
 				width: `${region.width / message.width * 100}%`, height: `${region.height / message.height * 100}%`,
+				// Native hit testing can use drag rectangles behind a higher z-index control.
+				// Bound the rectangles themselves so the host's controls are always excluded.
+				maxWidth: `max(0px, calc(${100 - left}% - var(--studio-window-chrome-right, 0px)))`,
 			});
 			this.element.appendChild(element);
 		}

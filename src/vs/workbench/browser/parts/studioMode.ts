@@ -165,15 +165,15 @@ export class StudioModeSwitcher extends Disposable {
 		};
 		const publishChrome = () => {
 			positionMode();
-			const visible = layout.isVisible(Parts.AUXILIARYBAR_PART);
 			studioWindowChrome.active = studioModeState.steam;
 			studioWindowChrome.left = dock.offsetWidth;
 			slot.style.width = studioModeState.state.releaseOnly ? `${element.offsetWidth}px` : '';
-			studioWindowChrome.right = visible ? 0 : toolsDock.offsetWidth;
+			studioWindowChrome.right = studioWindowChrome.active && toolsDock.parentElement === layout.mainContainer ? toolsDock.offsetWidth : 0;
 			const { revision, ...geometry } = studioWindowChrome;
 			const serialized = JSON.stringify(geometry);
 			if (serialized !== lastChrome) {
 				lastChrome = serialized;
+				layout.mainContainer.style.setProperty('--studio-window-chrome-right', `${geometry.right}px`);
 				studioWindowChrome.revision = revision + 1;
 				void this.commands.executeCommand('studio.internalUpdateWindowChrome', { ...studioWindowChrome }).catch(() => undefined);
 			}
@@ -184,7 +184,11 @@ export class StudioModeSwitcher extends Disposable {
 		};
 		const observer = new (getWindow(dock).ResizeObserver)(scheduleChrome);
 		observer.observe(dock); observer.observe(toolsDock); observer.observe(slot); observer.observe(left);
-		this._register(toDisposable(() => { observer.disconnect(); getWindow(dock).clearTimeout(timer); slot.remove(); dock.remove(); toolsDock.remove(); }));
+		this._register(toDisposable(() => {
+			observer.disconnect(); getWindow(dock).clearTimeout(timer);
+			layout.mainContainer.style.removeProperty('--studio-window-chrome-right');
+			slot.remove(); dock.remove(); toolsDock.remove();
+		}));
 		const update = () => {
 			const { state, steam: active, busy, targetSteam } = studioModeState;
 			mode.hidden = state.releaseOnly === true;
@@ -221,8 +225,8 @@ export class StudioModeSwitcher extends Disposable {
 			toggle.setAttribute('aria-label', toggleLabel);
 			toggleHover.update(toggleLabel);
 			toggleIcon.className = `codicon codicon-layout-sidebar-right${visible ? '' : '-off'}`;
-			positionMode();
-			scheduleChrome();
+			// Keep the hit area in sync as the controls move between the sidebar and the window edge.
+			publishChrome();
 		};
 		for (const [button, command] of [[mode, 'studio.internalToggleMode'], [toggle, 'workbench.action.toggleAuxiliaryBar']] as const) {
 			this._register(addDisposableListener(button, 'click', () => {

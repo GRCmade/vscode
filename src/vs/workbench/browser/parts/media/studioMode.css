@@ -84,7 +84,6 @@
 }
 
 .monaco-workbench .studio-steam-toggle-tools[hidden] { display: none; }
-.monaco-workbench.studio-narrow-titlebar .studio-steam-toggle-tools { display: none; }
 .monaco-workbench .studio-steam-toggle-tools:hover { background: var(--vscode-toolbar-hoverBackground); }
 .monaco-workbench .studio-steam-toggle-tools {
 	display: inline-flex;

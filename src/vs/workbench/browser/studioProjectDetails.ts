@@ -39,7 +39,8 @@ export function glyph(p: StudioProjectDetails): string {
 }
 
 export function projectMark(p: StudioProjectDetails): HTMLElement {
-	return p.avatarUrl?.startsWith('data:image/') ? picture(p.avatarUrl) : icon(glyph(p));
+	const source = p.avatarUrl?.startsWith('data:image/') ? p.avatarUrl : studioProjectCardIcon(p.projectType);
+	return source ? picture(source) : icon(glyph(p));
 }
 
 export function projectTypeMark(type: string | undefined, fallback: HTMLElement): HTMLElement {

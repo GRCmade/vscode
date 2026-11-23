@@ -49,11 +49,11 @@ export interface IAuxiliaryWindowOpenOptions {
 	readonly mode?: AuxiliaryWindowMode;
 	readonly zoomLevel?: number;
 	readonly alwaysOnTop?: boolean;
-	/** Keep this native window above its opener, not above other applications. */
-	readonly keepAboveParent?: boolean;
+	/** Apply Studio chat behavior when opened from the launchpad. */
+	readonly studioChat?: boolean;
 
 	readonly nativeTitlebar?: boolean;
-	/** Overlay the native controls on the content of an owned macOS window. */
+	/** Overlay the native controls on the content of a macOS Studio chat. */
 	readonly titlebarOverlay?: boolean;
 	readonly disableFullscreen?: boolean;
 	readonly frameless?: boolean;
@@ -379,7 +379,7 @@ export class BrowserAuxiliaryWindowService extends Disposable implements IAuxili
 			options?.titlebarOverlay ? 'window-titlebar-overlay=yes' : undefined,
 			options?.disableFullscreen ? 'window-disable-fullscreen=yes' : undefined,
 			options?.alwaysOnTop ? 'window-always-on-top=yes' : undefined,
-			options?.keepAboveParent ? 'window-keep-above-parent=yes' : undefined,
+			options?.studioChat ? 'window-studio-chat=yes' : undefined,
 			options?.mode === AuxiliaryWindowMode.Maximized ? 'window-maximized=yes' : undefined,
 			options?.mode === AuxiliaryWindowMode.Fullscreen ? 'window-fullscreen=yes' : undefined,
 			options?.frameless ? 'window-frameless=yes' : undefined,

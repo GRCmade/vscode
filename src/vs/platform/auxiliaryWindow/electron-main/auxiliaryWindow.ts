@@ -38,6 +38,7 @@ export class AuxiliaryWindow extends BaseWindow implements IAuxiliaryWindow {
 		private readonly webContents: WebContents,
 		private readonly windowOptions: BrowserWindowConstructorOptions | undefined,
 		private readonly disableMaximize: boolean,
+		private readonly isStudioChat: boolean,
 		@IEnvironmentMainService environmentMainService: IEnvironmentMainService,
 		@ILogService logService: ILogService,
 		@IConfigurationService configurationService: IConfigurationService,
@@ -100,8 +101,8 @@ export class AuxiliaryWindow extends BaseWindow implements IAuxiliaryWindow {
 			// Lifecycle
 			this.lifecycleMainService.registerAuxWindow(this);
 
-			if (isMacintosh && options?.parent) {
-				// The workbench menu targets the owner. Close this window even when a nested frame has focus.
+			if (isMacintosh && this.isStudioChat) {
+				// The workbench menu targets the opener. Close this chat even when a nested frame has focus.
 				this._register(Event.fromNodeEventEmitter(this.webContents, 'before-input-event', (event: ElectronEvent, input: Input) => ({ event, input }))(({ event, input }) => {
 					if (input.type === 'keyDown' && input.meta && !input.control && !input.alt && !input.shift && !input.isComposing && input.key.toLowerCase() === 'w') {
 						event.preventDefault();

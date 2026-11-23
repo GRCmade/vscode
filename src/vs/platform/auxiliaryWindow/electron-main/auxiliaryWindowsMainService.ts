@@ -39,7 +39,7 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
 
 	private readonly windows = new Map<number /* webContents ID */, AuxiliaryWindow>();
 
-	private readonly pendingWindowOptionsQueue: { readonly options: BrowserWindowConstructorOptions; readonly disableMaximize: boolean }[] = [];
+	private readonly pendingWindowOptionsQueue: { readonly options: BrowserWindowConstructorOptions; readonly disableMaximize: boolean; readonly isStudioChat: boolean }[] = [];
 
 	constructor(
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
@@ -95,20 +95,19 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
 		});
 	}
 
-	createWindow(details: HandlerDetails, parent?: BrowserWindow): BrowserWindowConstructorOptions {
-		const { state, overrides, disableMaximize, keepAboveParent, titlebarOverlay } = this.computeWindowStateAndOverrides(details);
+	createWindow(details: HandlerDetails, fromStudioLaunchpad: boolean): BrowserWindowConstructorOptions {
+		const { state, overrides, disableMaximize, studioChat, titlebarOverlay } = this.computeWindowStateAndOverrides(details);
+		const isStudioChat = fromStudioLaunchpad && studioChat;
 		const options = this.instantiationService.invokeFunction(defaultBrowserWindowOptions, state, overrides, {
 			preload: FileAccess.asFileUri('vs/base/parts/sandbox/electron-browser/preload-aux.js').fsPath
 		});
-		if (keepAboveParent && parent && !parent.isDestroyed()) {
-			options.parent = parent;
-			if (isMacintosh && titlebarOverlay && options.frame !== false) {
-				options.titleBarStyle = 'hidden';
-				options.titleBarOverlay = true;
-				options.trafficLightPosition = getMacOSWindowControlsPosition(COMPACT_AUXILIARY_TITLEBAR_HEIGHT, release(), 12) ?? undefined;
-			}
+		// Keep the renderer opener, but not a native parent: moving or hiding the launchpad must leave chats alone.
+		if (isStudioChat && isMacintosh && titlebarOverlay && options.frame !== false) {
+			options.titleBarStyle = 'hidden';
+			options.titleBarOverlay = true;
+			options.trafficLightPosition = getMacOSWindowControlsPosition(COMPACT_AUXILIARY_TITLEBAR_HEIGHT, release(), 12) ?? undefined;
 		}
-		this.pendingWindowOptionsQueue.push({ options, disableMaximize });
+		this.pendingWindowOptionsQueue.push({ options, disableMaximize, isStudioChat });
 		return options;
 	}
 
@@ -116,7 +115,7 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
 		const windowState: IWindowState = {};
 		const overrides: IDefaultBrowserWindowOptionsOverrides = {};
 		let disableMaximize = false;
-		let keepAboveParent = false;
+		let studioChat = false;
 		let titlebarOverlay = false;
 
 		const features = details.features.split(','); // for example: popup=yes,left=270,top=14.5,width=1024,height=768
@@ -153,8 +152,8 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
 				case 'window-always-on-top':
 					overrides.alwaysOnTop = true;
 					break;
-				case 'window-keep-above-parent':
-					keepAboveParent = value === 'yes';
+				case 'window-studio-chat':
+					studioChat = value === 'yes';
 					break;
 				case 'window-frameless':
 					overrides.frameless = true;
@@ -180,7 +179,7 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
 
 		this.logService.trace('[aux window] using window state', state);
 
-		return { state, overrides, disableMaximize, keepAboveParent, titlebarOverlay };
+		return { state, overrides, disableMaximize, studioChat, titlebarOverlay };
 	}
 
 	registerWindow(webContents: WebContents): void {
@@ -188,7 +187,7 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
 
 		const pendingWindowOptions = this.pendingWindowOptionsQueue.shift();
 
-		const auxiliaryWindow = this.instantiationService.createInstance(AuxiliaryWindow, webContents, pendingWindowOptions?.options, pendingWindowOptions?.disableMaximize ?? false);
+		const auxiliaryWindow = this.instantiationService.createInstance(AuxiliaryWindow, webContents, pendingWindowOptions?.options, pendingWindowOptions?.disableMaximize ?? false, pendingWindowOptions?.isStudioChat ?? false);
 
 		this.windows.set(auxiliaryWindow.id, auxiliaryWindow);
 		disposables.add(toDisposable(() => this.windows.delete(auxiliaryWindow.id)));

@@ -53,7 +53,7 @@ export class StudioChatWindow extends Disposable {
 	}
 	private async mount(prepared: { key: string; app: LaunchpadApp }, view: LaunchpadAppView): Promise<MountedChat | undefined> {
 		const titlebarOverlay = isMacintosh && view.titlebarOverlay === true;
-		const window = await this.windows.open({ bounds: { width: 780, height: 680 }, nativeTitlebar: true, keepAboveParent: true, titlebarOverlay });
+		const window = await this.windows.open({ bounds: { width: 780, height: 680 }, nativeTitlebar: true, studioChat: true, titlebarOverlay });
 		if (this.prepared !== prepared || this._store.isDisposed) { window.dispose(); return undefined; }
 		const life = new DisposableStore();
 		try {

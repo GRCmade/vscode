@@ -129,6 +129,7 @@ export class StudioLaunchpad extends Disposable {
 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
 			inbox: (conversation, title) => run(this.openInbox(conversation, undefined, undefined, title)),
 			cover: project => this.cover(project),
+			readActivity: projects => commands.executeCommand<string[] | undefined>('studio.internalReadLibraryActivity', projects),
 			detailActions: async (project, source) => {
 				if (!this.start.state?.platform || !project.uri.startsWith('file:') || (project.missing && !project.managed)) { return []; }
 				return commands.executeCommand<LibraryDetailAction[] | undefined>(source === 'local' ? 'studio.listFolderBotActions' : 'studio.listLibraryProjectActions', project);
@@ -313,6 +314,8 @@ export class StudioLaunchpad extends Disposable {
 		this._register(addDisposableListener(mainWindow, 'focus', () => { changed(); this.refreshInbox.schedule(); this.refreshSocialState(); }));
 		const poll = mainWindow.setInterval(() => this.refreshSocialState(), 60_000);
 		this._register(toDisposable(() => { ++this.noticeRevision; mainWindow.clearInterval(poll); }));
+		const activityPoll = mainWindow.setInterval(() => this.view.refreshLibraryActivity(), 1000);
+		this._register(toDisposable(() => mainWindow.clearInterval(activityPoll)));
 		this._register(addDisposableListener(document, 'visibilitychange', () => {
 			if (document.hidden) { clearProjectDrop(); }
 			start.setVisible('launchpad', !document.hidden && !this.view.element.hidden);

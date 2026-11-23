@@ -78,6 +78,15 @@
 .lp-scroll:hover,.lp-scroll:focus-within { scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; }
 .lp-library { display: grid; grid-template-columns: clamp(168px,21%,270px) minmax(0,1fr); }
 .lp-rail { display: flex; flex-direction: column; gap: 14px; min-height: 0; padding: 20px 12px; background: var(--lp-side); border-inline-end: 1px solid var(--lp-line); }
+.lp-index-status { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 6px; inline-size: 20px; margin-inline-start: auto; }
+.lp-index-dot { position: relative; flex: none; inline-size: 7px; block-size: 7px; border-radius: 50%; background: currentColor; }
+.lp-index-dot-open { color: var(--vscode-charts-blue,#3b82f6); }
+.lp-index-dot-linked { color: var(--vscode-charts-orange,#e77b27); }
+.lp-index-dot-running { color: var(--vscode-charts-green,#23a559); }
+.lp-index-dot-running::after { content: ''; position: absolute; inset: 0; border: 1px solid currentColor; border-radius: inherit; pointer-events: none; animation: lp-index-breathe 1.8s ease-in-out infinite; }
+@keyframes lp-index-breathe { 0%,100% { opacity: .7; transform: scale(1); } 55% { opacity: 0; transform: scale(2.3); } }
+.monaco-reduce-motion .lp-index-dot-running::after { animation: none; }
+@media (prefers-reduced-motion: reduce) { .lp-index-dot-running::after { animation: none; } }
 .lp-index { display: flex; flex-direction: column; gap: 2px; }
 .studio-launchpad .lp-index-row { justify-content: start; width: 100%; min-height: 29px; gap: 8px; }
 .lp-index-row img { width: 18px; height: 18px; border-radius: 3px; }

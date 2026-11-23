@@ -127,6 +127,9 @@ export class StudioLaunchpadView extends Disposable {
 	setInboxActionBusy(action: InboxAction, busy: boolean): void { this.profile.setInboxActionBusy(action, busy); }
 	focusSettings(): void { this.settingsButton.focus({ preventScroll: true }); }
 	closePicker(): void { this.picker.close(); }
+	refreshLibraryActivity(): void {
+		if (this.active === 'library' && !this.element.hidden && !document.hidden) { void this.library.refreshActivity(); }
+	}
 	refreshSocial(): void { void this.profile.refresh(); }
 	refreshDirectory(): void { this.profile.refreshDirectory(); }
 	showSocial(section: 'activity' | 'people' | 'favorites'): void { this.select('profile'); this.profile.select(section); }

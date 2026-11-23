@@ -15,6 +15,7 @@ export interface LibraryProjectCategory {
 	projectUris: string[];
 }
 export interface LibraryDetailAction { id: string; label: string; icon?: string }
+type ActivityProject = Pick<LaunchpadProject, 'uri' | 'projectId' | 'distribution' | 'managed'>;
 type DetailActionSource = 'local' | 'account';
 interface DetailActionState { key: string; items: LibraryDetailAction[]; loading?: boolean }
 
@@ -27,6 +28,7 @@ export interface LibraryActions {
 	copyPath(p: LaunchpadProject): void;
 	contextMenu: IContextMenuService;
 	cover(p: LaunchpadProject): Promise<string | undefined>;
+	readActivity?(projects: ActivityProject[]): Promise<string[] | undefined>;
 	detailActions?(p: LaunchpadProject, source: DetailActionSource): Promise<LibraryDetailAction[] | undefined>;
 	runDetailAction?(p: LaunchpadProject, id: string): Promise<void>;
 }
@@ -53,6 +55,9 @@ export class LaunchpadLibrary {
 	private selected?: string;
 	private pendingSelection?: string;
 	private homeScroll = 0;
+	private linkedProjects = new Set<string>();
+	private activeProjects = new Set<string>();
+	private readingActivity = false;
 
 	constructor(private readonly t: LaunchpadLabel, private readonly actions: LibraryActions) {
 		const rail = element('aside', 'lp-rail');
@@ -83,14 +88,22 @@ export class LaunchpadLibrary {
 		this.signature = signature; this.history = new Set(recent.map(p => p.uri));
 		this.actionScope = actionScope;
 		this.category = category;
+		this.linkedProjects = new Set(category?.projectUris);
 		this.categoryButton.textContent = category?.label ?? '';
 		if (!category && this.filter === 'product') {
 			this.filter = 'all';
 			if (document.activeElement === this.categoryButton) { this.filters.querySelector<HTMLButtonElement>('[data-id="all"]')?.focus(); }
 		}
 		this.categoryButton.hidden = !category;
+		const previously = this.projects;
 		this.projects = new Map(recent.map(p => [p.uri, p]));
 		for (const p of windows) { if (!this.projects.has(p.uri)) { this.projects.set(p.uri, p); } }
+		for (const uri of this.activeProjects) {
+			const current = this.projects.get(uri), prior = previously.get(uri);
+			if (!current || current.missing || current.projectId !== prior?.projectId || current.distribution !== prior?.distribution || current.managed !== prior?.managed) {
+				this.activeProjects.delete(uri);
+			}
+		}
 		if (this.pendingSelection && this.projects.has(this.pendingSelection)) { this.show(this.pendingSelection); }
 		else if (this.selected && !this.projects.has(this.selected)) { this.show(); } else { this.render(); }
 	}
@@ -130,6 +143,50 @@ export class LaunchpadLibrary {
 		row.addEventListener('keydown', e => {
 			if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); e.stopPropagation(); this.manage(p, row); }
 		});
+	}
+
+	async refreshActivity(): Promise<void> {
+		if (!this.actions.readActivity || this.readingActivity || !this.projects.size) { return; }
+		const projects = this.projects;
+		const candidates = [...projects.values()].filter(p => !p.missing && (p.projectId || p.managed))
+			.map(({ uri, projectId, distribution, managed }) => ({ uri, projectId, distribution, managed }));
+		this.readingActivity = true;
+		try {
+			const active = candidates.length ? await this.actions.readActivity(candidates) : [];
+			if (!Array.isArray(active) || this.projects !== projects || !this.element.isConnected) { return; }
+			const next = new Set(active.filter(uri => projects.has(uri)));
+			if (next.size === this.activeProjects.size && [...next].every(uri => this.activeProjects.has(uri))) { return; }
+			this.activeProjects = next;
+			this.updateIndexStatuses();
+		} catch { /* Retain the previous snapshot if the extension host is temporarily unavailable. */ }
+		finally { this.readingActivity = false; }
+	}
+
+	private updateIndexStatuses(): void {
+		const t = this.t;
+		for (const row of this.index.querySelectorAll<HTMLButtonElement>('.lp-index-row[data-key]')) {
+			const p = this.projects.get(row.dataset.key!.slice('index:'.length));
+			if (!p) { continue; }
+			const dots: { state: string; label: string }[] = [];
+			if (!p.missing && this.activeProjects.has(p.uri)) { dots.push({ state: 'running', label: t('Task running', '任务正在运行') }); }
+			else if (p.windowId !== undefined) { dots.push({ state: 'open', label: t('Open', '已打开') }); }
+			if (!p.missing && this.linkedProjects.has(p.uri)) { dots.push({ state: 'linked', label: t('Bot linked to chat', 'Bot 已加入对话') }); }
+			let status = row.querySelector('.lp-index-status');
+			if (!status) {
+				status = element('span', 'lp-index-status');
+				status.setAttribute('aria-hidden', 'true');
+				row.append(status);
+			}
+			const description = dots.map(dot => dot.label).join(' · ');
+			if (row.getAttribute('aria-description') === (description || null)) { continue; }
+			if (description) { row.setAttribute('aria-description', description); }
+			else { row.removeAttribute('aria-description'); }
+			status.replaceChildren(...dots.map(({ state, label }) => {
+				const dot = element('span', `lp-index-dot lp-index-dot-${state}`);
+				dot.title = label;
+				return dot;
+			}));
+		}
 	}
 
 	private detailActions(project: LaunchpadProject, source: DetailActionSource): DetailActionState | undefined {
@@ -179,6 +236,7 @@ export class LaunchpadLibrary {
 		const selected = this.selected && this.projects.get(this.selected);
 		this.toolbar.hidden = !!selected;
 		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };
+		this.updateIndexStatuses();
 		if (selected) {
 			const canRun = !!selected.distribution && !selected.missing;
 			const open = button(openProjectLabel(selected, t), 'open-in-window', () => this.actions.project(selected), `studio-project-action ${canRun ? 'lp-outline' : 'lp-primary'}`);

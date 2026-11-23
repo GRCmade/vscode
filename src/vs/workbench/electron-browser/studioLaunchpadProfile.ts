@@ -241,7 +241,7 @@ export class LaunchpadProfile extends Disposable {
 		};
 		if (identity.badge) {
 			const badge = element('span', 'lp-social-badge');
-			if (identity.avatarUrl?.startsWith('data:image/')) { badge.append(picture(identity.avatarUrl)); }
+			if (identity.badge === 'Bot') { badge.append(icon('robot')); }
 			badge.append(identity.badge); badges.append(badge);
 		}
 		if (group) { statusIcon('organization', t('Group chat', '群聊')); }

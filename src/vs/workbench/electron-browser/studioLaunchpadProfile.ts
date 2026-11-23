@@ -10,7 +10,7 @@ import { Disposable, toDisposable } from '../../base/common/lifecycle.js';
 import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
 import { studioProjectGlyphMask } from '../common/studioProjectIcons.js';
 import { picture } from './studioLaunchpadCards.js';
-import { button, element, icon, LaunchpadLabel, LaunchpadPicker } from './studioLaunchpadPicker.js';
+import { button, element, icon, LaunchpadLabel, LaunchpadOption, LaunchpadPicker } from './studioLaunchpadPicker.js';
 
 const botBadgeMask = studioProjectGlyphMask('bot');
 
@@ -22,7 +22,7 @@ export interface LaunchpadInbox { connection?: 'connected' | 'offline' | 'connec
 export interface StudioPerson extends NamedIdentity { id: string; relation?: 'friend' | 'incoming' | 'outgoing' }
 interface StudioGroup extends NamedIdentity { id: string; conversation: string; members?: number }
 export interface LaunchpadDirectory { groups: StudioGroup[]; conversations: ConversationState[] }
-export interface StudioFavorite { id: string; title: string; detail?: string; conversation?: string }
+export interface StudioFavorite { id: string; title: string; detail?: string; conversation?: string; time?: number }
 export interface StudioNotice { id: string; title: string; source: 'studio' | 'im'; read: boolean; conversation?: string; inviteId?: string; legacyInvite?: boolean; avatarUrl?: string; time?: number; detail?: string }
 export interface SocialSnapshot { people: StudioPerson[]; favorites: StudioFavorite[]; notices: StudioNotice[]; directory?: LaunchpadDirectory; directoryUnavailable?: boolean }
 export type SocialResult = SocialSnapshot | { unavailable: 'unsupported' };
@@ -70,11 +70,10 @@ function socialText(name: string, detail: string): HTMLElement {
 	return text;
 }
 
-function row(name: string, detail: string, mark: HTMLElement, ...buttons: HTMLButtonElement[]): HTMLLIElement {
-	const item = element('li', 'lp-social-row');
-	item.append(mark, socialText(name, detail));
-	if (buttons.length) { const actions = element('div', 'lp-social-actions'); actions.append(...buttons); item.append(actions); }
-	return item;
+function localNoticeTime(id: string): number | undefined {
+	// Local inbox records have always used a timestamp followed by a UUID.
+	const timestamp = /^(\d{13})-[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.exec(id)?.[1];
+	return timestamp === undefined ? undefined : Number(timestamp);
 }
 
 export class LaunchpadProfile extends Disposable {
@@ -235,16 +234,50 @@ export class LaunchpadProfile extends Disposable {
 
 	refreshDirectory(): void { if (this.active && this.section === 'people') { this.refresh(); } }
 
-	private entries(identity: NamedIdentity, preview: string, key: string, open: () => void, state?: ConversationState, contact?: StudioPerson | StudioGroup, group = false): HTMLLIElement {
-		const t = this.t;
-		const item = element('li', 'lp-conversation-row');
+	private entry(key: string, mark: HTMLElement, name: string, detail: string, open: (origin: HTMLButtonElement) => void, actions: (origin: HTMLButtonElement) => IAction[], meta?: HTMLElement): HTMLLIElement {
+		const item = element('li', 'lp-profile-row');
 		const activate = button('', '', () => {
 			const selection = mainWindow.getSelection();
 			if (!selection?.isCollapsed && selection?.anchorNode && activate.contains(selection.anchorNode)) { return; }
-			open();
-		}, 'lp-conversation-open');
+			open(activate);
+		}, 'lp-profile-entry');
 		activate.dataset.key = key;
 		activate.setAttribute('aria-haspopup', 'menu');
+		activate.append(mark, socialText(name, detail));
+		if (meta?.childElementCount) { activate.append(meta); }
+		item.append(activate);
+		const menu = (point?: { x: number; y: number }) => this.actions.contextMenu.showContextMenu({
+			getAnchor: () => point ?? activate, getActions: () => actions(activate), autoSelectFirstItem: !point,
+		});
+		activate.addEventListener('contextmenu', e => {
+			e.preventDefault(); e.stopPropagation(); activate.focus({ preventScroll: true });
+			menu(e.button === 2 ? { x: e.clientX, y: e.clientY } : undefined);
+		});
+		activate.addEventListener('keydown', e => {
+			if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); e.stopPropagation(); menu(); }
+		});
+		return item;
+	}
+
+	private entryTime(value: number | undefined): HTMLTimeElement | undefined {
+		if (typeof value !== 'number' || value <= 0) { return; }
+		const date = new Date(value), now = new Date(), language = this.t('en', 'zh-CN');
+		if (!Number.isFinite(date.getTime())) { return; }
+		const today = date.toDateString() === now.toDateString();
+		const options: Intl.DateTimeFormatOptions = today ? { hour: 'numeric', minute: '2-digit' }
+			: { month: 'short', day: 'numeric', ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) };
+		const time = element('time', '', date.toLocaleString(language, options));
+		time.dateTime = date.toISOString(); time.title = date.toLocaleString(language);
+		return time;
+	}
+
+	private menuAction(id: string, label: string, run: () => void | Promise<void>, enabled = true): IAction {
+		const scope = this.changing;
+		return toAction({ id: `studio.social.${id}`, label, enabled, run: () => { if (scope === this.changing) { return run(); } } });
+	}
+
+	private entries(identity: NamedIdentity, preview: string, key: string, open: () => void, state?: ConversationState, contact?: StudioPerson | StudioGroup, group = false): HTMLLIElement {
+		const t = this.t;
 		const meta = element('span', 'lp-conversation-meta');
 		const badges = element('span', 'lp-conversation-badges');
 		const statusIcon = (glyph: string, label: string) => {
@@ -268,34 +301,15 @@ export class LaunchpadProfile extends Disposable {
 			const unread = element('span', 'lp-unread-count', state.unread > 99 ? '99+' : String(state.unread));
 			unread.title = t(`${state.unread} unread`, `${state.unread} 条未读`); badges.append(unread);
 		}
-		if (state?.time) {
-			const date = new Date(state.time), now = new Date(), language = t('en', 'zh-CN');
-			if (Number.isFinite(date.getTime())) {
-				const today = date.toDateString() === now.toDateString();
-				const options: Intl.DateTimeFormatOptions = today ? { hour: 'numeric', minute: '2-digit' }
-					: { month: 'short', day: 'numeric', ...(date.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) };
-				const time = element('time', '', date.toLocaleString(language, options));
-				time.dateTime = date.toISOString(); time.title = date.toLocaleString(language); meta.append(time);
-			}
-		}
+		const time = this.entryTime(state?.time);
+		if (time) { meta.append(time); }
 		if (badges.childElementCount) { meta.append(badges); }
-		activate.append(group && !identity.avatarUrl ? avatar('', undefined, 'organization') : avatar(identity.name, identity.avatarUrl), socialText(identity.name, preview));
-		if (meta.childElementCount) { activate.append(meta); }
-		item.append(activate);
-		const menu = (point?: { x: number; y: number }) => this.showConversationMenu(identity, activate, open, state, contact, point);
-		activate.addEventListener('contextmenu', e => {
-			e.preventDefault(); e.stopPropagation(); activate.focus({ preventScroll: true });
-			menu(e.button === 2 ? { x: e.clientX, y: e.clientY } : undefined);
-		});
-		activate.addEventListener('keydown', e => {
-			if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); e.stopPropagation(); menu(); }
-		});
-		return item;
+		const mark = group && !identity.avatarUrl ? avatar('', undefined, 'organization') : avatar(identity.name, identity.avatarUrl);
+		return this.entry(key, mark, identity.name, preview, open, origin => this.conversationActions(identity, origin, open, state, contact), meta);
 	}
 
-	private showConversationMenu(identity: NamedIdentity, origin: HTMLElement, open: () => void, state?: ConversationState, contact?: StudioPerson | StudioGroup, point?: { x: number; y: number }): void {
-		const t = this.t, scope = this.changing;
-		const action = (id: string, label: string, run: () => void | Promise<void>) => toAction({ id: `studio.social.${id}`, label, run: () => { if (scope === this.changing) { return run(); } } });
+	private conversationActions(identity: NamedIdentity, origin: HTMLElement, open: () => void, state?: ConversationState, contact?: StudioPerson | StudioGroup): IAction[] {
+		const t = this.t, action = this.menuAction.bind(this);
 		const items: IAction[] = [action('open', t('Open conversation', '打开会话'), open)];
 		if (state) {
 			const toggle = (setting: ConversationAction['setting'], label: string, value: boolean) => action(setting, label, () => this.changeConversation({ id: state.id, setting, value }));
@@ -317,7 +331,81 @@ export class LaunchpadProfile extends Disposable {
 			}));
 			if (!group) { items.push(action('remove', t('Remove friend…', '删除好友…'), () => this.removeFriend(contact))); }
 		}
-		this.actions.contextMenu.showContextMenu({ getAnchor: () => point ?? origin, getActions: () => items, autoSelectFirstItem: !point });
+		return items;
+	}
+
+	private favoriteEntry(favorite: StudioFavorite): HTMLLIElement {
+		const { id, title, detail, conversation, time } = favorite, t = this.t;
+		const meta = element('span', 'lp-profile-time'), date = this.entryTime(time);
+		if (date) { meta.append(date); }
+		const viewDetails = t('View details', '查看详情');
+		const details = (origin: HTMLElement) => this.showEntryDetails(t('Favorite details', '收藏详情'), title, detail, time, origin);
+		const open = (origin: HTMLElement) => conversation ? this.actions.inbox(conversation) : details(origin);
+		return this.entry('favorite:' + id, avatar('', undefined, 'star-full'), title, detail ?? '', open, origin => [
+			this.menuAction('open', conversation ? t('Open conversation', '打开会话') : viewDetails, () => open(origin)),
+			...(conversation ? [this.menuAction('details', viewDetails, () => details(origin))] : []),
+			new Separator(), this.menuAction('unfavorite', t('Remove from favorites', '取消收藏'), () => this.mutate({ action: 'unfavorite', id }), !this.changing.has(id)),
+		], meta);
+	}
+
+	private noticeEntry(notice: StudioNotice, local: boolean, time: number | undefined): HTMLLIElement {
+		const { id, read, conversation } = notice, t = this.t;
+		const request = id.startsWith('request:'), recent = !conversation && !request && notice.source === 'im';
+		const source = notice.source === 'im' ? 'IM' : 'Studio';
+		const detail = notice.legacyInvite ? t('Update the Studio server to respond to this request.', '更新 Studio 服务器后可处理此申请。') : notice.detail;
+		const title = studioNoticeTitle(notice, t);
+		const markRead = () => {
+			if (!read) { return local ? this.readNative(id) : this.mutate({ action: 'read', id }); }
+			return undefined;
+		};
+		const inviteId = id === 'request:' + notice.inviteId ? notice.inviteId : undefined;
+		const scope = this.changing;
+		const respond = (action: 'accept-invite' | 'decline-invite') => () => {
+			if (inviteId && scope === this.changing) { return this.mutate({ action, id: inviteId }); }
+			return undefined;
+		};
+		const responses = inviteId ? [
+			{ id: 'accept-invite', label: t('Accept', '接受'), glyph: 'check', run: respond('accept-invite') },
+			{ id: 'decline-invite', label: t('Decline', '拒绝'), glyph: 'close', run: respond('decline-invite') },
+		] : [];
+		const details = (origin: HTMLElement) => {
+			this.showEntryDetails(t('Notification details', '通知详情'), title, detail ?? source, time, origin, responses);
+			void markRead();
+		};
+		const open = (origin: HTMLElement) => {
+			if (conversation) { this.actions.inbox(conversation); }
+			else if (recent) { this.select('activity'); this.tabs.get('activity')?.focus({ preventScroll: true }); }
+			else { details(origin); return; }
+			void markRead();
+		};
+		const meta = element('span', 'lp-profile-time lp-notice-meta'), date = this.entryTime(time);
+		if (date) { meta.append(date); }
+		if (!read) {
+			const dot = element('span', 'lp-notice-dot');
+			dot.setAttribute('role', 'img'); dot.setAttribute('aria-label', t('Unread', '未读')); dot.title = t('Unread', '未读');
+			meta.append(dot);
+		}
+		const mark = request ? avatar(notice.title, notice.avatarUrl) : avatar('', undefined, read ? 'mail-read' : 'mail');
+		const viewDetails = t('View details', '查看详情');
+		return this.entry(`${local ? 'local' : 'social'}-notice:${id}`, mark, title, detail ?? source, open, origin => {
+			const items = [this.menuAction('open', conversation ? t('Open conversation', '打开会话') : recent ? t('View recent chats', '查看最近会话') : viewDetails, () => open(origin))];
+			if (conversation || recent) { items.push(this.menuAction('details', viewDetails, () => details(origin))); }
+			if (!read || responses.length) { items.push(new Separator()); }
+			if (!read) { items.push(this.menuAction('read', t('Mark as read', '标为已读'), markRead, !this.changing.has(id))); }
+			if (inviteId) {
+				for (const choice of responses) { items.push(this.menuAction(choice.id, choice.label, choice.run, !this.changing.has(inviteId))); }
+			}
+			return items;
+		}, meta);
+	}
+
+	private showEntryDetails(heading: string, title: string, detail: string | undefined, timestamp: number | undefined, origin: HTMLElement, options: LaunchpadOption[] = []): void {
+		const content = element('div', 'lp-entry-detail');
+		content.append(element('strong', '', title));
+		if (detail && detail !== title) { content.append(element('p', '', detail)); }
+		const time = this.entryTime(timestamp);
+		if (time) { time.textContent = time.title; content.append(time); }
+		this.picker.choices(heading, options, origin, content);
 	}
 
 	private async changeConversation(action: ConversationAction): Promise<void> {
@@ -421,11 +509,10 @@ export class LaunchpadProfile extends Disposable {
 			} else if (!data && !friends?.length) { this.status.textContent = t('Loading…', '正在加载…'); }
 		}
 		const items: HTMLLIElement[] = [];
-		const change = (label: string, glyph: string, action: SocialAction) => { const b = button(label, glyph, () => void this.mutate(action)); b.disabled = this.changing.has(action.id); return b; };
 		if (this.section === 'activity') {
 			for (const c of this.inbox?.items ?? []) {
 				if (recentQuery && !c.name.toLocaleLowerCase().includes(recentQuery) && !c.preview.toLocaleLowerCase().includes(recentQuery)) { continue; }
-				items.push(this.entries(c, c.preview, c.id, () => this.actions.inbox(c.id, c.name), c, undefined, c.group));
+				items.push(this.entries(c, c.preview, 'chat:' + c.id, () => this.actions.inbox(c.id, c.name), c, undefined, c.group));
 			}
 		} else if (this.section === 'people') {
 			const byPeer = new Map(directory?.conversations.flatMap(c => c.peerId ? [[c.peerId, c] as const] : []));
@@ -441,28 +528,22 @@ export class LaunchpadProfile extends Disposable {
 			}
 		} else if (this.section === 'favorites') {
 			for (const f of data?.favorites ?? []) {
-				const id = f.conversation;
-				items.push(row(f.title, f.detail ?? '', icon('star-full'), ...(id ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(id), 'lp-outline')] : []), change(t('Remove', '移除'), 'remove', { action: 'unfavorite', id: f.id })));
+				items.push(this.favoriteEntry(f));
 			}
 		} else {
-			for (const n of [...this.nativeNotices, ...data?.notices ?? []]) {
-				const id = n.conversation;
-				const controls = id ? [button(t('Open chat', '打开会话'), 'comment', () => this.actions.inbox(id), 'lp-outline')]
-					: n.source === 'im' ? [button(t('View recent chats', '查看最近会话'), 'comment', () => this.select('activity'), 'lp-outline')] : [];
-				if (n.inviteId && n.id === 'request:' + n.inviteId) {
-					controls.push(change(t('Accept', '接受'), 'check', { action: 'accept-invite', id: n.inviteId }), change(t('Decline', '拒绝'), 'close', { action: 'decline-invite', id: n.inviteId }));
-				}
-				if (!n.read) { controls.push(this.nativeNotices.includes(n) ? button(t('Mark read', '标为已读'), 'check', () => this.readNative(n.id)) : change(t('Mark read', '标为已读'), 'check', { action: 'read', id: n.id })); }
-				const isRequest = n.id.startsWith('request:');
-				const title = studioNoticeTitle(n, t);
-				const detail = n.legacyInvite ? t('Update the Studio server to respond to this request.', '更新 Studio 服务器后可处理此申请。') : n.source === 'im' ? 'IM' : 'Studio';
-				const mark = isRequest ? avatar(n.title, n.avatarUrl) : icon(n.read ? 'mail-read' : 'mail');
-				const item = row(title, detail, mark, ...controls); item.classList.toggle('lp-unread', !n.read); items.push(item);
+			const notices = [
+				...this.nativeNotices.map(notice => ({ notice, local: true, time: notice.time ?? localNoticeTime(notice.id) })),
+				...(data?.notices ?? []).map(notice => ({ notice, local: false, time: notice.time })),
+			];
+			for (const { notice, local, time } of notices.sort((a, b) => (b.time ?? 0) - (a.time ?? 0))) {
+				items.push(this.noticeEntry(notice, local, time));
 			}
 		}
-		const focused = this.rows.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.key : undefined;
+		const focused = this.rows.contains(document.activeElement) ? document.activeElement as HTMLButtonElement : undefined;
+		const findEntry = (key: string | undefined) => items.find(item => (item.firstElementChild as HTMLButtonElement).dataset.key === key)?.firstElementChild as HTMLButtonElement | undefined;
+		this.picker.moveOrigin(origin => this.rows.contains(origin) ? findEntry(origin.dataset.key) : undefined);
 		this.rows.replaceChildren(...items);
-		if (focused) { Array.from(this.rows.querySelectorAll<HTMLButtonElement>('button[data-key]')).find(el => el.dataset.key === focused)?.focus({ preventScroll: true }); }
+		if (focused) { (findEntry(focused.dataset.key) ?? this.tabs.get(this.section))?.focus({ preventScroll: true }); }
 		this.count.textContent = String(items.length); this.count.hidden = !items.length;
 		this.empty.hidden = items.length > 0 || (needsSocial && (!data || !!failure || !!directoryUnavailable));
 		if (!this.empty.hidden) {

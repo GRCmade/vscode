@@ -36,6 +36,16 @@ export class LaunchpadPicker {
 
 	update(): void { this.refresh?.(); }
 
+	moveOrigin(replace: (origin: HTMLElement) => HTMLElement | undefined): void {
+		if (!this.origin) { return; }
+		const next = replace(this.origin);
+		if (next && next !== this.origin) {
+			this.origin.removeAttribute('aria-expanded');
+			this.origin = next;
+			next.setAttribute('aria-expanded', 'true');
+		}
+	}
+
 	private open(title: string, origin: HTMLElement, quick: boolean): void {
 		this.close();
 		this.origin = origin;

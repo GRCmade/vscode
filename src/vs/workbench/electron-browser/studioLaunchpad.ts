@@ -129,23 +129,18 @@ export class StudioLaunchpad extends Disposable {
 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
 			inbox: (conversation, title) => run(this.openInbox(conversation, undefined, undefined, title)),
 			cover: project => this.cover(project),
-			detailActions: async project => {
+			detailActions: async (project, source) => {
 				if (!this.start.state?.platform || !project.uri.startsWith('file:') || (project.missing && !project.managed)) { return []; }
-				const [local, remote] = await Promise.all([
-					commands.executeCommand<LibraryDetailAction[] | undefined>('studio.listFolderBotActions', project).catch(() => undefined),
-					commands.executeCommand<LibraryDetailAction[] | undefined>('studio.listLibraryProjectActions', project).catch(() => undefined),
-				]);
-				return [...(local ?? []), ...(remote ?? [])];
+				return commands.executeCommand<LibraryDetailAction[] | undefined>(source === 'local' ? 'studio.listFolderBotActions' : 'studio.listLibraryProjectActions', project);
 			},
 			runDetailAction: async (project, id) => {
 				if (!this.start.state?.platform) { return; }
 				try {
-					const local = await commands.executeCommand<{ workspace?: string } | undefined>('studio.runFolderBotAction', project.uri, id).catch(error => {
-						if (id === 'create-folder-bot') { throw error; }
-						return undefined;
-					});
-					if (local?.workspace) { await this.openManagedWorkspace(local.workspace); return; }
-					if (id === 'create-folder-bot') { return; }
+					if (id === 'create-folder-bot') {
+						const local = await commands.executeCommand<{ workspace?: string } | undefined>('studio.runFolderBotAction', project.uri, id);
+						if (local?.workspace) { await this.openManagedWorkspace(local.workspace); }
+						return;
+					}
 					const result = await commands.executeCommand<{ chatUser?: string }>('studio.runLibraryProjectAction', project.uri, id);
 					if (result?.chatUser) { await this.openInbox(undefined, result.chatUser, undefined, project.name); }
 				} catch (error) { notifications.error(error); }

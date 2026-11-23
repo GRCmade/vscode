@@ -96,6 +96,8 @@ export interface WebviewOptions {
 	readonly purpose?: WebviewContentPurpose;
 	readonly customClasses?: string;
 	readonly enableFindWidget?: boolean;
+	/** Leave native menu handling alone for webviews with their own desktop window. */
+	readonly preserveNativeMenuShortcuts?: boolean;
 
 	/**
 	 * Disable the service worker used for loading local resources in the webview.

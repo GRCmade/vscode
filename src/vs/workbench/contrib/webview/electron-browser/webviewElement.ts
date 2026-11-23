@@ -30,7 +30,7 @@ import { WindowIgnoreMenuShortcutsManager } from './windowIgnoreMenuShortcutsMan
  */
 export class ElectronWebviewElement extends WebviewElement {
 
-	private readonly _webviewKeyboardHandler: WindowIgnoreMenuShortcutsManager;
+	private readonly _webviewKeyboardHandler?: WindowIgnoreMenuShortcutsManager;
 
 	private _findStarted: boolean = false;
 	private _cachedHtmlContent: string | undefined;
@@ -59,7 +59,9 @@ export class ElectronWebviewElement extends WebviewElement {
 			configurationService, contextMenuService, notificationService, environmentService,
 			logService, remoteAuthorityResolverService, tunnelService, accessibilityService, instantiationService);
 
-		this._webviewKeyboardHandler = new WindowIgnoreMenuShortcutsManager(configurationService, mainProcessService, _nativeHostService);
+		if (!initInfo.options.preserveNativeMenuShortcuts) {
+			this._webviewKeyboardHandler = new WindowIgnoreMenuShortcutsManager(configurationService, mainProcessService, _nativeHostService);
+		}
 
 		this._webviewMainService = ProxyChannel.toService<IWebviewManagerService>(mainProcessService.getChannel('webview'));
 		this._register(this.on('did-copy', async text => {
@@ -89,7 +91,7 @@ export class ElectronWebviewElement extends WebviewElement {
 
 	override dispose(): void {
 		// Make sure keyboard handler knows it closed (#71800)
-		this._webviewKeyboardHandler.didBlur();
+		this._webviewKeyboardHandler?.didBlur();
 
 		super.dispose();
 	}
@@ -196,9 +198,9 @@ export class ElectronWebviewElement extends WebviewElement {
 	protected override handleFocusChange(isFocused: boolean): void {
 		super.handleFocusChange(isFocused);
 		if (isFocused) {
-			this._webviewKeyboardHandler.didFocus();
+			this._webviewKeyboardHandler?.didFocus();
 		} else {
-			this._webviewKeyboardHandler.didBlur();
+			this._webviewKeyboardHandler?.didBlur();
 		}
 	}
 }

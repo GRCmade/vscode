@@ -53,6 +53,8 @@ export interface IAuxiliaryWindowOpenOptions {
 	readonly keepAboveParent?: boolean;
 
 	readonly nativeTitlebar?: boolean;
+	/** Overlay the native controls on the content of an owned macOS window. */
+	readonly titlebarOverlay?: boolean;
 	readonly disableFullscreen?: boolean;
 	readonly frameless?: boolean;
 	readonly transparent?: boolean;
@@ -374,6 +376,7 @@ export class BrowserAuxiliaryWindowService extends Disposable implements IAuxili
 
 			// non-standard properties
 			options?.nativeTitlebar ? 'window-native-titlebar=yes' : undefined,
+			options?.titlebarOverlay ? 'window-titlebar-overlay=yes' : undefined,
 			options?.disableFullscreen ? 'window-disable-fullscreen=yes' : undefined,
 			options?.alwaysOnTop ? 'window-always-on-top=yes' : undefined,
 			options?.keepAboveParent ? 'window-keep-above-parent=yes' : undefined,

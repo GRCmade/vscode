@@ -242,8 +242,8 @@ export abstract class BaseWindow extends Disposable implements IBaseWindow {
 			win.setSheetOffset(isTahoeOrNewer(release()) ? 32 : 28); // offset dialogs by the height of the custom title bar if we have any
 		}
 
-		// Update the window controls immediately based on cached or default values
-		if (this.hasWindowControlOverlay) {
+		// Honor an explicit traffic-light position instead of reusing the workbench's titlebar height.
+		if (this.hasWindowControlOverlay && !options?.trafficLightPosition) {
 			const cachedWindowControlHeight = this.stateService.getItem<number>((BaseWindow.windowControlHeightStateStorageKey));
 			if (cachedWindowControlHeight) {
 				this.updateWindowControls({ height: cachedWindowControlHeight });

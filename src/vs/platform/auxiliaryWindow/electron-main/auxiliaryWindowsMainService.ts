@@ -4,14 +4,17 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { BrowserWindow, BrowserWindowConstructorOptions, HandlerDetails, WebContents, app } from 'electron';
+import { release } from 'os';
 import { Emitter, Event } from '../../../base/common/event.js';
 import { Disposable, DisposableStore, toDisposable } from '../../../base/common/lifecycle.js';
 import { FileAccess } from '../../../base/common/network.js';
 import { validatedIpcMain } from '../../../base/parts/ipc/electron-main/ipcMain.js';
+import { isMacintosh } from '../../../base/common/platform.js';
 import { AuxiliaryWindow, IAuxiliaryWindow } from './auxiliaryWindow.js';
 import { IAuxiliaryWindowsMainService } from './auxiliaryWindows.js';
 import { IInstantiationService } from '../../instantiation/common/instantiation.js';
 import { ILogService } from '../../log/common/log.js';
+import { COMPACT_AUXILIARY_TITLEBAR_HEIGHT, getMacOSWindowControlsPosition } from '../../window/common/window.js';
 import { IWindowState, WindowMode, defaultAuxWindowState } from '../../window/electron-main/window.js';
 import { IDefaultBrowserWindowOptionsOverrides, WindowStateValidator, defaultBrowserWindowOptions, getLastFocused } from '../../windows/electron-main/windows.js';
 
@@ -93,22 +96,28 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
 	}
 
 	createWindow(details: HandlerDetails, parent?: BrowserWindow): BrowserWindowConstructorOptions {
-		const { state, overrides, disableMaximize, keepAboveParent } = this.computeWindowStateAndOverrides(details);
+		const { state, overrides, disableMaximize, keepAboveParent, titlebarOverlay } = this.computeWindowStateAndOverrides(details);
 		const options = this.instantiationService.invokeFunction(defaultBrowserWindowOptions, state, overrides, {
 			preload: FileAccess.asFileUri('vs/base/parts/sandbox/electron-browser/preload-aux.js').fsPath
 		});
 		if (keepAboveParent && parent && !parent.isDestroyed()) {
 			options.parent = parent;
+			if (isMacintosh && titlebarOverlay && options.frame !== false) {
+				options.titleBarStyle = 'hidden';
+				options.titleBarOverlay = true;
+				options.trafficLightPosition = getMacOSWindowControlsPosition(COMPACT_AUXILIARY_TITLEBAR_HEIGHT, release(), 12) ?? undefined;
+			}
 		}
 		this.pendingWindowOptionsQueue.push({ options, disableMaximize });
 		return options;
 	}
 
-	private computeWindowStateAndOverrides(details: HandlerDetails): { readonly state: IWindowState; readonly overrides: IDefaultBrowserWindowOptionsOverrides; readonly disableMaximize: boolean; readonly keepAboveParent: boolean } {
+	private computeWindowStateAndOverrides(details: HandlerDetails) {
 		const windowState: IWindowState = {};
 		const overrides: IDefaultBrowserWindowOptionsOverrides = {};
 		let disableMaximize = false;
 		let keepAboveParent = false;
+		let titlebarOverlay = false;
 
 		const features = details.features.split(','); // for example: popup=yes,left=270,top=14.5,width=1024,height=768
 		for (const feature of features) {
@@ -137,6 +146,9 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
 					break;
 				case 'window-native-titlebar':
 					overrides.forceNativeTitlebar = true;
+					break;
+				case 'window-titlebar-overlay':
+					titlebarOverlay = value === 'yes';
 					break;
 				case 'window-always-on-top':
 					overrides.alwaysOnTop = true;
@@ -168,7 +180,7 @@ export class AuxiliaryWindowsMainService extends Disposable implements IAuxiliar
 
 		this.logService.trace('[aux window] using window state', state);
 
-		return { state, overrides, disableMaximize, keepAboveParent };
+		return { state, overrides, disableMaximize, keepAboveParent, titlebarOverlay };
 	}
 
 	registerWindow(webContents: WebContents): void {

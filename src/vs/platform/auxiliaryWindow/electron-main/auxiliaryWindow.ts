@@ -3,7 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { BrowserWindow, BrowserWindowConstructorOptions, WebContents } from 'electron';
+import { BrowserWindow, BrowserWindowConstructorOptions, Event as ElectronEvent, Input, WebContents } from 'electron';
 import { Event } from '../../../base/common/event.js';
 import { isLinux, isMacintosh, isWindows } from '../../../base/common/platform.js';
 import { IConfigurationService } from '../../configuration/common/configuration.js';
@@ -99,6 +99,18 @@ export class AuxiliaryWindow extends BaseWindow implements IAuxiliaryWindow {
 
 			// Lifecycle
 			this.lifecycleMainService.registerAuxWindow(this);
+
+			if (isMacintosh && options?.parent) {
+				// The workbench menu targets the owner. Close this window even when a nested frame has focus.
+				this._register(Event.fromNodeEventEmitter(this.webContents, 'before-input-event', (event: ElectronEvent, input: Input) => ({ event, input }))(({ event, input }) => {
+					if (input.type === 'keyDown' && input.meta && !input.control && !input.alt && !input.shift && !input.isComposing && input.key.toLowerCase() === 'w') {
+						event.preventDefault();
+						if (!input.isAutoRepeat) {
+							window.close();
+						}
+					}
+				}));
+			}
 
 			// Allow frameless windows to size down to their content
 			if (options?.frame === false) {

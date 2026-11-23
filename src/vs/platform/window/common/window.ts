@@ -27,6 +27,8 @@ export const WindowMinimumSize = {
 	HEIGHT: 270
 };
 
+export const COMPACT_AUXILIARY_TITLEBAR_HEIGHT = 38;
+
 export interface IPoint {
 	readonly x: number;
 	readonly y: number;

@@ -138,6 +138,10 @@ export class NotificationsCenter extends Themable implements INotificationsCente
 	}
 
 	show(): void {
+		if (this.model.notifications.length === 0) {
+			return;
+		}
+
 		if (this._isVisible) {
 			const notificationsList = assertReturnsDefined(this.notificationsList);
 

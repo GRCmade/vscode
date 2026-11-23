@@ -11,9 +11,10 @@ import { isMacintosh } from '../../base/common/platform.js';
 import { URI } from '../../base/common/uri.js';
 import { INativeHostService } from '../../platform/native/common/native.js';
 import { IOpenerService } from '../../platform/opener/common/opener.js';
-import { COMPACT_AUXILIARY_TITLEBAR_HEIGHT } from '../../platform/window/common/window.js';
+import { COMPACT_AUXILIARY_TITLEBAR_HEIGHT, IRectangle } from '../../platform/window/common/window.js';
 import { IWebviewElement, IWebviewService } from '../contrib/webview/browser/webview.js';
 import { IAuxiliaryWindow, IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+import { chatTitlebarDragRegions } from './studioChatTitlebarDrag.js';
 
 export interface LaunchpadApp { port: number; accountUrl?: string }
 export interface LaunchpadAppView { id: string; title: string; html: string; titlebarOverlay?: boolean }
@@ -67,11 +68,12 @@ export class StudioChatWindow extends Disposable {
 			this.chats.set(view.id, chat); life.add(window.onUnload(close)); life.add(webview.onFatalError(close));
 			life.add(window);
 			const deadline = life.add(new RunOnceScheduler(close, 20_000));
-			const syncTitlebar = titlebarOverlay ? this.installTitlebar(window.window, host, webview, life) : undefined;
+			const titlebar = titlebarOverlay ? this.installTitlebar(window.window, host, webview, life) : undefined;
 			life.add(webview.onMessage(({ message }) => {
 				if (this.chats.get(view.id) !== chat || this.prepared !== prepared) { return; }
 				if (message?.type === 'studio-launchpad-ready') { deadline.cancel(); void ready.complete(true); }
-				else if (message?.type === 'studio-launchpad-titlebar-request') { syncTitlebar?.(); }
+				else if (message?.type === 'studio-launchpad-titlebar-request') { titlebar?.sync(); }
+				else if (message?.type === 'studio-launchpad-titlebar-controls') { titlebar?.update(message); }
 				else if (message?.type === 'studio-launchpad-close') { close(); }
 				else if (message?.type === 'studio-launchpad-open-conversation') {
 					const { conversation, user, closeSource } = message;
@@ -89,23 +91,46 @@ export class StudioChatWindow extends Disposable {
 		}
 	}
 
-	private installTitlebar(target: IAuxiliaryWindow['window'], host: HTMLElement, webview: IWebviewElement, life: DisposableStore): () => void {
+	private installTitlebar(target: IAuxiliaryWindow['window'], host: HTMLElement, webview: IWebviewElement, life: DisposableStore) {
 		// Draggable regions in a cross-origin iframe don't reach the owning native window.
 		const drag = host.appendChild($('.studio-chat-titlebar-drag'));
 		drag.setAttribute('aria-hidden', 'true');
 		const overlay = (target.navigator as Navigator & { windowControlsOverlay?: EventTarget }).windowControlsOverlay;
+		let left = 0, height = 0, renderedWidth = 0;
+		const clear = () => {
+			renderedWidth = 0;
+			drag.classList.remove('has-layout');
+			drag.replaceChildren();
+		};
 		const sync = () => {
 			const zoom = getZoomFactor(target), area = getWCOTitlebarAreaRect(target);
-			const left = area && area.width > 0 ? Math.ceil(area.x) + 8 : isFullscreen(target) ? 12 : Math.ceil(92 / zoom);
-			const height = Math.max(34, Math.ceil(COMPACT_AUXILIARY_TITLEBAR_HEIGHT / zoom), Math.ceil(area?.height ?? 0) + 2);
+			const nextLeft = area && area.width > 0 ? Math.ceil(area.x) + 8 : isFullscreen(target) ? 12 : Math.ceil(92 / zoom);
+			const nextHeight = Math.max(34, Math.ceil(COMPACT_AUXILIARY_TITLEBAR_HEIGHT / zoom), Math.ceil(area?.height ?? 0) + 2);
+			if (left !== nextLeft || height !== nextHeight) { clear(); }
+			left = nextLeft; height = nextHeight;
 			host.style.setProperty('--studio-chat-titlebar-height', `${height}px`);
 			host.style.setProperty('--studio-chat-titlebar-left', `${left}px`);
 			void webview.postMessage({ type: 'studio-launchpad-titlebar', left, height });
 		};
 		const refresh = life.add(new RunOnceScheduler(sync, 0));
+		life.add(addDisposableListener(target, 'resize', () => {
+			if (renderedWidth && renderedWidth !== host.clientWidth) { clear(); }
+			refresh.schedule();
+		}));
 		if (overlay) { life.add(addDisposableListener(overlay, 'geometrychange', () => refresh.schedule())); }
 		life.add(onDidChangeZoomLevel(id => { if (id === target.vscodeWindowId) { refresh.schedule(); } }));
 		life.add(onDidChangeFullscreen(id => { if (id === target.vscodeWindowId) { refresh.schedule(); } }));
-		return sync;
+		return { sync, update: (layout: { width: number; left: number; height: number; controls: IRectangle[] }) => {
+			if (layout.width !== host.clientWidth || layout.left !== left || layout.height !== height) { return; }
+			const regions = chatTitlebarDragRegions(layout.width, height, layout.controls);
+			if (!regions) { clear(); return; }
+			drag.replaceChildren(...regions.map(region => {
+				const area = $('div.studio-chat-titlebar-drag-region');
+				Object.assign(area.style, { left: `${region.x}px`, top: `${region.y}px`, width: `${region.width}px`, height: `${region.height}px` });
+				return area;
+			}));
+			renderedWidth = layout.width;
+			drag.classList.add('has-layout');
+		} };
 	}
 }

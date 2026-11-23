@@ -66,6 +66,7 @@ interface ProjectDetailsOptions {
 	openEntry?(entryId: string): void;
 	currentWindow?: boolean;
 	extraFacts?: [label: string, value: string | undefined][];
+	usage?: HTMLElement;
 }
 
 /** The resident library and IDE use the same layout; each supplies its own window actions. */
@@ -94,6 +95,7 @@ export function projectDetails(p: StudioProjectDetails, t: StudioLabel, options:
 	fact(t('Location', '位置'), p.path, 'lp-detail-location');
 	fact(t('Project ID', '项目 ID'), p.projectId);
 	page.append(facts);
+	if (options.usage) { page.append(options.usage); }
 	if (p.entries?.length) {
 		page.append(projectEntryList(p.entries, t, options.openEntry, p.uri));
 	}

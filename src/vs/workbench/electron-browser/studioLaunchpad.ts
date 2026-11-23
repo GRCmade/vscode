@@ -33,6 +33,7 @@ import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../
 import { emptyStudioTrayNotifications, IStudioTrayNotifications, studioTrayPreviewLimit } from '../../platform/windows/common/studioTrayNotifications.js';
 import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
 import { IStudioStartService } from '../browser/parts/editor/studioStart.js';
+import { projectUsageBridge } from '../browser/studioProjectUsage.js';
 import { IOverlayWebview, IWebviewService } from '../contrib/webview/browser/webview.js';
 import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
 import type { StudioNotificationInbox } from './studioNotificationInbox.js';
@@ -127,6 +128,7 @@ export class StudioLaunchpad extends Disposable {
 			remove: project => run(this.removeProject(project)),
 			reveal: project => run(native.showItemInFolder(project.managed ? project.path : URI.parse(project.uri).fsPath)),
 			copyPath: project => run(clipboard.writeText(project.path)), contextMenu, hoverService,
+			usage: projectUsageBridge(commands, clipboard),
 			signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
 			inbox: (conversation, title) => run(this.openInbox(conversation, undefined, undefined, title)),

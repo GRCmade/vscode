@@ -8,10 +8,12 @@ import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
 import { generateUuid } from '../../../../base/common/uuid.js';
 import { getNLSLanguage } from '../../../../nls.js';
+import { IClipboardService } from '../../../../platform/clipboard/common/clipboardService.js';
 import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { projectDetails, type StudioProjectDetails } from '../../studioProjectDetails.js';
+import { projectUsageBridge, projectUsageKey, StudioProjectUsage, type ProjectUsageBridge } from '../../studioProjectUsage.js';
 import './media/studioStart.css';
 
 interface StudioOverviewProject {
@@ -95,6 +97,8 @@ export class StudioStartView extends Disposable {
 	private readonly content: HTMLElement;
 	private readonly contentDisposables = this._register(new DisposableStore());
 	private readonly zh = getNLSLanguage()?.toLowerCase().startsWith('zh');
+	private readonly usageBridge: ProjectUsageBridge;
+	private readonly usage = new Map<string, StudioProjectUsage>();
 	private renderKey = '';
 	private intersecting = false;
 	private enabled = true;
@@ -102,9 +106,11 @@ export class StudioStartView extends Disposable {
 	constructor(
 		container: HTMLElement,
 		@IStudioStartService private readonly service: IStudioStartService,
-		@ICommandService private readonly commands: ICommandService
+		@ICommandService private readonly commands: ICommandService,
+		@IClipboardService clipboard: IClipboardService,
 	) {
 		super();
+		this.usageBridge = projectUsageBridge(commands, clipboard);
 		this.element = append(container, $('main.studio-start.loading'));
 		this.element.tabIndex = -1;
 		this.element.setAttribute('aria-label', 'SteamHarness');
@@ -123,7 +129,15 @@ export class StudioStartView extends Disposable {
 	}
 
 	private publishVisibility(): void {
-		this.service.setVisible(this.id, this.enabled && this.intersecting && !this.element.ownerDocument.hidden);
+		const visible = this.enabled && this.intersecting && !this.element.ownerDocument.hidden;
+		this.service.setVisible(this.id, visible);
+		for (const view of this.usage.values()) { view.setVisible(visible); }
+	}
+
+	private pruneUsage(keys: Set<string>): void {
+		for (const [key, view] of this.usage) {
+			if (!keys.has(key)) { view.dispose(); this.usage.delete(key); }
+		}
 	}
 
 	setVisible(visible: boolean): void {
@@ -166,13 +180,14 @@ export class StudioStartView extends Disposable {
 		const state = this.service.state;
 		this.element.classList.toggle('loading', !state);
 		this.element.setAttribute('aria-busy', String(!state));
-		if (!state) { return; }
+		if (!state) { this.pruneUsage(new Set()); return; }
 		const { hasWorkspace, projects, pending, platform, installing, busy, labels } = state;
 		const lastOpened = new Map(state.recent.map(row => [row.uri, row.lastOpened]));
 		const details = projects.map(project => ({ ...project, lastOpened: lastOpened.get(project.uri) }));
 		const key = JSON.stringify({ hasWorkspace, details, pending, platform, installing, busy: pending.length ? busy : undefined, labels });
 		if (key === this.renderKey) { return; }
 		this.renderKey = key;
+		this.pruneUsage(new Set(details.map(projectUsageKey)));
 		const active = this.element.ownerDocument.activeElement;
 		const focusKey = this.content.contains(active) ? (active as HTMLElement | null)?.dataset.key : undefined;
 		this.contentDisposables.clear();
@@ -205,6 +220,7 @@ export class StudioStartView extends Disposable {
 		}
 		const root = append(this.content, $('.studio-start-current'));
 		for (const project of details) { this.renderProject(root, project, !!platform, text); }
+		this.publishVisibility();
 		if (focusKey) { Array.from(root.querySelectorAll<HTMLElement>('[data-key]')).find(node => node.dataset.key === focusKey)?.focus({ preventScroll: true }); }
 	}
 
@@ -233,12 +249,17 @@ export class StudioStartView extends Disposable {
 		const status = update?.status === 'upgrade' ? 'updateAvailable' : update?.status === 'current' ? 'upToDate' : update?.status === 'ahead' ? 'localNewer' : undefined;
 		const extraFacts: [string, string | undefined][] = [[text('serverVersion'), update?.status !== 'unavailable' ? update?.serverVersion : undefined],
 			[t('Update status', '更新状态'), status ? text(status) : undefined]];
+		const key = projectUsageKey(project);
+		let usage = this.usage.get(key);
+		if (!usage) { usage = new StudioProjectUsage(project, t, this.usageBridge); this.usage.set(key, usage); }
 		append(root, projectDetails({ ...project, kind: 'folder', path: folderPath, distribution,
 			entries: entries.map(entry => ({ ...entry, type: entry.projectType, primary: entry.entryId === defaultEntry })),
-		}, t, { actions, extraFacts, currentWindow: true, openEntry: entryId => { void this.commands.executeCommand('studio.internalRunProjectEntry', { uri, entryId }).catch(() => undefined); } }));
+		}, t, { actions, extraFacts, currentWindow: true, usage: usage.element,
+			openEntry: entryId => { void this.commands.executeCommand('studio.internalRunProjectEntry', { uri, entryId }).catch(() => undefined); } }));
 	}
 
 	override dispose(): void {
+		this.pruneUsage(new Set());
 		this.service.setVisible(this.id, false);
 		this.element.remove();
 		super.dispose();

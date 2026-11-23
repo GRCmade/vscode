@@ -10,6 +10,7 @@ import { Disposable } from '../../base/common/lifecycle.js';
 import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
 import type { IHoverService } from '../../platform/hover/browser/hover.js';
 import { projectDetails } from '../browser/studioProjectDetails.js';
+import { projectUsageKey, StudioProjectUsage, type ProjectUsageBridge } from '../browser/studioProjectUsage.js';
 import { artwork, edition, LaunchpadProject, openProjectLabel, projectMark, typeLabel } from './studioLaunchpadCards.js';
 import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
 
@@ -32,6 +33,7 @@ export interface LibraryActions {
 	copyPath(p: LaunchpadProject): void;
 	contextMenu: IContextMenuService;
 	hoverService: IHoverService;
+	usage?: ProjectUsageBridge;
 	cover(p: LaunchpadProject): Promise<string | undefined>;
 	readActivity?(projects: ActivityProject[]): Promise<string[] | undefined>;
 	detailActions?(p: LaunchpadProject, source: DetailActionSource): Promise<LibraryDetailAction[] | undefined>;
@@ -63,6 +65,8 @@ export class LaunchpadLibrary extends Disposable {
 	private linkedProjects = new Set<string>();
 	private activeProjects = new Set<string>();
 	private readingActivity = false;
+	private visible = false;
+	private usage?: { key: string; view: StudioProjectUsage };
 
 	constructor(private readonly t: LaunchpadLabel, private readonly actions: LibraryActions) {
 		super();
@@ -286,8 +290,11 @@ export class LaunchpadLibrary extends Disposable {
 				run.dataset.key = 'run:' + selected.uri;
 				actions.unshift(run);
 			}
-			const detail = projectDetails(selected, t, { actions, openEntry: canRun ? entryId => this.actions.project(selected, entryId) : undefined });
+			const usage = this.projectUsage(selected);
+			const detail = projectDetails(selected, t, { actions, usage: usage?.element,
+				openEntry: canRun ? entryId => this.actions.project(selected, entryId) : undefined });
 			this.content.replaceChildren(detail); restoreFocus();
+			usage?.setVisible(this.visible);
 			// Local actions resolve independently of IM. Keep confirmed actions while revalidating them.
 			const local = this.detailActions(selected, 'local'), account = this.detailActions(selected, 'account');
 			let rendered = '';
@@ -321,6 +328,7 @@ export class LaunchpadLibrary extends Disposable {
 			this.updateDetailButtons();
 			return;
 		}
+		this.projectUsage();
 		this.detailActionStates.clear();
 		this.updateDetailButtons = undefined;
 		this.content.replaceChildren();
@@ -348,5 +356,25 @@ export class LaunchpadLibrary extends Disposable {
 		if (this.filter === 'all' && !query) { gallery(t('Recently opened', '最近打开'), 'recent', rows.slice(0, 6)); }
 		gallery(category?.label ?? t('All projects', '所有项目'), category ? 'product' : 'all', rows);
 		restoreFocus();
+	}
+
+	setVisible(visible: boolean): void {
+		this.visible = visible;
+		this.usage?.view.setVisible(visible);
+	}
+
+	private projectUsage(project?: LaunchpadProject): StudioProjectUsage | undefined {
+		const key = project && projectUsageKey(project);
+		if (key !== this.usage?.key) {
+			this.usage?.view.dispose();
+			const bridge = this.actions.usage;
+			this.usage = key && project && bridge ? { key, view: new StudioProjectUsage(project, this.t, bridge) } : undefined;
+		}
+		return this.usage?.view;
+	}
+
+	override dispose(): void {
+		this.projectUsage();
+		super.dispose();
 	}
 }

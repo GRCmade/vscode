@@ -3,6 +3,7 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { addDisposableListener } from '../../base/browser/dom.js';
 import { Disposable } from '../../base/common/lifecycle.js';
 import { STEAMHARNESS_ICON_DATA_URI } from '../common/studioBranding.js';
 import { glyph, LaunchpadProject, picture, StoreListing } from './studioLaunchpadCards.js';
@@ -86,6 +87,7 @@ export class StudioLaunchpadView extends Disposable {
 		});
 		navigation.append(this.tabs);
 		this.library = this._register(new LaunchpadLibrary(t, actions));
+		this._register(addDisposableListener(this.element.ownerDocument, 'visibilitychange', () => this.updateLibraryVisibility()));
 		this.store = this._register(new LaunchpadStore(t, actions)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice, this.picker));
 		const community = element('div', 'lp-community'); community.append(icon('organization'), element('h1', '', t('Community', '社区')), element('p', '', t('Coming soon', '暂未开放')));
 		for (const [id, page] of [['store', this.store.element], ['library', this.library.element], ['community', community], ['profile', this.profile.element]] as const) {
@@ -109,6 +111,7 @@ export class StudioLaunchpadView extends Disposable {
 		if (this.state) { this.update(this.state); }
 		if (id === 'library') { this.library.show(projectUri); }
 		if (id === 'store') { this.store.showCatalog(false); }
+		this.updateLibraryVisibility();
 	}
 
 	private fileOptions(): LaunchpadOption[] { return [{ label: this.t('Open folder…', '打开文件夹…'), glyph: 'folder-opened', run: this.actions.open }, { label: this.t('Open workspace…', '打开工作区…'), glyph: 'project', run: this.actions.workspace }]; }
@@ -123,7 +126,14 @@ export class StudioLaunchpadView extends Disposable {
 	}
 	get canDropProject(): boolean { return !this.element.hidden && !this.picker.dialog.open; }
 	setProjectDropActive(active: boolean): void { this.drop.hidden = !active; }
-	setVisible(visible: boolean): void { this.element.hidden = !visible; this.drop.hidden = true; }
+	setVisible(visible: boolean): void {
+		this.element.hidden = !visible;
+		this.drop.hidden = true;
+		this.updateLibraryVisibility();
+	}
+	private updateLibraryVisibility(): void {
+		this.library.setVisible(this.active === 'library' && !this.element.hidden && !this.element.ownerDocument.hidden);
+	}
 	setInboxActionBusy(action: InboxAction, busy: boolean): void { this.profile.setInboxActionBusy(action, busy); }
 	focusSettings(): void { this.settingsButton.focus({ preventScroll: true }); }
 	closePicker(): void { this.picker.close(); }

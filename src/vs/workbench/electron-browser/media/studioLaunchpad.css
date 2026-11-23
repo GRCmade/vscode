@@ -78,6 +78,8 @@
 .lp-scroll:hover,.lp-scroll:focus-within { scrollbar-color: var(--vscode-scrollbarSlider-background) transparent; }
 .lp-library { display: grid; grid-template-columns: clamp(168px,21%,270px) minmax(0,1fr); }
 .lp-rail { display: flex; flex-direction: column; gap: 14px; min-height: 0; padding: 20px 12px; background: var(--lp-side); border-inline-end: 1px solid var(--lp-line); }
+.lp-rail-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.studio-launchpad .lp-rail-help { flex: none; inline-size: 24px; block-size: 24px; padding: 0; }
 .lp-index-status { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 6px; inline-size: 20px; margin-inline-start: auto; }
 .lp-index-dot { position: relative; flex: none; inline-size: 7px; block-size: 7px; border-radius: 50%; background: currentColor; }
 .lp-index-dot-open { color: var(--vscode-charts-blue,#3b82f6); }
@@ -87,6 +89,10 @@
 @keyframes lp-index-breathe { 0%,100% { opacity: .7; transform: scale(1); } 55% { opacity: 0; transform: scale(2.3); } }
 .monaco-reduce-motion .lp-index-dot-running::after { animation: none; }
 @media (prefers-reduced-motion: reduce) { .lp-index-dot-running::after { animation: none; } }
+.lp-status-guide { display: grid; gap: 8px; inline-size: min(286px, 64vw); margin: 0; padding: 3px 4px; list-style: none; user-select: text; }
+.lp-status-guide li { display: grid; grid-template-columns: 7px minmax(0,1fr); gap: 9px; }
+.lp-status-guide .lp-index-dot { margin-block-start: .4em; }
+.lp-status-guide p { margin: 2px 0 0; color: var(--vscode-descriptionForeground, currentColor); }
 .lp-index { display: flex; flex-direction: column; gap: 2px; }
 .studio-launchpad .lp-index-row { justify-content: start; width: 100%; min-height: 29px; gap: 8px; }
 .lp-index-row img { width: 18px; height: 18px; border-radius: 3px; }
@@ -277,7 +283,7 @@
 	.lp-profile-nav [aria-selected=true]::before { inset: auto 12px 0; width: auto; height: 2px; }
 	.lp-profile-label { display: none; } .lp-profile-short { display: inline; }
 	.lp-profile-content { padding-top: 16px; }
-	.lp-library { grid-template-columns: minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); } .lp-rail { padding: 8px var(--lp-pad); border: 0; } .lp-rail > h2,.lp-rail > .lp-index { display: none; } .lp-navigation { padding-inline: 10px; }
+	.lp-library { grid-template-columns: minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); } .lp-rail { padding: 8px var(--lp-pad); border: 0; } .lp-rail-heading,.lp-rail > .lp-index { display: none; } .lp-navigation { padding-inline: 10px; }
 	.lp-tabs { gap: 10px; } .studio-launchpad .lp-tabs button { font-size: 15px; } .lp-feature-info h2 { font-size: 18px; }
 	.lp-recent .lp-library-grid { grid-auto-columns: minmax(150px,44%); }
 }

@@ -25,6 +25,7 @@ import { IFileDialogService } from '../../platform/dialogs/common/dialogs.js';
 import { containsDragType } from '../../platform/dnd/browser/dnd.js';
 import { IExtensionStorageService } from '../../platform/extensionManagement/common/extensionStorage.js';
 import { FileOperationResult, IFileService, toFileOperationResult } from '../../platform/files/common/files.js';
+import { IHoverService } from '../../platform/hover/browser/hover.js';
 import { FocusMode, INativeHostService } from '../../platform/native/common/native.js';
 import { INotificationService } from '../../platform/notification/common/notification.js';
 import { IOpenerService } from '../../platform/opener/common/opener.js';
@@ -97,6 +98,7 @@ export class StudioLaunchpad extends Disposable {
 		@IWebviewViewService private readonly webviewViews: IWebviewViewService,
 		@IAuxiliaryWindowService auxiliaryWindows: IAuxiliaryWindowService,
 		@IContextMenuService contextMenu: IContextMenuService,
+		@IHoverService hoverService: IHoverService,
 		@IClipboardService clipboard: IClipboardService,
 	) {
 		super();
@@ -124,7 +126,7 @@ export class StudioLaunchpad extends Disposable {
 			project: (project, entryId) => run(this.openProject(project, entryId)),
 			remove: project => run(this.removeProject(project)),
 			reveal: project => run(native.showItemInFolder(project.managed ? project.path : URI.parse(project.uri).fsPath)),
-			copyPath: project => run(clipboard.writeText(project.path)), contextMenu,
+			copyPath: project => run(clipboard.writeText(project.path)), contextMenu, hoverService,
 			signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
 			inbox: (conversation, title) => run(this.openInbox(conversation, undefined, undefined, title)),

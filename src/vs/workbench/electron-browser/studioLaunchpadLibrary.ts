@@ -3,8 +3,12 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import type { IDelayedHoverOptions } from '../../base/browser/ui/hover/hover.js';
+import { HoverPosition } from '../../base/browser/ui/hover/hoverWidget.js';
 import { IAction, Separator, toAction } from '../../base/common/actions.js';
+import { Disposable } from '../../base/common/lifecycle.js';
 import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
+import type { IHoverService } from '../../platform/hover/browser/hover.js';
 import { projectDetails } from '../browser/studioProjectDetails.js';
 import { artwork, edition, LaunchpadProject, openProjectLabel, projectMark, typeLabel } from './studioLaunchpadCards.js';
 import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
@@ -27,13 +31,14 @@ export interface LibraryActions {
 	reveal(p: LaunchpadProject): void;
 	copyPath(p: LaunchpadProject): void;
 	contextMenu: IContextMenuService;
+	hoverService: IHoverService;
 	cover(p: LaunchpadProject): Promise<string | undefined>;
 	readActivity?(projects: ActivityProject[]): Promise<string[] | undefined>;
 	detailActions?(p: LaunchpadProject, source: DetailActionSource): Promise<LibraryDetailAction[] | undefined>;
 	runDetailAction?(p: LaunchpadProject, id: string): Promise<void>;
 }
 
-export class LaunchpadLibrary {
+export class LaunchpadLibrary extends Disposable {
 	readonly element = element('div', 'lp-library');
 	private readonly index = element('div', 'lp-index lp-scroll');
 	private readonly shelf = element('div', 'lp-shelf lp-scroll');
@@ -60,11 +65,22 @@ export class LaunchpadLibrary {
 	private readingActivity = false;
 
 	constructor(private readonly t: LaunchpadLabel, private readonly actions: LibraryActions) {
+		super();
 		const rail = element('aside', 'lp-rail');
 		this.search.type = 'search'; this.search.placeholder = t('Find a project', '查找项目'); this.search.setAttribute('aria-label', this.search.placeholder);
 		this.search.addEventListener('input', () => { this.pendingSelection = this.selected = undefined; this.shelf.scrollTop = 0; this.render(); });
 		const field = element('label', 'lp-search-field'); field.append(icon('search'), this.search);
-		rail.append(element('h2', '', t('Library', '仓库')), field, this.index);
+		const railHeading = element('div', 'lp-rail-heading');
+		const hover: IDelayedHoverOptions = {
+			id: 'studio.library.statusGuide', content: this.statusGuide(),
+			position: { hoverPosition: HoverPosition.RIGHT }, appearance: { showPointer: true },
+			persistence: { hideOnHover: false },
+		};
+		const help = button('', 'question', () => { actions.hoverService.showInstantHover({ ...hover, target: help, trapFocus: true }, true); }, 'lp-rail-help');
+		help.setAttribute('aria-label', t('Project status guide', '项目状态说明'));
+		this._register(actions.hoverService.setupDelayedHover(help, hover));
+		railHeading.append(element('h2', '', t('Library', '仓库')), help);
+		rail.append(railHeading, field, this.index);
 		const addFilter = (id: string, label: string) => {
 			const b = button(label, '', () => { this.pendingSelection = undefined; this.filter = id; this.render(); }, 'lp-filter-btn');
 			b.dataset.id = id; this.filters.append(b);
@@ -143,6 +159,25 @@ export class LaunchpadLibrary {
 		row.addEventListener('keydown', e => {
 			if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); e.stopPropagation(); this.manage(p, row); }
 		});
+	}
+
+	private statusGuide(): HTMLElement {
+		const t = this.t;
+		const list = element('ul', 'lp-status-guide');
+		const item = (state: 'open' | 'running' | 'linked', label: string, detail?: string) => {
+			const row = element('li'), dot = element('span', `lp-index-dot lp-index-dot-${state}`);
+			dot.setAttribute('aria-hidden', 'true');
+			const text = element('div'); text.append(element('strong', '', label));
+			if (detail) { text.append(element('p', '', detail)); }
+			row.append(dot, text); list.append(row);
+		};
+		item('open', t('Blue: project is open', '蓝点：项目已打开'));
+		item('running', t('Green: a task is running', '绿点：任务正在运行'), t('Replaces the blue dot while a task runs.', '运行时替代蓝点。'));
+		item('linked', t('Orange: Bot linked to chat', '橙点：已加入对话的 Bot'), t(
+			'In Studio Enhanced, this Bot has been added to your IM contacts. The dot does not indicate online status. The Bot runs locally and goes offline when Studio is closed.',
+			'这个 Bot 已添加到增强版的 IM 通讯录，可以在 IM 中直接发消息。橙点不代表在线；Bot 在本机运行，关闭 Studio 后会离线。',
+		));
+		return list;
 	}
 
 	async refreshActivity(): Promise<void> {

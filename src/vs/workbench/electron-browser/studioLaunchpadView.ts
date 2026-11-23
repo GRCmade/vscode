@@ -85,7 +85,7 @@ export class StudioLaunchpadView extends Disposable {
 			e.preventDefault(); const next = buttons[e.key === 'Home' ? 0 : e.key === 'End' ? buttons.length - 1 : (i + (e.key === 'ArrowLeft' ? -1 : 1) + buttons.length) % buttons.length]; next.focus(); if (next.dataset.tab === 'store') actions.openStore(); else this.select(next.dataset.tab as Tab);
 		});
 		navigation.append(this.tabs);
-		this.library = new LaunchpadLibrary(t, actions);
+		this.library = this._register(new LaunchpadLibrary(t, actions));
 		this.store = this._register(new LaunchpadStore(t, actions)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice, this.picker));
 		const community = element('div', 'lp-community'); community.append(icon('organization'), element('h1', '', t('Community', '社区')), element('p', '', t('Coming soon', '暂未开放')));
 		for (const [id, page] of [['store', this.store.element], ['library', this.library.element], ['community', community], ['profile', this.profile.element]] as const) {

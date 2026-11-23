@@ -70,7 +70,8 @@ if (CopyAction) {
 		},
 		group: '5_cutcopypaste',
 		order: 2,
-		when: ContextKeyExpr.not(PreventDefaultContextMenuItemsContextKeyName),
+		// A read-only selection in a Studio frame needs Copy without the other clipboard actions.
+		when: ContextKeyExpr.or(ContextKeyExpr.not(PreventDefaultContextMenuItemsContextKeyName), ContextKeyExpr.has('studioFrameSelection')),
 	});
 }
 

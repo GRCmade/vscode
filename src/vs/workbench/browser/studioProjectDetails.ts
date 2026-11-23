@@ -35,7 +35,7 @@ export interface StudioProjectDetails {
 }
 
 export function glyph(p: StudioProjectDetails): string {
-	return p.kind === 'workspace' ? 'project' : studioProjectIcon(p.projectType) ?? (p.distribution ? 'package' : 'folder');
+	return studioProjectIcon(p.projectType) ?? (p.kind === 'workspace' ? 'project' : p.distribution ? 'package' : 'folder');
 }
 
 export function projectMark(p: StudioProjectDetails): HTMLElement {

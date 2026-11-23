@@ -18,6 +18,7 @@ export interface LibraryArtwork {
 
 export interface LaunchpadProject extends StudioProjectDetails {
 	artwork?: LibraryArtwork;
+	managed?: true;
 }
 
 export interface StoreListing {
@@ -34,6 +35,7 @@ export function storeArtwork(p: StoreListing, cover?: string | Promise<string | 
 
 export function openProjectLabel(p: LaunchpadProject, t: StudioLabel): string {
 	if (p.windowId !== undefined) { return t('Switch to window', '切换到项目窗口'); }
+	if (p.managed) { return t('Open Bot workspace', '打开 Bot 工作区'); }
 	if (p.missing) { return t('Locate project…', '重新定位项目…'); }
 	switch (p.distribution) {
 		case 'source': return t('Open in IDE', '在 IDE 中打开');

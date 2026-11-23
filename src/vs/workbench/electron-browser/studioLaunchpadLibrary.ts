@@ -14,6 +14,7 @@ export interface LibraryProjectCategory {
 	emptyLabel: string;
 	projectUris: string[];
 }
+export interface LibraryDetailAction { id: string; label: string; icon?: string }
 
 export interface LibraryActions {
 	create(): void;
@@ -24,7 +25,7 @@ export interface LibraryActions {
 	copyPath(p: LaunchpadProject): void;
 	contextMenu: IContextMenuService;
 	cover(p: LaunchpadProject): Promise<string | undefined>;
-	detailActions?(p: LaunchpadProject): Promise<{ id: string; label: string }[]>;
+	detailActions?(p: LaunchpadProject): Promise<LibraryDetailAction[]>;
 	runDetailAction?(p: LaunchpadProject, id: string): Promise<void>;
 }
 
@@ -110,7 +111,7 @@ export class LaunchpadLibrary {
 		items.push(new Separator());
 		if (p.uri.startsWith('file:') && !p.missing) { items.push(action('reveal', t('Show in file manager', '在文件管理器中显示'), () => this.actions.reveal(p))); }
 		items.push(action('copyPath', t('Copy path', '复制路径'), () => this.actions.copyPath(p)));
-		if (this.history.has(p.uri)) { items.push(new Separator(), action('forget', t('Remove from history…', '移除打开记录…'), () => this.actions.remove(p))); }
+		if (p.managed || this.history.has(p.uri)) { items.push(new Separator(), action('forget', p.managed ? t('Remove folder Bot…', '移除分身…') : t('Remove from history…', '移除打开记录…'), () => this.actions.remove(p))); }
 		this.actions.contextMenu.showContextMenu({ getAnchor: () => point ?? origin, getActions: () => items, autoSelectFirstItem: !point });
 	}
 
@@ -152,6 +153,7 @@ export class LaunchpadLibrary {
 		if (selected) {
 			const canRun = !!selected.distribution && !selected.missing;
 			const open = button(openProjectLabel(selected, t), 'open-in-window', () => this.actions.project(selected), `studio-project-action ${canRun ? 'lp-outline' : 'lp-primary'}`);
+			open.disabled = !!(selected.managed && selected.missing);
 			open.dataset.key = 'open:' + selected.uri;
 			const more = button('', 'ellipsis', () => this.manage(selected, more), 'studio-project-action lp-outline lp-tool');
 			more.dataset.key = 'more:' + selected.uri;
@@ -168,12 +170,14 @@ export class LaunchpadLibrary {
 				if (detail.parentElement !== this.content) { return; }
 				const controls = detail.querySelector('.lp-detail-actions');
 				for (const item of items.slice(0, 4)) {
-					const action = button(item.label, '', () => {
+					const action = button(item.label, item.icon ?? '', () => {
 						action.disabled = true;
 						void this.actions.runDetailAction?.(selected, item.id).finally(() => { if (detail.parentElement === this.content) { this.render(); } });
 					}, 'studio-project-action lp-outline');
+					action.dataset.key = `action:${selected.uri}:${item.id}`;
 					controls?.insertBefore(action, controls.lastElementChild);
 				}
+				if (focus?.startsWith('action:') && (document.activeElement === document.body || !document.activeElement?.isConnected)) { restoreFocus(); }
 			}).catch(() => undefined); return;
 		}
 		this.content.replaceChildren();

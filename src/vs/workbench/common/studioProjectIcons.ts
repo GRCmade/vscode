@@ -37,3 +37,10 @@ export function studioProjectCardIcon(projectType: string | undefined): string |
 	if (!glyph) { return undefined; }
 	return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="8" fill="${glyph.background}"/><g transform="translate(14 14) scale(1.5)" fill="none" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${glyph.paths.join('')}</g></svg>`)}`;
 }
+
+/** The same project glyph without its colored tile, for a theme-colored mask. */
+export function studioProjectGlyphMask(projectType: string): string | undefined {
+	const glyph = projectCardGlyphs[projectType];
+	if (!glyph) { return undefined; }
+	return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${glyph.paths.join('')}</svg>`)}`;
+}

@@ -190,7 +190,7 @@
 .lp-social-row > .codicon { font-size: 17px; color: var(--lp-muted); } .lp-social-row.lp-unread > .codicon { color: var(--lp-accent); }
 .lp-social-text { flex: 1 1 90px; min-width: 0; display: grid; gap: 2px; overflow-wrap: anywhere; } .lp-social-text strong { font-weight: 550; }
 .lp-social-badge { display: inline-flex; align-items: center; flex: none; gap: 4px; padding: 1px 5px; color: var(--lp-muted); border: 1px solid var(--lp-edge); border-radius: 4px; font-size: 11px; line-height: 15px; }
-.lp-social-badge .codicon { font-size: 13px; }
+.lp-social-badge-icon { width: 13px; height: 13px; flex: none; background-color: currentColor; mask: center / contain no-repeat; }
 .lp-social-actions { flex-wrap: wrap; justify-content: flex-end; margin-inline-start: auto; gap: 4px; }
 .lp-conversation-row { border-bottom: 1px solid var(--lp-line); }
 .studio-launchpad .lp-conversation-open { display: flex; gap: 10px; width: 100%; min-height: 56px; padding: 7px 8px; justify-content: flex-start; }

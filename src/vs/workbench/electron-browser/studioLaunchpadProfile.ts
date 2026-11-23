@@ -8,8 +8,11 @@ import { IAction, Separator, toAction } from '../../base/common/actions.js';
 import { RunOnceScheduler } from '../../base/common/async.js';
 import { Disposable, toDisposable } from '../../base/common/lifecycle.js';
 import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
+import { studioProjectGlyphMask } from '../common/studioProjectIcons.js';
 import { picture } from './studioLaunchpadCards.js';
 import { button, element, icon, LaunchpadLabel, LaunchpadPicker } from './studioLaunchpadPicker.js';
+
+const botBadgeMask = studioProjectGlyphMask('bot');
 
 export interface LaunchpadAccount { name: string; email?: string | null; avatarUrl?: string; scopeKey?: string; storeScopeKey?: string; statusLabel?: string; hasAccount: boolean; signedIn: boolean }
 interface NamedIdentity { name: string; avatarUrl?: string; badge?: string }
@@ -249,7 +252,12 @@ export class LaunchpadProfile extends Disposable {
 		};
 		if (identity.badge) {
 			const badge = element('span', 'lp-social-badge');
-			if (identity.badge === 'Bot') { badge.append(icon('robot')); }
+			if (identity.badge === 'Bot' && botBadgeMask) {
+				const mark = element('span', 'lp-social-badge-icon');
+				mark.setAttribute('aria-hidden', 'true');
+				mark.style.maskImage = `url("${botBadgeMask}")`;
+				badge.append(mark);
+			}
 			badge.append(identity.badge); badges.append(badge);
 		}
 		if (group) { statusIcon('organization', t('Group chat', '群聊')); }

@@ -23,6 +23,8 @@ export interface LaunchpadProject extends StudioProjectDetails {
 	parentUri?: string;
 }
 
+export type LaunchpadProjectMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries' | 'description'> & { projectName?: string };
+
 export interface StoreListing {
 	id: string; name: string; description?: string; version?: string; projectType?: string; avatarUrl?: string; images?: string[]; entries?: string[]; entryTypes?: string[];
 }

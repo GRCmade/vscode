@@ -33,7 +33,7 @@ import { LaunchpadProject, StudioLaunchpadView } from './studioLaunchpadView.js'
 import { InboxAction, LaunchpadAccount, LaunchpadDirectory, LaunchpadInbox, LaunchpadMenuAccount, SocialResult } from './studioLaunchpadProfile.js';
 import { StudioLaunchpadSettings } from './studioLaunchpadSettings.js';
 import { CatalogPage } from './studioLaunchpadStore.js';
-import { StoreListingDetails } from './studioLaunchpadCards.js';
+import { LaunchpadProjectMetadata, StoreListingDetails } from './studioLaunchpadCards.js';
 import { StudioNotificationInbox } from './studioNotificationInbox.js';
 import { StudioWebLaunchpadApp } from './studioWebLaunchpadApp.js';
 import './media/studioLaunchpad.css';
@@ -327,14 +327,14 @@ export class StudioWebLaunchpad extends Disposable {
 		const history = await this.workspaces.getRecentlyOpened();
 		if (revision !== this.revision || this._store.isDisposed) { return; }
 		const projects = new Map<string, LaunchpadProject>();
-		this.recent = new Map();
+		const recent = new Map<string, RecentProject>();
 		for (const row of this.start.state?.recent ?? []) {
 			if (row.kind !== 'folder' && row.kind !== 'workspace') { continue; }
 			const uri = this.hostUri(URI.parse(row.uri));
 			if (!uri) { continue; }
 			const key = uri.toString();
 			if (!projects.has(key)) {
-				this.recent.set(key, row);
+				recent.set(key, row);
 				projects.set(key, { ...row, uri: key, kind: row.kind, name: row.projectName ?? row.label, path: this.labels.getUriLabel(uri) });
 			}
 		}
@@ -344,6 +344,24 @@ export class StudioWebLaunchpad extends Disposable {
 				projects.set(uri.toString(), { uri: uri.toString(), kind: folder ? 'folder' : 'workspace', name: row.label ?? basenameOrAuthority(uri), path: this.labels.getUriLabel(uri) });
 			}
 		}
+		// Browser history keeps paths only. Use the host's file URIs so the desktop reader also matches installed-project records.
+		const uninspected = new Map<string, LaunchpadProject>();
+		for (const project of projects.values()) {
+			if (project.kind === 'folder' && !project.artwork) {
+				uninspected.set(URI.parse(project.uri).with({ scheme: Schemas.file, authority: '' }).toString(), project);
+			}
+		}
+		if (this.start.state && uninspected.size) {
+			const detected = await this.commands.executeCommand<(LaunchpadProjectMetadata & { uri: string })[]>('studio.internalDetectProjectTypes', [...uninspected.keys()]).catch(() => undefined);
+			if (revision !== this.revision || this._store.isDisposed) { return; }
+			for (const { uri, projectName, ...metadata } of detected ?? []) {
+				const project = uninspected.get(uri);
+				if (project) {
+					projects.set(project.uri, { ...project, ...metadata, name: projectName ?? project.name });
+				}
+			}
+		}
+		this.recent = recent;
 		this.projects = [...projects.values()];
 		this.paint();
 	}

@@ -46,12 +46,11 @@ import { LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView }
 import { LaunchpadApp, LaunchpadAppView, StudioChatWindow } from './studioChatWindow.js';
 import { InboxAction, LaunchpadDirectory, LaunchpadMenuAccount, SocialResult, StudioNotice, studioNoticeTitle } from '../browser/studioLaunchpadProfile.js';
 import { CatalogPage } from '../browser/studioLaunchpadStore.js';
-import { StoreListingDetails } from '../browser/studioLaunchpadCards.js';
+import { LaunchpadProjectMetadata, StoreListingDetails } from '../browser/studioLaunchpadCards.js';
 import type { LibraryDetailAction, LibraryProjectCategory } from '../browser/studioLaunchpadLibrary.js';
 import { StudioLaunchpadSettings } from '../browser/studioLaunchpadSettings.js';
 import '../browser/media/studioLaunchpad.css';
 
-type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries' | 'description'> & { projectName?: string };
 type LibraryExtras = { projects: LaunchpadProject[]; hiddenUris: string[] };
 type BuiltinLibrary = { projects: LaunchpadProject[]; pending?: boolean };
 const workstationExtensionId = 'studio.studio-workstation';
@@ -67,7 +66,7 @@ export class StudioLaunchpad extends Disposable {
 	private hasProjectSnapshot = false;
 	private managedWorkspaceUris = new Set<string>();
 	private builtinWorkspaceUris = new Set<string>();
-	private readonly savedProjects = new Map<string, LibraryMetadata & { name?: string; lastOpened?: number }>();
+	private readonly savedProjects = new Map<string, LaunchpadProjectMetadata & { name?: string; lastOpened?: number }>();
 	private readonly missing = new Set<string>();
 	private readonly editsSinceSnapshot = new Map<number, boolean>();
 	private inbox?: LaunchpadInbox;
@@ -485,7 +484,7 @@ export class StudioLaunchpad extends Disposable {
 		let distribution = project.distribution;
 		if (!distribution && !project.artwork && project.kind === 'folder') {
 			// A click can arrive before the asynchronous library scan populates this row.
-			const [metadata] = await this.commands.executeCommand<LibraryMetadata[]>('studio.internalDetectProjectTypes', [project.uri]).catch(() => []) ?? [];
+			const [metadata] = await this.commands.executeCommand<LaunchpadProjectMetadata[]>('studio.internalDetectProjectTypes', [project.uri]).catch(() => []) ?? [];
 			distribution = metadata?.distribution;
 		}
 		if (this._store.isDisposed) { return; }
@@ -610,7 +609,7 @@ export class StudioLaunchpad extends Disposable {
 		const known = new Set(this.start.state?.recent.filter(p => p.artwork).map(p => p.uri));
 		const others = [...new Set([...this.recent, ...this.windows].filter(p => p.kind === 'folder' && !known.has(p.uri)).map(p => p.uri))];
 		if (others.length) {
-			const rows = await this.commands.executeCommand<(LibraryMetadata & { uri: string })[]>('studio.internalDetectProjectTypes', others).catch(() => undefined);
+			const rows = await this.commands.executeCommand<(LaunchpadProjectMetadata & { uri: string })[]>('studio.internalDetectProjectTypes', others).catch(() => undefined);
 			if (revision === this.windowRevision && rows) { for (const { uri, ...metadata } of rows) { this.savedProjects.set(uri, { ...this.savedProjects.get(uri), ...metadata }); } this.paint(); }
 		}
 	}

@@ -69,7 +69,7 @@ import { IUriIdentityService } from '../../platform/uriIdentity/common/uriIdenti
 import { IPreferencesService } from '../services/preferences/common/preferences.js';
 import { IUtilityProcessWorkerWorkbenchService } from '../services/utilityProcess/electron-browser/utilityProcessWorkerWorkbenchService.js';
 import { registerWindowDriver } from '../services/driver/browser/driver.js';
-import { mainWindow } from '../../base/browser/window.js';
+import { CodeWindow, mainWindow } from '../../base/browser/window.js';
 import { BaseWindow } from '../browser/window.js';
 import { IHostService } from '../services/host/browser/host.js';
 import { IStatusbarService, ShowTooltipCommand, StatusbarAlignment } from '../services/statusbar/browser/statusbar.js';
@@ -137,6 +137,15 @@ export class NativeWindow extends BaseWindow {
 
 		this.registerListeners();
 		this.create();
+	}
+
+	protected override onElementFocus(targetWindow: CodeWindow): void {
+		// Background Launchpad refreshes may restore DOM focus while an independent IM window is in front.
+		// Only an explicit window activation should bring the Launchpad back to the foreground.
+		if (targetWindow === mainWindow && this.nativeEnvironmentService.window.isStudioLaunchpad) {
+			return;
+		}
+		super.onElementFocus(targetWindow);
 	}
 
 	protected registerListeners(): void {

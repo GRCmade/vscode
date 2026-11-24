@@ -86,7 +86,7 @@ export abstract class BaseWindow extends Disposable {
 		};
 	}
 
-	private onElementFocus(targetWindow: CodeWindow): void {
+	protected onElementFocus(targetWindow: CodeWindow): void {
 
 		// Check if focus should transfer: the application currently has focus somewhere, but not in the target window.
 		if (!targetWindow.document.hasFocus() && hasAppFocus()) {

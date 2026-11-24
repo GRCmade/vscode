@@ -10,11 +10,12 @@ import { Disposable, toDisposable } from '../../base/common/lifecycle.js';
 import { Schemas } from '../../base/common/network.js';
 import { basenameOrAuthority } from '../../base/common/resources.js';
 import { URI } from '../../base/common/uri.js';
+import { generateUuid } from '../../base/common/uuid.js';
 import { getNLSLanguage } from '../../nls.js';
 import { IClipboardService } from '../../platform/clipboard/common/clipboardService.js';
 import { CommandsRegistry, ICommandService } from '../../platform/commands/common/commands.js';
 import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
-import { IFileDialogService } from '../../platform/dialogs/common/dialogs.js';
+import { IDialogService, IFileDialogService } from '../../platform/dialogs/common/dialogs.js';
 import { FileOperationResult, IFileService, toFileOperationResult } from '../../platform/files/common/files.js';
 import { IHoverService } from '../../platform/hover/browser/hover.js';
 import { ILabelService } from '../../platform/label/common/label.js';
@@ -29,9 +30,12 @@ import { IWorkbenchLayoutService } from '../services/layout/browser/layoutServic
 import { IStatusbarService, StatusbarAlignment } from '../services/statusbar/browser/statusbar.js';
 import { IStudioStartService, StudioStartState } from './parts/editor/studioStart.js';
 import { LaunchpadProject, StudioLaunchpadView } from './studioLaunchpadView.js';
+import { InboxAction, LaunchpadAccount, LaunchpadDirectory, LaunchpadInbox, LaunchpadMenuAccount, SocialResult } from './studioLaunchpadProfile.js';
 import { StudioLaunchpadSettings } from './studioLaunchpadSettings.js';
 import { CatalogPage } from './studioLaunchpadStore.js';
 import { StoreListingDetails } from './studioLaunchpadCards.js';
+import { StudioNotificationInbox } from './studioNotificationInbox.js';
+import { StudioWebLaunchpadApp } from './studioWebLaunchpadApp.js';
 import './media/studioLaunchpad.css';
 
 function studioLabel(en: string, zh: string): string { return getNLSLanguage()?.startsWith('zh') ? zh : en; }
@@ -59,6 +63,16 @@ export class StudioWebLaunchpad extends Disposable {
 
 	private readonly view: StudioLaunchpadView;
 	private readonly settings: StudioLaunchpadSettings;
+	private readonly app: StudioWebLaunchpadApp;
+	private readonly refreshInbox = this._register(new RunOnceScheduler(() => void this.readInbox(), 160));
+	private readonly refreshNotices = this._register(new RunOnceScheduler(() => void this.readNotices(), 160));
+	private account?: LaunchpadAccount;
+	private accountRevision = 0;
+	private inbox?: LaunchpadInbox;
+	private inboxRevision = 0;
+	private inboxRequest?: { id: string; target: string; action?: InboxAction };
+	private socialUnread = false;
+	private noticeRevision = 0;
 	private projects: LaunchpadProject[] = [];
 	private recent = new Map<string, RecentProject>();
 	private builtinProjects?: LaunchpadProject[];
@@ -66,11 +80,13 @@ export class StudioWebLaunchpad extends Disposable {
 
 	constructor(
 		private readonly authority: string,
+		private readonly notices: StudioNotificationInbox,
 		@IStudioStartService private readonly start: IStudioStartService,
 		@IWorkbenchLayoutService layout: IWorkbenchLayoutService,
 		@ICommandService private readonly commands: ICommandService,
 		@IHostService private readonly host: IHostService,
 		@IFileDialogService private readonly dialogs: IFileDialogService,
+		@IDialogService dialogService: IDialogService,
 		@IFileService private readonly files: IFileService,
 		@IWorkspacesService private readonly workspaces: IWorkspacesService,
 		@ILabelService private readonly labels: ILabelService,
@@ -99,7 +115,31 @@ export class StudioWebLaunchpad extends Disposable {
 			contextMenu, hoverService,
 			cover: async () => undefined,
 			settings: () => openSettings('general'),
-			account: () => openSettings('account'),
+			account: () => { if (start.state?.platform) { openSettings('account'); } else { this.view.select('profile'); } },
+			profile: {
+				contextMenu,
+				signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
+				inbox: (id, title) => run(this.openInbox(id, undefined, undefined, title)),
+				chatUser: (id, title) => run(this.openInbox(undefined, id, undefined, title)),
+				addContact: () => run(this.openInbox(undefined, undefined, 'add-contact', studioLabel('Add friend', '添加好友'))),
+				createGroup: () => run(this.openInbox(undefined, undefined, 'create-group', studioLabel('Start a group chat', '发起群聊'))),
+				confirmRemoveFriend: async name => (await dialogService.confirm({
+					message: studioLabel(`Remove “${name}” from your friends?`, `从好友中移除「${name}」？`),
+					primaryButton: studioLabel('Remove friend', '移除好友'),
+				})).confirmed,
+				social: (query, directory) => this.readSocial(query, directory),
+				change: async action => { await commands.executeCommand('studio.changeSocial', action); this.refreshNotices.schedule(); },
+				changeConversation: async action => {
+					await commands.executeCommand('studio.changeLaunchpadConversation', action);
+					this.refreshInbox.schedule(); this.view.refreshDirectory();
+				},
+				readNotice: id => notices.read(id),
+				readAllNotices: async () => {
+					notices.readAll();
+					if (this.account?.signedIn) { await commands.executeCommand('studio.markAllNoticesRead', this.account.scopeKey); }
+					this.refreshNotices.schedule();
+				},
+			},
 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
 			openStore: () => this.view.select('store'),
 			catalog: async (request, platform) => {
@@ -122,34 +162,75 @@ export class StudioWebLaunchpad extends Disposable {
 		for (const part of parts) { part.inert = true; }
 		this._register(toDisposable(() => {
 			++this.revision;
+			++this.accountRevision; ++this.inboxRevision; ++this.noticeRevision;
+			this.inboxRequest = undefined;
 			start.setVisible('launchpad', false);
 			for (const part of parts) { part.inert = false; }
 			this.view.element.remove();
 		}));
 
 		const visible = () => start.setVisible('launchpad', !document.hidden && !this.view.element.hidden);
+		const hideHome = () => { this.view.closePicker(); this.view.setVisible(false); visible(); };
 		const showHome = () => {
+			const fromSettings = this.settings.isOpen;
 			this.settings.close();
 			this.view.setVisible(true);
-			this.view.focusSettings();
+			if (fromSettings) { this.view.focusSettings(); } else { this.view.element.focus({ preventScroll: true }); }
 			visible();
+			this.refreshProfile();
 		};
-		this.settings = this._register(new StudioLaunchpadSettings(root, studioLabel, showHome, () => {
-			this.view.closePicker();
-			this.view.setVisible(false);
-			visible();
-		}, message => notifications.error(message), webviews, webviewViews));
-		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadSettings', (_accessor, title: string) => this.settings.show(title, this.view.element.classList.contains('lp-pointer'))));
+		this.settings = this._register(new StudioLaunchpadSettings(root, studioLabel, showHome, hideHome, message => notifications.error(message), webviews, webviewViews));
+		this.app = this._register(new StudioWebLaunchpadApp(root, studioLabel, webviews, opener, clipboard, hideHome, showHome,
+			(conversation, user) => run(this.openInbox(conversation, user))));
+		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadSettings', (_accessor, title: string) => {
+			this.clearInboxRequest(); this.app.dismiss();
+			return this.settings.show(title, this.view.element.classList.contains('lp-pointer'));
+		}));
 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadSettings', () => { if (this.settings.isOpen) { showHome(); } }));
-		this._register(CommandsRegistry.registerCommand('studio.internalRevealStore', () => { showHome(); this.view.select('store'); return true; }));
+		this._register(CommandsRegistry.registerCommand('studio.internalRevealStore', () => {
+			this.clearInboxRequest(); this.app.dismiss(); showHome(); this.view.select('store'); return true;
+		}));
+		this._register(CommandsRegistry.registerCommand('studio.internalPrepareLaunchpadApp', (_accessor, key: string, app: { accountUrl?: string }) =>
+			!!this.account?.signedIn && this.app.prepare(key, app?.accountUrl)));
+		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, id: string, view: Parameters<StudioWebLaunchpadApp['show']>[1]) =>
+			this.app.show(key, view, () => this.inboxRequest?.id === id)));
+		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => this.app.clear(key)));
+		this._register(CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', () => this.refreshProfile()));
+		this._register(CommandsRegistry.registerCommand('studio.internalLaunchpadInboxChanged', () => {
+			this.refreshInbox.schedule(); this.view.refreshDirectory();
+		}));
+		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
+			if (commandId === 'studio.internalUpdateAccountMenuState' && start.state?.platform) {
+				++this.accountRevision;
+				this.setAccount(args[0] as LaunchpadMenuAccount);
+			}
+		}));
+		let platform = false;
+		const updatePlatform = () => {
+			if (platform !== !!start.state?.platform) {
+				platform = !!start.state?.platform;
+				const revision = ++this.accountRevision;
+				if (platform) {
+					void commands.executeCommand<LaunchpadMenuAccount>('studio.internalGetAccountMenuState').then(account => {
+						if (revision === this.accountRevision && !this._store.isDisposed) { this.setAccount(account); }
+					}, () => undefined);
+				} else { this.setAccount(); }
+			}
+			this.paint();
+		};
+		this._register(start.onDidChange(updatePlatform));
+		const repaintNotices = this._register(new RunOnceScheduler(() => this.paint(), 100));
+		this._register(notices.onDidChange(() => repaintNotices.schedule()));
 		this._register(addDisposableListener(mainWindow, 'keydown', event => this.view.shortcut(event), true));
-		this._register(addDisposableListener(document, 'visibilitychange', visible));
+		this._register(addDisposableListener(document, 'visibilitychange', () => { visible(); this.refreshProfile(); }));
+		const poll = mainWindow.setInterval(() => this.refreshProfile(), 60_000);
+		this._register(toDisposable(() => mainWindow.clearInterval(poll)));
 
 		const refresh = this._register(new RunOnceScheduler(() => run(this.refreshProjects()), 100));
 		const changed = () => { ++this.revision; refresh.schedule(); };
 		this._register(workspaces.onDidChangeRecentlyOpened(changed));
 		this._register(start.onDidChange(changed));
-		this._register(addDisposableListener(mainWindow, 'focus', changed));
+		this._register(addDisposableListener(mainWindow, 'focus', () => { changed(); this.refreshProfile(); }));
 		const builtins = this._register(new RunOnceScheduler(() => run(this.refreshBuiltins(builtins)), 100));
 		const loadBuiltins = () => {
 			if (start.state && !document.hidden && !builtins.isScheduled()) { builtins.schedule(); }
@@ -157,10 +238,81 @@ export class StudioWebLaunchpad extends Disposable {
 		this._register(addDisposableListener(document, 'visibilitychange', loadBuiltins));
 		this._register(start.onDidChange(() => { if (!this.builtinProjects) { loadBuiltins(); } }));
 		this.view.element.focus({ preventScroll: true });
-		this.paint();
+		updatePlatform();
 		visible();
 		loadBuiltins();
 		changed();
+	}
+
+	private setAccount(state?: LaunchpadMenuAccount): void {
+		const account = state && { name: state.hasAccount ? state.name : '', email: state.email, avatarUrl: state.avatarUrl, hasAccount: state.hasAccount,
+			scopeKey: state.scopeKey, storeScopeKey: state.storeScopeKey, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
+		const changed = this.account?.signedIn !== account?.signedIn || this.account?.scopeKey !== account?.scopeKey;
+		this.account = account;
+		if (changed) {
+			++this.inboxRevision; ++this.noticeRevision;
+			this.inbox = undefined; this.socialUnread = false;
+			this.clearInboxRequest(); this.app.reset(); this.refreshProfile();
+		}
+		this.paint();
+	}
+
+	private refreshProfile(): void {
+		if (!this.account?.signedIn || document.hidden || this.view.element.hidden || this._store.isDisposed) { return; }
+		this.refreshInbox.schedule(); this.refreshNotices.schedule(); this.view.refreshSocial();
+	}
+
+	private async readSocial(query: string, includeDirectory: boolean): Promise<SocialResult> {
+		const [result, directory] = await Promise.all([
+			this.commands.executeCommand<SocialResult>('studio.getSocialSnapshot', query, undefined, this.account?.scopeKey),
+			includeDirectory ? this.commands.executeCommand<LaunchpadDirectory>('studio.getLaunchpadDirectory').catch(() => undefined) : undefined,
+		]);
+		if (!result) { throw new Error('Social data unavailable'); }
+		if ('unavailable' in result) { return directory ? { people: [], favorites: [], notices: [], directory } : result; }
+		return { ...result, directory, directoryUnavailable: includeDirectory && !directory };
+	}
+
+	private async readInbox(): Promise<void> {
+		if (!this.account?.signedIn || document.hidden || this._store.isDisposed) { return; }
+		const revision = ++this.inboxRevision;
+		const inbox = await this.commands.executeCommand<LaunchpadInbox>('studio.getLaunchpadInbox').catch(() => undefined);
+		if (revision !== this.inboxRevision || this._store.isDisposed) { return; }
+		const snapshot: LaunchpadInbox = inbox ?? { connection: 'offline', items: [], message: studioLabel('Recent chats are unavailable.', '暂时无法读取最近会话。') };
+		const next = (snapshot.connection === 'offline' || snapshot.connection === 'connecting') && this.inbox?.items.length ? { ...snapshot, items: this.inbox.items } : snapshot;
+		if (JSON.stringify(next) !== JSON.stringify(this.inbox)) { this.inbox = next; this.paint(); }
+	}
+
+	private async readNotices(): Promise<void> {
+		if (!this.account?.signedIn || document.hidden || this._store.isDisposed) { return; }
+		const revision = ++this.noticeRevision;
+		const unread = await this.commands.executeCommand<boolean>('studio.hasUnreadNotices', this.account.scopeKey).catch(() => undefined);
+		if (revision === this.noticeRevision && !this._store.isDisposed && typeof unread === 'boolean' && unread !== this.socialUnread) {
+			this.socialUnread = unread;
+			this.paint();
+		}
+	}
+
+	private clearInboxRequest(): void {
+		const action = this.inboxRequest?.action;
+		this.inboxRequest = undefined;
+		if (action) { this.view.setInboxActionBusy(action, false); }
+	}
+
+	private async openInbox(conversation?: string, user?: string, action?: InboxAction, title?: string): Promise<void> {
+		const target = conversation ? `conversation:${conversation}` : user ? `user:${user}` : action;
+		if (!this.account?.signedIn || !target || this.inboxRequest?.target === target) { return; }
+		this.clearInboxRequest();
+		const request = this.inboxRequest = { id: generateUuid(), target, action };
+		this.view.closePicker();
+		if (action) { this.view.setInboxActionBusy(action, true); }
+		try {
+			const result = await this.commands.executeCommand<true | string>('studio.openLaunchpadInbox', request.id, conversation, user, action, title).catch(() => undefined);
+			if (result !== true && this.inboxRequest === request) {
+				this.notifications.warn(typeof result === 'string' ? result : studioLabel('Could not open IM', '无法打开 IM'));
+			}
+		} finally {
+			if (this.inboxRequest === request) { this.clearInboxRequest(); }
+		}
 	}
 
 	private hostUri(uri: URI): URI | undefined {
@@ -211,7 +363,8 @@ export class StudioWebLaunchpad extends Disposable {
 		const state = this.start.state;
 		const builtins = new Set(this.builtinProjects?.map(project => project.uri));
 		this.view.update({ windows: [], recent: this.projects.filter(project => !builtins.has(project.uri)), builtinProjects: this.builtinProjects,
-			platform: !!state?.platform, store: state?.recommendations, canCreate: !!state?.canCreate && !state.busy, notices: [], notificationUnread: false });
+			platform: !!state?.platform, account: this.account, inbox: this.inbox, store: state?.recommendations, canCreate: !!state?.canCreate && !state.busy,
+			notices: this.notices.list(), notificationUnread: this.socialUnread || this.notices.hasUnread() });
 	}
 
 	private async importFolders(): Promise<void> {

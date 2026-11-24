@@ -15,6 +15,7 @@ import { button, element, icon, LaunchpadLabel, LaunchpadOption, LaunchpadPicker
 const botBadgeMask = studioProjectGlyphMask('bot');
 
 export interface LaunchpadAccount { name: string; email?: string | null; avatarUrl?: string; scopeKey?: string; storeScopeKey?: string; statusLabel?: string; hasAccount: boolean; signedIn: boolean }
+export type LaunchpadMenuAccount = Omit<LaunchpadAccount, 'signedIn'> & { status: string };
 interface NamedIdentity { name: string; avatarUrl?: string; badge?: string }
 interface ConversationState { id: string; peerId?: string; unread: number; time?: number; pinned?: boolean; starred?: boolean; muted?: boolean }
 interface RecentChat extends NamedIdentity, ConversationState { preview: string; group?: boolean }

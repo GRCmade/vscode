@@ -12,7 +12,7 @@ import { downloadedStudioProject, hasStudioDownloadRecord, parseStudioReleasePro
 import { joinPath } from '../../base/common/resources.js';
 import { CommandsRegistry } from '../../platform/commands/common/commands.js';
 import { StudioLaunchpad } from './studioLaunchpad.js';
-import { StudioNotificationInbox } from './studioNotificationInbox.js';
+import { StudioNotificationInbox } from '../browser/studioNotificationInbox.js';
 import { INativeHostService } from '../../platform/native/common/native.js';
 import { NativeWindow } from './window.js';
 import { setFullscreen } from '../../base/browser/browser.js';

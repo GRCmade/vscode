@@ -38,13 +38,13 @@ import { IStudioStartService } from '../browser/parts/editor/studioStart.js';
 import { projectUsageBridge } from '../browser/studioProjectUsage.js';
 import { IWebviewService } from '../contrib/webview/browser/webview.js';
 import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
-import type { StudioNotificationInbox } from './studioNotificationInbox.js';
+import type { StudioNotificationInbox } from '../browser/studioNotificationInbox.js';
 import { IWebviewViewService } from '../contrib/webviewView/browser/webviewViewService.js';
 import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layoutService.js';
 import { removeStudioLaunchpadSplash } from './studioLaunchpadSplash.js';
-import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from '../browser/studioLaunchpadView.js';
+import { LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from '../browser/studioLaunchpadView.js';
 import { LaunchpadApp, LaunchpadAppView, StudioChatWindow } from './studioChatWindow.js';
-import { InboxAction, LaunchpadDirectory, SocialResult, StudioNotice, studioNoticeTitle } from '../browser/studioLaunchpadProfile.js';
+import { InboxAction, LaunchpadDirectory, LaunchpadMenuAccount, SocialResult, StudioNotice, studioNoticeTitle } from '../browser/studioLaunchpadProfile.js';
 import { CatalogPage } from '../browser/studioLaunchpadStore.js';
 import { StoreListingDetails } from '../browser/studioLaunchpadCards.js';
 import type { LibraryDetailAction, LibraryProjectCategory } from '../browser/studioLaunchpadLibrary.js';
@@ -54,7 +54,6 @@ import '../browser/media/studioLaunchpad.css';
 type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries' | 'description'> & { projectName?: string };
 type LibraryExtras = { projects: LaunchpadProject[]; hiddenUris: string[] };
 type BuiltinLibrary = { projects: LaunchpadProject[]; pending?: boolean };
-type LaunchpadMenuAccount = Omit<LaunchpadAccount, 'signedIn'> & { status: string };
 const workstationExtensionId = 'studio.studio-workstation';
 
 export class StudioLaunchpad extends Disposable {

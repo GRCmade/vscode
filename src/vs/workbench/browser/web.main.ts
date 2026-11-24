@@ -100,6 +100,7 @@ import { IDefaultAccountService } from '../../platform/defaultAccount/common/def
 import { DefaultAccountService } from '../services/accounts/browser/defaultAccount.js';
 import { AccountPolicyService, IAccountPolicyGateService } from '../services/policies/common/accountPolicyService.js';
 import { StudioWebLaunchpad, StudioWebLaunchpadNavigation } from './studioWebLaunchpad.js';
+import { StudioNotificationInbox } from './studioNotificationInbox.js';
 
 export interface IBrowserMainWorkbench {
 	startup(): IInstantiationService;
@@ -147,10 +148,13 @@ export class BrowserMain extends Disposable {
 
 		// Window
 		this._register(instantiationService.createInstance(BrowserWindow));
-		if (studioLaunchpad && this.configuration.remoteAuthority) {
-			this._register(instantiationService.createInstance(StudioWebLaunchpad, this.configuration.remoteAuthority));
-		} else if (this.configuration.studioWeb) {
-			this._register(instantiationService.createInstance(StudioWebLaunchpadNavigation));
+		if (this.configuration.studioWeb) {
+			const inbox = this._register(instantiationService.createInstance(StudioNotificationInbox));
+			if (studioLaunchpad && this.configuration.remoteAuthority) {
+				this._register(instantiationService.createInstance(StudioWebLaunchpad, this.configuration.remoteAuthority, inbox));
+			} else {
+				this._register(instantiationService.createInstance(StudioWebLaunchpadNavigation));
+			}
 		}
 
 		// Logging

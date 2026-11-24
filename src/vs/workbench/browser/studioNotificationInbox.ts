@@ -12,7 +12,7 @@ import { INotificationService } from '../../platform/notification/common/notific
 import { IStorageService, StorageScope, StorageTarget } from '../../platform/storage/common/storage.js';
 import { INotificationViewItem, NotificationChangeType } from '../common/notifications.js';
 import { NotificationService } from '../services/notification/common/notificationService.js';
-import type { StudioNotice } from '../browser/studioLaunchpadProfile.js';
+import type { StudioNotice } from './studioLaunchpadProfile.js';
 
 const prefix = 'studio.notificationInbox.';
 const socialDismissalsPrefix = 'studio.dismissedSocialNotifications.';

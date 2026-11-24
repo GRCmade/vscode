@@ -260,7 +260,6 @@
 .studio-launchpad-app-close > .codicon { display: grid; place-items: center; flex: none; width: 16px; height: 16px; line-height: 16px; }
 .studio-launchpad-app-close.lp-pointer:focus { outline: none !important; }
 .studio-chat-window { position: absolute; inset: 0; overflow: hidden; background: var(--vscode-editor-background); }
-.studio-chat-loading { display: grid; place-items: center; height: 100%; color: var(--vscode-descriptionForeground); background: var(--vscode-editor-background); }
 .studio-chat-titlebar-drag { position: absolute; z-index: 1; inset: 0 0 auto; height: var(--studio-chat-titlebar-height, 38px); pointer-events: none; }
 .studio-chat-titlebar-drag:not(.has-layout)::before, .studio-chat-titlebar-drag:not(.has-layout)::after, .studio-chat-titlebar-drag-region { position: absolute; pointer-events: auto; -webkit-app-region: drag; }
 .studio-chat-titlebar-drag:not(.has-layout)::before { content: ''; inset: 0 0 auto; height: 5px; }

@@ -70,6 +70,10 @@ export class StudioWebLaunchpadApp extends Disposable {
 			life.add(addDisposableListener(window.window, 'pagehide', () => this.close(id)));
 			window.window.document.title = title || 'IM';
 			tab.loading = window.container.appendChild(element('div', 'studio-chat-loading', this.t('Opening IM…', '正在打开 IM…')));
+			Object.assign(tab.loading.style, {
+				position: 'fixed', inset: '0', display: 'grid', placeItems: 'center',
+				color: 'var(--vscode-descriptionForeground)', background: 'var(--vscode-editor-background)',
+			});
 			tab.loading.setAttribute('role', 'status');
 			return true;
 		} catch { this.close(id); return false; }
@@ -93,7 +97,8 @@ export class StudioWebLaunchpadApp extends Disposable {
 		const surface = element('div', 'studio-chat-window');
 		surface.setAttribute('role', 'document');
 		surface.setAttribute('aria-label', view.title);
-		surface.style.visibility = 'hidden';
+		// An auxiliary tab may not have the workbench CSS. Size the webview against the tab's viewport directly.
+		Object.assign(surface.style, { position: 'fixed', inset: '0', overflow: 'hidden', background: 'var(--vscode-editor-background)', visibility: 'hidden' });
 		life.add(toDisposable(() => surface.remove()));
 		let shown = false;
 		const fail = () => { if (shown) { this.close(id); } else { void ready.complete(false); } };

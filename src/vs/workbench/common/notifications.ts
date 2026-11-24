@@ -324,7 +324,7 @@ export interface INotificationViewItem {
 	readonly onDidChangeVisibility: Event<boolean>;
 	readonly onDidChangeContent: Event<INotificationViewItemContentChangeEvent>;
 	readonly onDidClose: Event<void>;
-	readonly acknowledge?: () => void;
+	readonly onDidAcknowledge: Event<void>;
 
 	expand(): void;
 	collapse(skipEvents?: boolean): void;
@@ -336,6 +336,7 @@ export interface INotificationViewItem {
 
 	updateVisibility(visible: boolean): void;
 
+	acknowledge(): void;
 	close(): void;
 	dismiss(): void;
 
@@ -475,6 +476,9 @@ export class NotificationViewItem extends Disposable implements INotificationVie
 	private readonly _onDidChangeContent = this._register(new Emitter<INotificationViewItemContentChangeEvent>());
 	readonly onDidChangeContent = this._onDidChangeContent.event;
 
+	private readonly _onDidAcknowledge = this._register(new Emitter<void>());
+	readonly onDidAcknowledge = this._onDidAcknowledge.event;
+
 	private readonly _onDidChangeVisibility = this._register(new Emitter<boolean>());
 	readonly onDidChangeVisibility = this._onDidChangeVisibility.event;
 
@@ -583,7 +587,7 @@ export class NotificationViewItem extends Disposable implements INotificationVie
 		private _source: string | INotificationSource | undefined,
 		progress: INotificationProgressProperties | undefined,
 		actions?: INotificationActions,
-		readonly acknowledge?: () => void
+		private readonly acknowledgeCallback?: () => void
 	) {
 		super();
 
@@ -742,7 +746,7 @@ export class NotificationViewItem extends Disposable implements INotificationVie
 		}
 
 		this._expanded = true;
-		this.acknowledge?.();
+		this.acknowledge();
 		this._onDidChangeExpansion.fire();
 	}
 
@@ -766,6 +770,11 @@ export class NotificationViewItem extends Disposable implements INotificationVie
 		}
 	}
 
+	acknowledge(): void {
+		this._onDidAcknowledge.fire();
+		this.acknowledgeCallback?.();
+	}
+
 	close(): void {
 		this._onDidClose.fire();
 
@@ -773,7 +782,7 @@ export class NotificationViewItem extends Disposable implements INotificationVie
 	}
 
 	dismiss(): void {
-		this.acknowledge?.();
+		this.acknowledge();
 		this.close();
 	}
 

@@ -98,6 +98,7 @@ export class NotificationAccessibleView implements IAccessibleViewImplementation
 					return;
 				}
 				notification = focusedNotification;
+				notification.acknowledge();
 				if (list instanceof WorkbenchList) {
 					notificationIndex = list.indexOf(notification);
 				}
@@ -113,6 +114,7 @@ export class NotificationAccessibleView implements IAccessibleViewImplementation
 				() => focusList(),
 				'accessibility.verbosity.notification',
 				() => {
+					notification.acknowledge();
 					notificationListeners?.dispose();
 					notificationListeners = new DisposableStore();
 					updateContent();
@@ -158,6 +160,7 @@ function getActionsFromNotification(notification: INotificationViewItem, accessi
 		checked: action.checked,
 		class: ThemeIcon.asClassName(Codicon.bell),
 		run: () => {
+			notification.acknowledge();
 			const result = action.run();
 			notification.close();
 			return result;

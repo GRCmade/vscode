@@ -5,6 +5,7 @@
 
 import assert from 'assert';
 import { Dimension, getWindow } from '../../../base/browser/dom.js';
+import { toAction } from '../../../base/common/actions.js';
 import { timeout } from '../../../base/common/async.js';
 import { Event } from '../../../base/common/event.js';
 import { DisposableStore, toDisposable } from '../../../base/common/lifecycle.js';
@@ -70,7 +71,8 @@ suite('NotificationsToasts', () => {
 		const { container, model, toasts } = await createToasts();
 		const visible = Event.toPromise(toasts.onDidChangeVisibility);
 		let acknowledged = 0;
-		model.addNotification({ severity: Severity.Info, message: 'New message', onDidAcknowledge: () => acknowledged++ });
+		model.addNotification({ severity: Severity.Info, message: 'New message' });
+		disposables.add(model.notifications[0].onDidAcknowledge(() => acknowledged++));
 		await visible;
 		const message = container.querySelector<HTMLElement>('.notification-list-item-message')!;
 		const selection = getWindow(message).getSelection()!;
@@ -86,6 +88,19 @@ suite('NotificationsToasts', () => {
 		model.notifications[0].dismiss();
 		assert.deepStrictEqual([model.notifications.length, acknowledged], [0, 2]);
 	}));
+
+	test('acknowledges an ordinary notification before its Details action runs', async () => {
+		const { container, model, toasts } = await createToasts();
+		const visible = Event.toPromise(toasts.onDidChangeVisibility);
+		const interactions: string[] = [];
+		const details = toAction({ id: 'details', label: 'Details', run: () => interactions.push('details') });
+		model.addNotification({ severity: Severity.Error, message: 'Compilation failed', actions: { primary: [details] } });
+		disposables.add(model.notifications[0].onDidAcknowledge(() => interactions.push('acknowledged')));
+		await visible;
+		assert.deepStrictEqual(interactions, [], 'an automatically expanded notification is still unread');
+		container.querySelector<HTMLElement>('.notification-list-item-buttons-container .monaco-button')!.click();
+		assert.deepStrictEqual(interactions, ['acknowledged', 'details']);
+	});
 
 	test('shows one toast for rapidly added duplicate notifications', async () => {
 		const { container, model, toasts } = await createToasts();

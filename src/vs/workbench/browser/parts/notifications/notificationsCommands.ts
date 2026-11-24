@@ -170,6 +170,7 @@ export function registerNotificationCommands(center: INotificationsCenterControl
 			if (!primaryAction) {
 				return;
 			}
+			notification.acknowledge();
 			actionRunner.run(primaryAction, notification);
 			notification.close();
 			actionRunner.dispose();

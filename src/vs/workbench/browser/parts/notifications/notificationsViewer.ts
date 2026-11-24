@@ -406,14 +406,12 @@ export class NotificationTemplateRenderer extends Disposable {
 		this.renderSeverity(notification);
 
 		// Message
-		if (notification.acknowledge) {
-			this.inputDisposables.add(addDisposableListener(this.template.message, EventType.CLICK, () => {
-				const selection = getWindow(this.template.message).getSelection();
-				if (!selection || selection.isCollapsed || !selection.containsNode(this.template.message, true)) {
-					notification.acknowledge?.();
-				}
-			}));
-		}
+		this.inputDisposables.add(addDisposableListener(this.template.message, EventType.CLICK, () => {
+			const selection = getWindow(this.template.message).getSelection();
+			if (!selection || selection.isCollapsed || !selection.containsNode(this.template.message, true)) {
+				notification.acknowledge();
+			}
+		}));
 		const messageCustomHover = this.inputDisposables.add(this.hoverService.setupManagedHover(getDefaultHoverDelegate('mouse'), this.template.message, ''));
 		const messageOverflows = this.renderMessage(notification, messageCustomHover);
 
@@ -462,7 +460,10 @@ export class NotificationTemplateRenderer extends Disposable {
 	private renderMessage(notification: INotificationViewItem, customHover: IManagedHover): boolean {
 		clearNode(this.template.message);
 		this.template.message.appendChild(NotificationMessageRenderer.render(notification.message, {
-			callback: link => this.openerService.open(URI.parse(link), { allowCommands: true }),
+			callback: link => {
+				notification.acknowledge();
+				void this.openerService.open(URI.parse(link), { allowCommands: true });
+			},
 			toDispose: this.inputDisposables
 		}));
 
@@ -530,6 +531,7 @@ export class NotificationTemplateRenderer extends Disposable {
 				protected override async runAction(action: IAction): Promise<void> {
 
 					// Run action
+					notification.acknowledge();
 					that.actionRunner.run(action, notification);
 
 					// Hide notification (unless explicitly prevented)

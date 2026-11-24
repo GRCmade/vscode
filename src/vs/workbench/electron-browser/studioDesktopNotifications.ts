@@ -60,6 +60,7 @@ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async
 	const lifetime = new DisposableStore();
 	let closed = false;
 	let activating = false;
+	let acknowledging = false;
 	let handle: INotificationHandle | undefined;
 	const clearNative = () => {
 		if (native) { void nativeHost.clearToast(id).catch(() => undefined); }
@@ -75,8 +76,9 @@ CommandsRegistry.registerCommand('studio.internalPostDesktopNotification', async
 	};
 	const closeIfIdle = () => { if (!handle && !native && !activating) { close(); } };
 	const acknowledge = () => {
-		if (!closed) {
-			void commands.executeCommand('studio.internalAcknowledgeDesktopNotification', id).catch(() => undefined);
+		if (!closed && !acknowledging) {
+			acknowledging = true;
+			void commands.executeCommand('studio.internalAcknowledgeDesktopNotification', id).catch(() => undefined).finally(() => { acknowledging = false; });
 		}
 	};
 	const activate = async (focus: boolean) => {

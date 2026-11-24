@@ -47,6 +47,7 @@ suite('StudioDesktopNotifications', () => {
 			await post('old');
 			await post('current'); // Replaces the previous notification without acknowledging it.
 			const item = model.notifications[0];
+			item.acknowledge(); // The renderer acknowledges before invoking the Details action.
 			const opening = item.actions!.primary![0].run();
 			item.close(); // The primary button automatically closes its notification, without waiting for the action.
 			await target.complete('launchpadInbox');

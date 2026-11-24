@@ -10,6 +10,7 @@ import { ILogService } from '../../../../platform/log/common/log.js';
 import { ISecretStorageProvider, ISecretStorageService, BaseSecretStorageService } from '../../../../platform/secrets/common/secrets.js';
 import { IStorageService } from '../../../../platform/storage/common/storage.js';
 import { IBrowserWorkbenchEnvironmentService } from '../../environment/browser/environmentService.js';
+import { StudioWebSecretStorageProvider } from './studioWebSecretStorageProvider.js';
 
 export class BrowserSecretStorageService extends BaseSecretStorageService {
 
@@ -26,8 +27,15 @@ export class BrowserSecretStorageService extends BaseSecretStorageService {
 		// in-memory base class implementation instead.
 		super(true, storageService, encryptionService, logService);
 
-		if (environmentService.options?.secretStorageProvider) {
-			this._secretStorageProvider = environmentService.options.secretStorageProvider;
+		const options = environmentService.options;
+		let provider = options?.secretStorageProvider;
+		if (!provider && options?.studioWeb && StudioWebSecretStorageProvider.isSupported()) {
+			const studioProvider = this._register(new StudioWebSecretStorageProvider(options.serverBasePath));
+			this._register(studioProvider.onDidChangeSecret(key => this.onDidChangeSecretEmitter.fire(key)));
+			provider = studioProvider;
+		}
+		if (provider) {
+			this._secretStorageProvider = provider;
 			this._embedderSequencer = new SequencerByKey<string>();
 		}
 	}

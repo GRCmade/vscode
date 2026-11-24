@@ -38,7 +38,7 @@ import { toLocalISOString } from '../../base/common/date.js';
 import { isWorkspaceToOpen, isFolderToOpen } from '../../platform/window/common/window.js';
 import { getSingleFolderWorkspaceIdentifier, getWorkspaceIdentifier } from '../../platform/workspaces/common/workspaceIdentifier.js';
 import { InMemoryFileSystemProvider } from '../../platform/files/common/inMemoryFilesystemProvider.js';
-import { ICommandService } from '../../platform/commands/common/commands.js';
+import { CommandsRegistry, ICommandService } from '../../platform/commands/common/commands.js';
 import { IndexedDBFileSystemProvider } from '../../platform/files/browser/indexedDBFileSystemProvider.js';
 import { BrowserRequestService } from '../services/request/browser/requestService.js';
 import { IRequestService } from '../../platform/request/common/request.js';
@@ -99,6 +99,7 @@ import { INotificationService, Severity } from '../../platform/notification/comm
 import { IDefaultAccountService } from '../../platform/defaultAccount/common/defaultAccount.js';
 import { DefaultAccountService } from '../services/accounts/browser/defaultAccount.js';
 import { AccountPolicyService, IAccountPolicyGateService } from '../services/policies/common/accountPolicyService.js';
+import { StudioWebLaunchpad, StudioWebLaunchpadNavigation } from './studioWebLaunchpad.js';
 
 export interface IBrowserMainWorkbench {
 	startup(): IInstantiationService;
@@ -133,6 +134,10 @@ export class BrowserMain extends Disposable {
 
 		// Create Workbench
 		const workbench = this.createWorkbench(this.domElement, services.serviceCollection, services.logService);
+		const studioLaunchpad = this.configuration.studioWeb && this.configuration.studioLaunchpad;
+		if (this.configuration.studioWeb) {
+			this._register(CommandsRegistry.registerCommand('studio.internalIsLaunchpad', () => !!studioLaunchpad));
+		}
 
 		// Listeners
 		this.registerListeners(workbench);
@@ -142,6 +147,11 @@ export class BrowserMain extends Disposable {
 
 		// Window
 		this._register(instantiationService.createInstance(BrowserWindow));
+		if (studioLaunchpad && this.configuration.remoteAuthority) {
+			this._register(instantiationService.createInstance(StudioWebLaunchpad, this.configuration.remoteAuthority));
+		} else if (this.configuration.studioWeb) {
+			this._register(instantiationService.createInstance(StudioWebLaunchpadNavigation));
+		}
 
 		// Logging
 		services.logService.trace('workbench#open with configuration', safeStringify(this.configuration));
@@ -259,7 +269,8 @@ export class BrowserMain extends Disposable {
 	}
 
 	protected createWorkbench(domElement: HTMLElement, serviceCollection: ServiceCollection, logService: ILogService): IBrowserMainWorkbench {
-		return new Workbench(domElement, undefined, serviceCollection, logService);
+		const launchpad = this.configuration.studioWeb && this.configuration.studioLaunchpad && this.configuration.remoteAuthority;
+		return new Workbench(domElement, launchpad ? { extraClasses: ['studio-launchpad-window', 'studio-web-launchpad-window', 'lp-no-native-bar'] } : undefined, serviceCollection, logService);
 	}
 
 	private registerListeners(workbench: IBrowserMainWorkbench): void {

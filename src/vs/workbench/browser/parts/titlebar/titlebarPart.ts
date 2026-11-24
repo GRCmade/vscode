@@ -939,7 +939,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 	protected get hasWorkbenchTitlebarActions(): boolean { return true; }
 
 	protected get hasStudioModeSwitcher(): boolean {
-		return !this.isAuxiliary && hasCustomTitlebar(this.configurationService, this.titleBarStyle);
+		return !this.isAuxiliary && !this.environmentService.options?.studioLaunchpad && hasCustomTitlebar(this.configurationService, this.titleBarStyle);
 	}
 
 	private get editorActionsEnabled(): boolean {

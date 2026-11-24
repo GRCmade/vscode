@@ -8,9 +8,8 @@ import { addDisposableListener, DragAndDropObserver } from '../../base/browser/d
 import { mainWindow } from '../../base/browser/window.js';
 import { RunOnceScheduler, Throttler } from '../../base/common/async.js';
 import { encodeBase64 } from '../../base/common/buffer.js';
-import { CancellationTokenSource } from '../../base/common/cancellation.js';
 import { Event } from '../../base/common/event.js';
-import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
+import { Disposable, toDisposable } from '../../base/common/lifecycle.js';
 import { ResourceSet } from '../../base/common/map.js';
 import { Schemas } from '../../base/common/network.js';
 import { basenameOrAuthority, extUriBiasedIgnorePathCase } from '../../base/common/resources.js';
@@ -37,32 +36,32 @@ import { emptyStudioTrayNotifications, IStudioTrayNotifications, studioTrayPrevi
 import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
 import { IStudioStartService } from '../browser/parts/editor/studioStart.js';
 import { projectUsageBridge } from '../browser/studioProjectUsage.js';
-import { IOverlayWebview, IWebviewService } from '../contrib/webview/browser/webview.js';
+import { IWebviewService } from '../contrib/webview/browser/webview.js';
 import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
 import type { StudioNotificationInbox } from './studioNotificationInbox.js';
 import { IWebviewViewService } from '../contrib/webviewView/browser/webviewViewService.js';
 import { IWorkbenchLayoutService, Parts } from '../services/layout/browser/layoutService.js';
 import { removeStudioLaunchpadSplash } from './studioLaunchpadSplash.js';
-import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from './studioLaunchpadView.js';
+import { LaunchpadAccount, LaunchpadInbox, LaunchpadProject, LaunchpadState, StudioLaunchpadView } from '../browser/studioLaunchpadView.js';
 import { LaunchpadApp, LaunchpadAppView, StudioChatWindow } from './studioChatWindow.js';
-import { InboxAction, LaunchpadDirectory, SocialResult, StudioNotice, studioNoticeTitle } from './studioLaunchpadProfile.js';
-import { CatalogPage } from './studioLaunchpadStore.js';
-import { StoreListingDetails } from './studioLaunchpadCards.js';
-import type { LibraryDetailAction, LibraryProjectCategory } from './studioLaunchpadLibrary.js';
-import './media/studioLaunchpad.css';
+import { InboxAction, LaunchpadDirectory, SocialResult, StudioNotice, studioNoticeTitle } from '../browser/studioLaunchpadProfile.js';
+import { CatalogPage } from '../browser/studioLaunchpadStore.js';
+import { StoreListingDetails } from '../browser/studioLaunchpadCards.js';
+import type { LibraryDetailAction, LibraryProjectCategory } from '../browser/studioLaunchpadLibrary.js';
+import { StudioLaunchpadSettings } from '../browser/studioLaunchpadSettings.js';
+import '../browser/media/studioLaunchpad.css';
 
 type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries' | 'description'> & { projectName?: string };
 type LibraryExtras = { projects: LaunchpadProject[]; hiddenUris: string[] };
 type BuiltinLibrary = { projects: LaunchpadProject[]; pending?: boolean };
 type LaunchpadMenuAccount = Omit<LaunchpadAccount, 'signedIn'> & { status: string };
 const workstationExtensionId = 'studio.studio-workstation';
-const launchpadSettingsViewType = 'studio.launchpadSettings';
 
 export class StudioLaunchpad extends Disposable {
 	private readonly view: StudioLaunchpadView;
 	private readonly chat: StudioChatWindow;
 	private readonly covers = new Map<string, Promise<string | undefined>>();
-	private readonly settings = this._register(new MutableDisposable<{ webview: IOverlayWebview; dispose(): void }>());
+	private readonly settings: StudioLaunchpadSettings;
 	private readonly appRequests = new Map<string, string>();
 	private windows: LaunchpadProject[] = [];
 	private recent: LaunchpadProject[] = [];
@@ -101,15 +100,15 @@ export class StudioLaunchpad extends Disposable {
 		@IStudioStartService private readonly start: IStudioStartService,
 		@INativeHostService private readonly native: INativeHostService,
 		@IWorkspacesService private readonly workspaces: IWorkspacesService,
-		@IWorkbenchLayoutService private readonly layout: IWorkbenchLayoutService,
+		@IWorkbenchLayoutService layout: IWorkbenchLayoutService,
 		@ICommandService private readonly commands: ICommandService,
 		@IFileDialogService private readonly dialogs: IFileDialogService,
 		@INotificationService notifications: INotificationService,
 		@IOpenerService opener: IOpenerService,
-		@IWebviewService private readonly webviews: IWebviewService,
+		@IWebviewService webviews: IWebviewService,
 		@IFileService private readonly files: IFileService,
 		@IExtensionStorageService extensionStorage: IExtensionStorageService,
-		@IWebviewViewService private readonly webviewViews: IWebviewViewService,
+		@IWebviewViewService webviewViews: IWebviewViewService,
 		@IAuxiliaryWindowService auxiliaryWindows: IAuxiliaryWindowService,
 		@IContextMenuService contextMenu: IContextMenuService,
 		@IHoverService hoverService: IHoverService,
@@ -143,9 +142,7 @@ export class StudioLaunchpad extends Disposable {
 			reveal: project => run(native.showItemInFolder(project.managed ? project.path : URI.parse(project.uri).fsPath)),
 			copyPath: project => run(clipboard.writeText(project.path)), contextMenu, hoverService,
 			usage: projectUsageBridge(commands, clipboard),
-			signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
-			inbox: (conversation, title) => run(this.openInbox(conversation, undefined, undefined, title)),
 			cover: project => this.cover(project),
 			readActivity: projects => commands.executeCommand<string[] | undefined>('studio.internalReadLibraryActivity', projects),
 			detailActions: async (project, source) => {
@@ -168,34 +165,45 @@ export class StudioLaunchpad extends Disposable {
 			listingDetails: async id => { const item = await commands.executeCommand<StoreListingDetails>('studio.getStoreListingDetails', id); if (!item) { throw new Error('Project details unavailable'); } return item; },
 			storeImage: async src => src.startsWith('http:') ? commands.executeCommand<string | undefined>('studio.readLocalStoreImage', src) : src,
 			getListing: (id, platform) => run(commands.executeCommand(platform ? 'studio.getStoreListing' : 'studio.createExample', id)),
-			social: async (query, includeDirectory) => {
-				const [result, directory] = await Promise.all([
-					commands.executeCommand<SocialResult>('studio.getSocialSnapshot', query),
-					includeDirectory ? commands.executeCommand<LaunchpadDirectory>('studio.getLaunchpadDirectory').catch(() => undefined) : undefined,
-				]);
-				if (!result) { throw new Error('Social data unavailable'); }
-				if ('unavailable' in result) { return directory ? { people: [], favorites: [], notices: [], directory } : result; }
-				return { ...result, directory, directoryUnavailable: includeDirectory && !directory };
+			profile: {
+				contextMenu,
+				signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
+				inbox: (conversation, title) => run(this.openInbox(conversation, undefined, undefined, title)),
+				social: async (query, includeDirectory) => {
+					const [result, directory] = await Promise.all([
+						commands.executeCommand<SocialResult>('studio.getSocialSnapshot', query),
+						includeDirectory ? commands.executeCommand<LaunchpadDirectory>('studio.getLaunchpadDirectory').catch(() => undefined) : undefined,
+					]);
+					if (!result) { throw new Error('Social data unavailable'); }
+					if ('unavailable' in result) { return directory ? { people: [], favorites: [], notices: [], directory } : result; }
+					return { ...result, directory, directoryUnavailable: includeDirectory && !directory };
+				},
+				change: async action => { await commands.executeCommand('studio.changeSocial', action); this.queueNoticeRefresh(); },
+				changeConversation: async action => {
+					await commands.executeCommand('studio.changeLaunchpadConversation', action);
+					this.refreshInbox.schedule(); this.view.refreshDirectory();
+				},
+				confirmRemoveFriend: async name => {
+					const zh = this.language.startsWith('zh');
+					const { response } = await native.showMessageBox({ type: 'question', message: zh ? `从好友中移除「${name}」？` : `Remove “${name}” from your friends?`,
+						buttons: zh ? ['移除好友', '取消'] : ['Remove friend', 'Cancel'], cancelId: 1, defaultId: 1, noLink: true });
+					return response === 0;
+				},
+				chatUser: (user, title) => run(this.openInbox(undefined, user, undefined, title)),
+				addContact: () => run(this.openInbox(undefined, undefined, 'add-contact')),
+				createGroup: () => run(this.openInbox(undefined, undefined, 'create-group')),
+				readNotice: id => this.notices.read(id),
+				readAllNotices: () => this.markAllNoticesRead(),
 			},
-			change: async action => { await commands.executeCommand('studio.changeSocial', action); this.queueNoticeRefresh(); },
-			changeConversation: async action => {
-				await commands.executeCommand('studio.changeLaunchpadConversation', action);
-				this.refreshInbox.schedule(); this.view.refreshDirectory();
-			},
-			confirmRemoveFriend: async name => {
-				const zh = this.language.startsWith('zh');
-				const { response } = await native.showMessageBox({ type: 'question', message: zh ? `从好友中移除「${name}」？` : `Remove “${name}” from your friends?`,
-					buttons: zh ? ['移除好友', '取消'] : ['Remove friend', 'Cancel'], cancelId: 1, defaultId: 1, noLink: true });
-				return response === 0;
-			},
-			chatUser: (user, title) => run(this.openInbox(undefined, user, undefined, title)),
-			addContact: () => run(this.openInbox(undefined, undefined, 'add-contact')),
-			createGroup: () => run(this.openInbox(undefined, undefined, 'create-group')),
-			readNotice: id => this.notices.read(id),
-			readAllNotices: () => this.markAllNoticesRead(),
 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
 			openStore: () => run(commands.executeCommand('studio.openStore')),
 		}));
+		const zh = this.language.startsWith('zh');
+		this.settings = this._register(new StudioLaunchpadSettings(layout.mainContainer, (en, cn) => zh ? cn : en, () => this.showHome(), () => {
+			this.view.closePicker();
+			this.view.setVisible(false);
+			this.start.setVisible('launchpad', false);
+		}, message => { void native.showMessageBox({ type: 'warning', message, buttons: [zh ? '确定' : 'OK'], noLink: true }); }, webviews, webviewViews));
 		const repaintNotices = this._register(new RunOnceScheduler(() => this.paint(), 100));
 		this._register(Event.debounce(notices.onDidChange, () => undefined, MicrotaskDelay)(() => {
 			repaintNotices.schedule();
@@ -237,8 +245,8 @@ export class StudioLaunchpad extends Disposable {
 		this._register(layout.onDidLayoutMainContainer(resize));
 		this._register(addDisposableListener(mainWindow, 'keydown', event => this.view.shortcut(event), true));
 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpad', () => this.showHome()));
-		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadSettings', (_accessor, title: string) => this.showSettings(title)));
-		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadSettings', () => { if (this.settings.value) { this.showHome(); } }));
+		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadSettings', (_accessor, title: string) => this.settings.show(title, this.view.element.classList.contains('lp-pointer'))));
+		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadSettings', () => { if (this.settings.isOpen) { this.showHome(); } }));
 		this._register(CommandsRegistry.registerCommand('studio.internalOpenLaunchpadInbox', () => { this.showHome(); this.view.showSocial('activity'); }));
 		this._register(CommandsRegistry.registerCommand('studio.internalPrepareLaunchpadApp', (_accessor, key: string, app: LaunchpadApp) => this.chat.prepare(key, app)));
 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, requestId: string, view: LaunchpadAppView) => Array.from(this.appRequests.values()).includes(requestId) && this.chat.show(key, view)));
@@ -358,8 +366,8 @@ export class StudioLaunchpad extends Disposable {
 	}
 
 	private showHome(): void {
-		const fromSettings = !!this.settings.value;
-		this.settings.clear();
+		const fromSettings = this.settings.isOpen;
+		this.settings.close();
 		this.view.closePicker();
 		this.view.setVisible(true);
 		this.start.setVisible('launchpad', !document.hidden);
@@ -378,70 +386,6 @@ export class StudioLaunchpad extends Disposable {
 	private queueNoticeRefresh(): void {
 		// Hidden renderers throttle timers; coalesce concurrent refreshes without waiting on one.
 		if (this.account?.signedIn && !this._store.isDisposed) { void this.noticeReads.queue(() => this.readNotices()); }
-	}
-
-	private createBackButton(title: string, lifetime: DisposableStore): HTMLButtonElement {
-		const close = document.createElement('button');
-		close.type = 'button';
-		close.className = 'studio-launchpad-app-close';
-		const arrow = document.createElement('span'); arrow.className = 'codicon codicon-chevron-left'; arrow.setAttribute('aria-hidden', 'true');
-		close.append(arrow, this.language.startsWith('zh') ? '返回启动台' : 'Back to Launchpad');
-		close.title = this.language.startsWith('zh') ? `关闭 ${title}` : `Close ${title}`;
-		close.setAttribute('aria-label', close.title);
-		lifetime.add(addDisposableListener(close, 'click', () => this.showHome()));
-		return close;
-	}
-
-	/** Mount the extension's Settings view without opening an editor or evicting the resident IM. */
-	private async showSettings(title: string): Promise<void> {
-		if (this.settings.value) { this.settings.value.webview.focus(); return; }
-		this.showHome();
-		const lifetime = new DisposableStore();
-		const source = new CancellationTokenSource();
-		lifetime.add(toDisposable(() => source.dispose(true)));
-		const surface = document.createElement('div');
-		surface.className = 'studio-launchpad-settings';
-		surface.setAttribute('role', 'document');
-		surface.setAttribute('aria-label', title);
-		surface.tabIndex = 0;
-		const back = this.createBackButton(title, lifetime);
-		if (this.view.element.classList.contains('lp-pointer')) {
-			back.classList.add('lp-pointer');
-			const reset = () => back.classList.remove('lp-pointer');
-			lifetime.add(addDisposableListener(back, 'blur', reset));
-			lifetime.add(addDisposableListener(back, 'keydown', reset));
-		}
-		const failed = () => {
-			if (lifetime.isDisposed) { return; }
-			this.showHome();
-			const zh = this.language.startsWith('zh');
-			void this.native.showMessageBox({ type: 'warning', message: zh ? '无法打开 Studio 设置' : 'Could not open Studio Settings',
-				buttons: [zh ? '确定' : 'OK'], noLink: true });
-		};
-		try {
-			const webview = lifetime.add(this.webviews.createWebviewOverlay({ providedViewType: launchpadSettingsViewType, title, options: {}, contentOptions: {}, extension: undefined }));
-			this.settings.value = { webview, dispose: () => lifetime.dispose() };
-			this.layout.mainContainer.append(back, surface);
-			lifetime.add(toDisposable(() => { surface.remove(); back.remove(); }));
-			const deadline = lifetime.add(new RunOnceScheduler(failed, 15_000));
-			lifetime.add(webview.onMessage(({ message }) => { if (message?.type === 'ready') { deadline.cancel(); } }));
-			lifetime.add(webview.onFatalError(failed));
-			lifetime.add(addDisposableListener(surface, 'focus', () => webview.focus()));
-			this.view.setVisible(false);
-			this.start.setVisible('launchpad', false);
-			webview.claim(surface, mainWindow, undefined);
-			webview.setAnchorElement(surface);
-			back.focus({ preventScroll: true });
-			deadline.schedule();
-			await this.webviewViews.resolve(launchpadSettingsViewType, {
-				title, webview, onDidChangeVisibility: Event.None, onDispose: webview.onDidDispose,
-				dispose: () => { if (!lifetime.isDisposed) { this.showHome(); } },
-				show: preserveFocus => { if (!preserveFocus && !lifetime.isDisposed) { webview.focus(); } },
-			}, source.token);
-		} catch {
-			failed();
-			lifetime.dispose();
-		}
 	}
 
 	private async openInbox(conversation?: string, user?: string, action?: InboxAction, title?: string): Promise<boolean> {

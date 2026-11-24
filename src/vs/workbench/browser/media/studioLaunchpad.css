@@ -12,6 +12,7 @@
 }
 .hc-black.studio-launchpad-window,.hc-light.studio-launchpad-window { --lp-line: var(--vscode-contrastBorder); --lp-edge: var(--lp-line); }
 .monaco-workbench.studio-launchpad-window .part:not(.titlebar) { visibility: hidden; }
+.monaco-workbench.studio-web-launchpad-window .part.titlebar { visibility: hidden; }
 .monaco-workbench.studio-launchpad-window > .monaco-grid-view .monaco-split-view2 > .sash-container { display: none; }
 .monaco-workbench.studio-launchpad-window .part.titlebar { background-color: var(--lp-chrome) !important; }
 .monaco-workbench.studio-launchpad-window .part.titlebar .titlebar-container > :is(.titlebar-left,.titlebar-center,.titlebar-right) > :not(.window-controls-container) { display: none !important; }

@@ -147,6 +147,9 @@ export interface IWorkbench {
 }
 
 export interface IWorkbenchConstructionOptions {
+	/** Set by the managed SteamHarness Studio Web host. */
+	readonly studioWeb?: boolean;
+	readonly studioLaunchpad?: boolean;
 
 	//#region Connection related configuration
 

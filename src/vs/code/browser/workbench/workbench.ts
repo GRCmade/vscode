@@ -470,7 +470,7 @@ class WorkspaceProvider implements IWorkspaceProvider {
 
 		// If no workspace is provided through the URL, check for config
 		// attribute from server
-		if (!foundWorkspace) {
+		if (!foundWorkspace && !(config.studioWeb && query.get('launchpad') === '1')) {
 			if (config.folderUri) {
 				workspace = { folderUri: URI.revive(config.folderUri) };
 			} else if (config.workspaceUri) {
@@ -478,7 +478,7 @@ class WorkspaceProvider implements IWorkspaceProvider {
 			}
 		}
 
-		return new WorkspaceProvider(workspace, payload, config);
+		return new WorkspaceProvider(workspace, payload, config, !!config.studioWeb && !foundWorkspace && !workspace);
 	}
 
 	readonly trusted = true;
@@ -486,7 +486,8 @@ class WorkspaceProvider implements IWorkspaceProvider {
 	private constructor(
 		readonly workspace: IWorkspace,
 		readonly payload: object,
-		private readonly config: IWorkbenchConstructionOptions
+		private readonly config: IWorkbenchConstructionOptions,
+		readonly studioLaunchpad: boolean,
 	) {
 	}
 
@@ -620,11 +621,13 @@ function readCookie(name: string): string | undefined {
 		? new ServerKeyedAESCrypto(secretStorageKeyPath) : new TransparentCrypto();
 
 	// Create workbench
+	const workspaceProvider = WorkspaceProvider.create(config);
 	create(mainWindow.document.body, {
 		...config,
+		studioLaunchpad: workspaceProvider.studioLaunchpad,
 		windowIndicator: config.windowIndicator ?? { label: '$(remote)', tooltip: `${product.nameShort} Web` },
 		settingsSyncOptions: config.settingsSyncOptions ? { enabled: config.settingsSyncOptions.enabled, } : undefined,
-		workspaceProvider: WorkspaceProvider.create(config),
+		workspaceProvider,
 		urlCallbackProvider: new LocalStorageURLCallbackProvider(config.callbackRoute),
 		secretStorageProvider: config.remoteAuthority && !secretStorageKeyPath
 			? undefined /* with a remote without embedder-preferred storage, store on the remote */

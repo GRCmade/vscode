@@ -20,9 +20,10 @@ export interface LaunchpadState {
 	dismissedSocialNoticeIds?: ReadonlySet<string>;
 	libraryCategory?: LibraryProjectCategory;
 }
-interface LaunchpadActions extends ProfileActions, LibraryActions, StoreActions {
+interface LaunchpadActions extends LibraryActions, StoreActions {
 	open(): void; workspace(): void; settings(): void;
-	readNotice(id: string): void;
+	account?(): void;
+	profile?: ProfileActions & { readNotice(id: string): void };
 	resource(id: 'docs' | 'github' | 'server'): void;
 	openStore(): void;
 }
@@ -43,7 +44,7 @@ export class StudioLaunchpadView extends Disposable {
 	private readonly picker: LaunchpadPicker;
 	private readonly store: LaunchpadStore;
 	private readonly library: LaunchpadLibrary;
-	private readonly profile: LaunchpadProfile;
+	private readonly profile?: LaunchpadProfile;
 	private readonly t: LaunchpadLabel;
 	private active: Tab = 'library';
 	private state?: LaunchpadState;
@@ -72,14 +73,17 @@ export class StudioLaunchpadView extends Disposable {
 		this.commandCenter.setAttribute('aria-label', searchLabel);
 		this.commandCenter.setAttribute('aria-haspopup', 'dialog');
 		this.commandCenter.setAttribute('aria-expanded', 'false');
-		this.bell = tool(t('Studio notifications', 'Studio 通知'), 'bell', () => { this.select('profile'); this.profile.select('notifications'); });
+		this.bell = tool(t('Studio notifications', 'Studio 通知'), 'bell', () => { this.select('profile'); this.profile?.select('notifications'); });
+		this.bell.hidden = !actions.profile;
 		this.settingsButton = tool(t('Settings', '设置'), 'settings-gear', actions.settings);
-		this.accountButton = tool(t('Studio account', 'Studio 账号'), 'account', () => this.select('profile'));
+		this.accountButton = tool(t('Studio account', 'Studio 账号'), 'account', actions.account ?? (() => this.select('profile')));
+		this.accountButton.hidden = !actions.profile;
 		this.accountButton.classList.add('lp-account');
 		const utilities = element('div', 'lp-utilities'); utilities.append(resources, this.bell, this.settingsButton, this.accountButton);
 		chrome.append(brand, this.commandCenter, utilities);
 		const navigation = element('div', 'lp-navigation'); this.tabs.setAttribute('role', 'tablist'); this.tabs.setAttribute('aria-label', t('Launchpad navigation', '启动台导航'));
 		for (const [id, name] of [['store', t('Store', '商店')], ['library', t('Library', '仓库')], ['community', t('Community', '社区')], ['profile', t('My Studio', '我的')]] as const) {
+			if (id === 'profile' && !actions.profile) { continue; }
 			const b = button(name, '', () => id === 'store' ? actions.openStore() : this.select(id)); b.id = `lp-tab-${id}`; b.dataset.tab = id; b.setAttribute('role', 'tab'); b.setAttribute('aria-controls', `lp-page-${id}`); this.tabs.append(b);
 		}
 		this.tabs.addEventListener('keydown', e => {
@@ -90,15 +94,17 @@ export class StudioLaunchpadView extends Disposable {
 		navigation.append(this.tabs);
 		this.library = this._register(new LaunchpadLibrary(t, actions));
 		this._register(addDisposableListener(this.element.ownerDocument, 'visibilitychange', () => this.updateLibraryVisibility()));
-		this.store = this._register(new LaunchpadStore(t, actions)); this.profile = this._register(new LaunchpadProfile(t, actions, actions.readNotice, this.picker));
+		this.store = this._register(new LaunchpadStore(t, actions));
+		if (actions.profile) { this.profile = this._register(new LaunchpadProfile(t, actions.profile, actions.profile.readNotice, this.picker)); }
 		const community = element('div', 'lp-community'); community.append(icon('organization'), element('h1', '', t('Community', '社区')), element('p', '', t('Coming soon', '暂未开放')));
-		for (const [id, page] of [['store', this.store.element], ['library', this.library.element], ['community', community], ['profile', this.profile.element]] as const) {
+		for (const [id, page] of [['store', this.store.element], ['library', this.library.element], ['community', community], ['profile', this.profile?.element]] as const) {
+			if (!page) { continue; }
 			page.id = `lp-page-${id}`; page.setAttribute('role', 'tabpanel'); page.setAttribute('aria-labelledby', `lp-tab-${id}`); this.panels.append(page);
 		}
 		const foot = element('footer', 'lp-statusbar'); const open = button(t('Open project…', '打开项目…'), 'folder-opened', () => this.openOptions(open));
 		this.latestNotice = button('', 'bell', () => {
 			const notice = this.state?.inbox?.latestNotice;
-			if (notice?.conversation) { actions.inbox(notice.conversation, notice.title); }
+			if (notice?.conversation) { actions.profile?.inbox(notice.conversation, notice.title); }
 		}, 'lp-latest-notice');
 		this.latestNotice.hidden = true;
 		this.latestNotice.append(this.noticeContent);
@@ -119,7 +125,7 @@ export class StudioLaunchpadView extends Disposable {
 	private fileOptions(): LaunchpadOption[] { return [{ label: this.t('Open folder…', '打开文件夹…'), glyph: 'folder-opened', run: this.actions.open }, { label: this.t('Open workspace…', '打开工作区…'), glyph: 'project', run: this.actions.workspace }]; }
 	private openOptions(origin: HTMLElement): void { this.picker.choices(this.t('Open project…', '打开项目…'), this.fileOptions(), origin); }
 	private search(commands: boolean): void {
-		this.picker.search(commands, this.commandCenter, mode => mode ? [...this.fileOptions(), ...(this.state?.platform ? [{ label: this.t('View recent chats', '查看最近会话'), glyph: 'comment', run: () => this.showSocial('activity') }] : [])] : (this.state?.recent ?? []).map(p => ({ label: p.name, glyph: glyph(p), detail: p.path, run: () => this.select('library', p.uri) })));
+		this.picker.search(commands, this.commandCenter, mode => mode ? [...this.fileOptions(), ...(this.state?.platform && this.profile ? [{ label: this.t('View recent chats', '查看最近会话'), glyph: 'comment', run: () => this.showSocial('activity') }] : [])] : (this.state?.recent ?? []).map(p => ({ label: p.name, glyph: glyph(p), detail: p.path, run: () => this.select('library', p.uri) })));
 	}
 	shortcut(event: KeyboardEvent): void {
 		if (this.element.hidden || event.defaultPrevented || event.isComposing || event.altKey || !(event.target instanceof Node) || (!this.element.contains(event.target) && event.target !== document.body) || (this.picker.dialog.open && !this.picker.dialog.classList.contains('lp-quick'))) { return; }
@@ -136,19 +142,20 @@ export class StudioLaunchpadView extends Disposable {
 	private updateLibraryVisibility(): void {
 		this.library.setVisible(this.active === 'library' && !this.element.hidden && !this.element.ownerDocument.hidden);
 	}
-	setInboxActionBusy(action: InboxAction, busy: boolean): void { this.profile.setInboxActionBusy(action, busy); }
+	setInboxActionBusy(action: InboxAction, busy: boolean): void { this.profile?.setInboxActionBusy(action, busy); }
 	focusSettings(): void { this.settingsButton.focus({ preventScroll: true }); }
 	closePicker(): void { this.picker.close(); }
 	refreshLibraryActivity(): void {
 		if (this.active === 'library' && !this.element.hidden && !document.hidden) { void this.library.refreshActivity(); }
 	}
-	refreshSocial(): void { void this.profile.refresh(); }
-	refreshDirectory(): void { this.profile.refreshDirectory(); }
-	showSocial(section: 'activity' | 'people' | 'favorites'): void { this.select('profile'); this.profile.select(section); }
+	refreshSocial(): void { this.profile?.refresh(); }
+	refreshDirectory(): void { this.profile?.refreshDirectory(); }
+	showSocial(section: 'activity' | 'people' | 'favorites'): void { if (this.profile) { this.select('profile'); this.profile.select(section); } }
 	showImportedProjects(singleUri?: string): void { this.library.resetFilters(); this.select('library', singleUri); }
 	update(state: LaunchpadState): void {
 		const previous = this.state; this.state = state;
 		this.consoleButton.hidden = !state.platform;
+		this.accountButton.hidden = !this.profile && !(this.actions.account && state.platform);
 		if (previous?.account?.scopeKey !== state.account?.scopeKey || previous?.account?.signedIn !== state.account?.signedIn) { this.picker.close(); }
 		if (!previous || JSON.stringify(previous.account) !== JSON.stringify(state.account)) { this.accountButton.replaceChildren(avatar(state.account?.name ?? '', state.account?.avatarUrl)); }
 		const notice = state.platform && state.account?.signedIn ? state.inbox?.latestNotice : undefined;
@@ -158,7 +165,7 @@ export class StudioLaunchpadView extends Disposable {
 		this.bell.classList.toggle('lp-has-unread', state.notificationUnread);
 		this.library.update(state.recent, state.windows, state.canCreate, state.platform && state.account?.signedIn ? state.account.scopeKey ?? 'signed-in' : '', state.libraryCategory, state.builtinProjects);
 		this.store.update(this.active === 'store', state.platform, state.account?.scopeKey ?? state.account?.storeScopeKey, state.store?.items ?? []);
-		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices, state.notificationUnread, state.dismissedSocialNoticeIds);
+		this.profile?.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices, state.notificationUnread, state.dismissedSocialNoticeIds);
 		if (this.picker.dialog.open) { this.picker.update(); }
 	}
 }

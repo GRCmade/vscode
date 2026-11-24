@@ -92,6 +92,7 @@
 	<script nonce="{{WORKBENCH_SCRIPT_NONCE}}">
 		const baseUrl = new URL(document.getElementById('vscode-workbench-web-base-url').getAttribute('data-settings'), window.location.origin).toString();
 		globalThis._VSCODE_FILE_ROOT = baseUrl + '/out/';
+		globalThis._VSCODE_NLS_LANGUAGE ??= '{{WORKBENCH_STUDIO_LANGUAGE}}' || undefined;
 	</script>
 	<script nonce="{{WORKBENCH_SCRIPT_NONCE}}">
 		const sheet = document.getElementById('vscode-css-modules').sheet;

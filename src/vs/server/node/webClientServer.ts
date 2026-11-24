@@ -413,8 +413,12 @@ export class WebClientServer {
 			} catch (err) {/* Ignore Error */ }
 		}
 
+		const cookies = cookie.parse(req.headers.cookie || '');
+		const locale = (cookies['vscode.nls.locale'] || req.headers['accept-language']?.split(',')[0] || 'en').toLowerCase();
+		const studioWeb = !!process.env['STEAMHARNESS_STUDIO_WEB_REGISTRY'];
 		const workbenchWebConfiguration = {
 			remoteAuthority,
+			studioWeb: studioWeb || undefined,
 			serverBasePath: basePath,
 			_wrapWebWorkerExtHostInIframe,
 			developmentOptions: { enableSmokeTestDriver: this._environmentService.args['enable-smoke-test-driver'] ? true : undefined, logLevel: this._logService.getLevel() },
@@ -427,8 +431,6 @@ export class WebClientServer {
 			callbackRoute: callbackRoute
 		};
 
-		const cookies = cookie.parse(req.headers.cookie || '');
-		const locale = cookies['vscode.nls.locale'] || req.headers['accept-language']?.split(',')[0]?.toLowerCase() || 'en';
 		let WORKBENCH_NLS_BASE_URL: string | undefined;
 		let WORKBENCH_NLS_URL: string;
 		if (!locale.startsWith('en') && this._productService.nlsCoreBaseUrl) {
@@ -445,6 +447,8 @@ export class WebClientServer {
 			WORKBENCH_WEB_BASE_URL: staticRoute,
 			WORKBENCH_NLS_URL,
 			WORKBENCH_NLS_FALLBACK_URL: `${staticRoute}/out/nls.messages.js`,
+			// Dev builds do not load the Code OSS language pack, but Studio ships its own translations.
+			WORKBENCH_STUDIO_LANGUAGE: studioWeb ? locale.startsWith('zh') ? 'zh-cn' : 'en' : '',
 			WORKBENCH_SCRIPT_NONCE: scriptNonce
 		};
 

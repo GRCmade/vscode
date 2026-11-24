@@ -29,13 +29,13 @@ export interface LibraryActions {
 	create(): void;
 	importProjects(): void;
 	project(p: LaunchpadProject, entryId?: string): void;
+	runProject?(p: LaunchpadProject, entryId?: string): void;
 	remove(p: LaunchpadProject): void;
 	reveal?(p: LaunchpadProject): void;
 	copyPath(p: LaunchpadProject): void;
 	contextMenu: IContextMenuService;
 	hoverService: IHoverService;
 	usage?: ProjectUsageBridge;
-	canRunEntries?: boolean;
 	openLabel?(p: LaunchpadProject): string;
 	cover(p: LaunchpadProject): Promise<string | undefined>;
 	readActivity?(projects: ActivityProject[]): Promise<string[] | undefined>;
@@ -388,7 +388,11 @@ export class LaunchpadLibrary extends Disposable {
 		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };
 		this.updateIndexStatuses();
 		if (selected) {
-			const canRun = this.actions.canRunEntries !== false && !!selected.distribution && !selected.missing;
+			const canRun = !!selected.distribution && !selected.missing;
+			const runProject = (entryId?: string) => {
+				if (this.actions.runProject) { this.actions.runProject(selected, entryId); }
+				else { this.actions.project(selected, entryId); }
+			};
 			const open = button(this.actions.openLabel?.(selected) ?? openProjectLabel(selected, t), 'open-in-window', () => this.actions.project(selected), `studio-project-action ${canRun && !selected.builtin ? 'lp-outline' : 'lp-primary'}`);
 			open.disabled = !!(selected.managed && selected.missing);
 			open.dataset.key = 'open:' + selected.uri;
@@ -397,7 +401,7 @@ export class LaunchpadLibrary extends Disposable {
 			more.title = t('Project actions', '项目操作'); more.setAttribute('aria-label', more.title); more.setAttribute('aria-haspopup', 'menu');
 			const actions = [open, more];
 			if (canRun && !selected.builtin) {
-				const run = button(t('Run project', '运行项目'), 'play', () => this.actions.project(selected), 'studio-project-action lp-primary');
+				const run = button(t('Run project', '运行项目'), 'play', () => runProject(), 'studio-project-action lp-primary');
 				run.dataset.key = 'run:' + selected.uri;
 				actions.unshift(run);
 			}
@@ -415,7 +419,7 @@ export class LaunchpadLibrary extends Disposable {
 			this.updateDetailActions();
 			const usage = this.projectUsage(selected);
 			const detail = projectDetails(selected, t, { actions, secondaryActions, usage: usage?.element,
-				openEntry: canRun ? entryId => this.actions.project(selected, entryId) : undefined });
+				openEntry: canRun ? runProject : undefined });
 			this.content.replaceChildren(detail); restoreFocus();
 			usage?.setVisible(this.visible);
 			return;

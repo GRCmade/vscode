@@ -12,7 +12,7 @@ import { IConfigurationService } from '../../../../platform/configuration/common
 import { IWindowSettings, IWindowOpenable, IOpenWindowOptions, isFolderToOpen, isWorkspaceToOpen, isFileToOpen, IOpenEmptyWindowOptions, IPathData, IFileToOpen, IOpenedMainWindow, IOpenedAuxiliaryWindow } from '../../../../platform/window/common/window.js';
 import { isResourceEditorInput, pathsToEditors } from '../../../common/editor.js';
 import { whenEditorClosed } from '../../../browser/editor.js';
-import { IWorkspace, IWorkspaceProvider } from '../../../browser/web.api.js';
+import { IWorkspace, IWorkspaceOpenOptions, IWorkspaceProvider } from '../../../browser/web.api.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { ILabelService, Verbosity } from '../../../../platform/label/common/label.js';
 import { EventType, ModifierKeyEmitter, addDisposableListener, addDisposableThrottledListener, detectFullscreen, disposableWindowInterval, getActiveDocument, getActiveWindow, getWindowId, onDidRegisterWindow, trackFocus, getWindows as getDOMWindows } from '../../../../base/browser/dom.js';
@@ -250,7 +250,9 @@ export class BrowserHostService extends Disposable implements IHostService {
 	}
 
 	private async doOpenWindow(toOpen: IWindowOpenable[], options?: IOpenWindowOptions): Promise<void> {
-		if (shouldChooseProjectWindow(toOpen, options)) {
+		if (this.environmentService.options?.studioLaunchpad) {
+			options = { ...options, forceNewWindow: true, forceReuseWindow: false };
+		} else if (shouldChooseProjectWindow(toOpen, options)) {
 			const labels = projectWindowLabels();
 			const { result } = await this.dialogService.prompt<boolean>({
 				type: Severity.Info, message: labels.message,
@@ -278,7 +280,8 @@ export class BrowserHostService extends Disposable implements IHostService {
 				} else if (options?.removeMode) {
 					foldersToRemove.push(openable.folderUri);
 				} else {
-					this.doOpen({ folderUri: openable.folderUri }, { reuse: this.shouldReuse(options, false /* no file */), payload });
+					const studioProjectEntry = this.environmentService.options?.studioWeb && toOpen.length === 1 ? options?.studioProjectEntry : undefined;
+					this.doOpen({ folderUri: openable.folderUri }, { reuse: this.shouldReuse(options, false /* no file */), payload, studioProjectEntry });
 				}
 			}
 
@@ -496,7 +499,10 @@ export class BrowserHostService extends Disposable implements IHostService {
 		});
 	}
 
-	private async doOpen(workspace: IWorkspace, options?: { reuse?: boolean; payload?: object }): Promise<void> {
+	private async doOpen(workspace: IWorkspace, options?: IWorkspaceOpenOptions): Promise<void> {
+		if (options?.reuse && (this.environmentService.options?.studioLaunchpad || options.studioProjectEntry)) {
+			options = { ...options, reuse: false };
+		}
 
 		// When we are in a temporary workspace and are asked to open a local folder
 		// we swap that folder into the workspace to avoid a window reload. Access

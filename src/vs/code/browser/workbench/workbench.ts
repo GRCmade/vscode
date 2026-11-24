@@ -18,10 +18,11 @@ import { URI, UriComponents } from '../../../base/common/uri.js';
 import product from '../../../platform/product/common/product.js';
 import { ISecretStorageProvider } from '../../../platform/secrets/common/secrets.js';
 import { isFolderToOpen, isWorkspaceToOpen } from '../../../platform/window/common/window.js';
-import type { IWorkbenchConstructionOptions, IWorkspace, IWorkspaceProvider } from '../../../workbench/browser/web.api.js';
+import type { IWorkbenchConstructionOptions, IWorkspace, IWorkspaceOpenOptions, IWorkspaceProvider } from '../../../workbench/browser/web.api.js';
 import { AuthenticationSessionInfo } from '../../../workbench/services/authentication/browser/authenticationService.js';
 import type { IURLCallbackProvider } from '../../../workbench/services/url/browser/urlService.js';
 import { create } from '../../../workbench/workbench.web.main.internal.js';
+import { takeStudioWebProjectEntry, writeStudioWebProjectEntry } from './studioWebProjectEntry.js';
 
 interface ISecretStorageCrypto {
 	seal(data: string): Promise<string>;
@@ -491,22 +492,36 @@ class WorkspaceProvider implements IWorkspaceProvider {
 	) {
 	}
 
-	async open(workspace: IWorkspace, options?: { reuse?: boolean; payload?: object }): Promise<boolean> {
-		if (options?.reuse && !options.payload && this.isSame(this.workspace, workspace)) {
+	async open(workspace: IWorkspace, options?: IWorkspaceOpenOptions): Promise<boolean> {
+		const projectEntry = this.config.studioWeb && workspace && isFolderToOpen(workspace) ? options?.studioProjectEntry : undefined;
+		const reuse = options?.reuse && !this.studioLaunchpad && !projectEntry;
+		if (reuse && !options?.payload && this.isSame(this.workspace, workspace)) {
 			return true; // return early if workspace and environment is not changing and we are reusing window
 		}
 
 		const targetHref = this.createTargetUrl(workspace, options);
 		if (targetHref) {
-			if (options?.reuse) {
+			if (reuse) {
 				mainWindow.location.href = targetHref;
 				return true;
+			} else if (projectEntry) {
+				const tab = mainWindow.open('', '_blank');
+				if (!tab) { return false; }
+				try {
+					const href = new URL(targetHref).href;
+					writeStudioWebProjectEntry(tab.sessionStorage, href, projectEntry.entryId);
+					tab.location.replace(href);
+					return true;
+				} catch {
+					tab.close();
+					return false;
+				}
 			} else {
 				let result;
-				if (isStandalone()) {
+				if (!this.config.studioWeb && isStandalone()) {
 					result = mainWindow.open(targetHref, '_blank', 'toolbar=no'); // ensures to open another 'standalone' window!
 				} else {
-					result = mainWindow.open(targetHref);
+					result = mainWindow.open(targetHref, '_blank');
 				}
 
 				return !!result;
@@ -622,9 +637,14 @@ function readCookie(name: string): string | undefined {
 
 	// Create workbench
 	const workspaceProvider = WorkspaceProvider.create(config);
+	const workspace = workspaceProvider.workspace;
+	const folder = config.studioWeb && workspace && isFolderToOpen(workspace) ? workspace.folderUri : undefined;
+	const studioProjectEntry = folder?.scheme === Schemas.vscodeRemote && folder.authority === config.remoteAuthority
+		? takeStudioWebProjectEntry(mainWindow, mainWindow.location.href, folder.with({ scheme: Schemas.file, authority: '' }).toString()) : undefined;
 	create(mainWindow.document.body, {
 		...config,
 		studioLaunchpad: workspaceProvider.studioLaunchpad,
+		studioProjectEntry,
 		windowIndicator: config.windowIndicator ?? { label: '$(remote)', tooltip: `${product.nameShort} Web` },
 		settingsSyncOptions: config.settingsSyncOptions ? { enabled: config.settingsSyncOptions.enabled, } : undefined,
 		workspaceProvider,

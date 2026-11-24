@@ -45,6 +45,8 @@ export enum AuxiliaryWindowMode {
 export interface IAuxiliaryWindowOpenOptions {
 	readonly bounds?: Partial<IRectangle>;
 	readonly compact?: boolean;
+	/** In a browser, open a regular tab instead of requesting a popup window. */
+	readonly asTab?: boolean;
 
 	readonly mode?: AuxiliaryWindowMode;
 	readonly zoomLevel?: number;
@@ -390,7 +392,7 @@ export class BrowserAuxiliaryWindowService extends Disposable implements IAuxili
 			options?.backgroundColor && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(options.backgroundColor) ? `window-background-color=${options.backgroundColor}` : undefined,
 		]);
 
-		const auxiliaryWindow = mainWindow.open(isFirefox ? '' /* FF immediately fires an unload event if using about:blank */ : 'about:blank', undefined, features.join(','));
+		const auxiliaryWindow = mainWindow.open(isFirefox ? '' /* FF immediately fires an unload event if using about:blank */ : 'about:blank', undefined, isWeb && options?.asTab ? '' : features.join(','));
 		if (!auxiliaryWindow && isWeb) {
 			return (await this.dialogService.prompt({
 				type: Severity.Warning,

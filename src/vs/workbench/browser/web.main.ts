@@ -11,6 +11,7 @@ import { ConsoleLogInAutomationLogger } from '../../platform/log/browser/log.js'
 import { Disposable, DisposableStore, toDisposable } from '../../base/common/lifecycle.js';
 import { BrowserWorkbenchEnvironmentService, IBrowserWorkbenchEnvironmentService } from '../services/environment/browser/environmentService.js';
 import { Workbench } from './workbench.js';
+import { initializeStudioReleaseProject } from './parts/studioMode.js';
 import { RemoteFileSystemProviderClient } from '../services/remote/common/remoteFileSystemProviderClient.js';
 import { IWorkbenchEnvironmentService } from '../services/environment/common/environmentService.js';
 import { IProductService } from '../../platform/product/common/productService.js';
@@ -132,6 +133,10 @@ export class BrowserMain extends Disposable {
 
 		// Init services and wait for DOM to be ready in parallel
 		const [services] = await Promise.all([this.initServices(), domContentLoaded(getWindow(this.domElement))]);
+
+		if (this.configuration.studioWeb && this.configuration.studioProjectEntry) {
+			initializeStudioReleaseProject(undefined, true, this.configuration.studioProjectEntry);
+		}
 
 		// Create Workbench
 		const workbench = this.createWorkbench(this.domElement, services.serviceCollection, services.logService);

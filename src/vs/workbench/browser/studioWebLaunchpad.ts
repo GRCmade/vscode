@@ -21,10 +21,10 @@ import { IHoverService } from '../../platform/hover/browser/hover.js';
 import { ILabelService } from '../../platform/label/common/label.js';
 import { INotificationService } from '../../platform/notification/common/notification.js';
 import { IOpenerService } from '../../platform/opener/common/opener.js';
-import { IStorageService, WillSaveStateReason } from '../../platform/storage/common/storage.js';
 import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
 import { IWebviewService } from '../contrib/webview/browser/webview.js';
 import { IWebviewViewService } from '../contrib/webviewView/browser/webviewViewService.js';
+import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
 import { IHostService } from '../services/host/browser/host.js';
 import { IWorkbenchLayoutService } from '../services/layout/browser/layoutService.js';
 import { IStatusbarService, StatusbarAlignment } from '../services/statusbar/browser/statusbar.js';
@@ -44,15 +44,23 @@ type RecentProject = StudioStartState['recent'][number];
 
 export class StudioWebLaunchpadNavigation extends Disposable {
 
-	constructor(@IStatusbarService statusbar: IStatusbarService, @IStorageService storage: IStorageService) {
+	constructor(@IStatusbarService statusbar: IStatusbarService, @INotificationService notifications: INotificationService) {
 		super();
 		const title = studioLabel('Studio Launchpad', 'Studio 启动台');
-		this._register(CommandsRegistry.registerCommand('studio.showLaunchpad', async () => {
-			await storage.flush(WillSaveStateReason.SHUTDOWN);
+		this._register(CommandsRegistry.registerCommand('studio.showLaunchpad', () => {
+			try {
+				const launchpad: Window | null = mainWindow.opener;
+				if (launchpad && !launchpad.closed && launchpad.document.querySelector('.studio-web-launchpad-window')) {
+					launchpad.focus();
+					return;
+				}
+			} catch { /* The opener may have navigated away. */ }
 			const home = new URL(mainWindow.location.href);
 			home.search = '?launchpad=1';
 			home.hash = '';
-			mainWindow.location.assign(home);
+			if (!mainWindow.open(home.href, '_blank')) {
+				notifications.warn(studioLabel('The browser blocked the Launchpad tab. Allow pop-ups for this site and try again.', '浏览器拦截了启动台标签页。请允许此站点打开弹出式窗口后重试。'));
+			}
 		}));
 		this._register(statusbar.addEntry({ name: title, text: '$(home) ' + title, ariaLabel: title, tooltip: title, command: 'studio.showLaunchpad' },
 			'studio.showLaunchpad', StatusbarAlignment.LEFT, 100));
@@ -70,7 +78,7 @@ export class StudioWebLaunchpad extends Disposable {
 	private accountRevision = 0;
 	private inbox?: LaunchpadInbox;
 	private inboxRevision = 0;
-	private inboxRequest?: { id: string; target: string; action?: InboxAction };
+	private readonly inboxRequests = new Map<string, string>();
 	private socialUnread = false;
 	private noticeRevision = 0;
 	private projects: LaunchpadProject[] = [];
@@ -97,6 +105,7 @@ export class StudioWebLaunchpad extends Disposable {
 		@IHoverService hoverService: IHoverService,
 		@IWebviewService webviews: IWebviewService,
 		@IWebviewViewService webviewViews: IWebviewViewService,
+		@IAuxiliaryWindowService windows: IAuxiliaryWindowService,
 	) {
 		super();
 		const run = (operation: Promise<unknown>) => { void operation.catch(error => notifications.error(error)); };
@@ -106,12 +115,11 @@ export class StudioWebLaunchpad extends Disposable {
 			workspace: () => run(this.pickAndOpen('workspace')),
 			create: () => run(commands.executeCommand('studio.createProject')),
 			importProjects: () => run(this.importFolders()),
-			project: project => run(this.openProject(project)),
+			project: project => run(this.openProject(project, project.builtin ? {} : undefined)),
+			runProject: (project, entryId) => run(this.openProject(project, { entryId })),
 			remove: project => run(this.removeProject(project)),
 			copyPath: project => run(clipboard.writeText(project.path)),
-			// The browser opens the workbench first. Project entries can be run from there.
-			canRunEntries: false,
-			openLabel: () => studioLabel('Open in workbench', '在工作台打开'),
+			openLabel: project => project.builtin ? studioLabel('Open in new tab', '在新标签页打开') : studioLabel('Open in workbench', '在工作台打开'),
 			contextMenu, hoverService,
 			cover: async () => undefined,
 			settings: () => openSettings('general'),
@@ -163,7 +171,7 @@ export class StudioWebLaunchpad extends Disposable {
 		this._register(toDisposable(() => {
 			++this.revision;
 			++this.accountRevision; ++this.inboxRevision; ++this.noticeRevision;
-			this.inboxRequest = undefined;
+			this.inboxRequests.clear();
 			start.setVisible('launchpad', false);
 			for (const part of parts) { part.inert = false; }
 			this.view.element.remove();
@@ -180,20 +188,18 @@ export class StudioWebLaunchpad extends Disposable {
 			this.refreshProfile();
 		};
 		this.settings = this._register(new StudioLaunchpadSettings(root, studioLabel, showHome, hideHome, message => notifications.error(message), webviews, webviewViews));
-		this.app = this._register(new StudioWebLaunchpadApp(root, studioLabel, webviews, opener, clipboard, hideHome, showHome,
+		this.app = this._register(new StudioWebLaunchpadApp(windows, studioLabel, webviews, opener, clipboard,
 			(conversation, user) => run(this.openInbox(conversation, user))));
-		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadSettings', (_accessor, title: string) => {
-			this.clearInboxRequest(); this.app.dismiss();
-			return this.settings.show(title, this.view.element.classList.contains('lp-pointer'));
-		}));
+		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadSettings', (_accessor, title: string) =>
+			this.settings.show(title, this.view.element.classList.contains('lp-pointer'))));
 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadSettings', () => { if (this.settings.isOpen) { showHome(); } }));
 		this._register(CommandsRegistry.registerCommand('studio.internalRevealStore', () => {
-			this.clearInboxRequest(); this.app.dismiss(); showHome(); this.view.select('store'); return true;
+			showHome(); this.view.select('store'); return true;
 		}));
 		this._register(CommandsRegistry.registerCommand('studio.internalPrepareLaunchpadApp', (_accessor, key: string, app: { accountUrl?: string }) =>
 			!!this.account?.signedIn && this.app.prepare(key, app?.accountUrl)));
-		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, id: string, view: Parameters<StudioWebLaunchpadApp['show']>[1]) =>
-			this.app.show(key, view, () => this.inboxRequest?.id === id)));
+		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, id: string, view: Parameters<StudioWebLaunchpadApp['show']>[2]) =>
+			this.app.show(key, id, view)));
 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => this.app.clear(key)));
 		this._register(CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', () => this.refreshProfile()));
 		this._register(CommandsRegistry.registerCommand('studio.internalLaunchpadInboxChanged', () => {
@@ -252,7 +258,10 @@ export class StudioWebLaunchpad extends Disposable {
 		if (changed) {
 			++this.inboxRevision; ++this.noticeRevision;
 			this.inbox = undefined; this.socialUnread = false;
-			this.clearInboxRequest(); this.app.reset(); this.refreshProfile();
+			this.inboxRequests.clear();
+			this.view.setInboxActionBusy('add-contact', false);
+			this.view.setInboxActionBusy('create-group', false);
+			this.app.reset(); this.refreshProfile();
 		}
 		this.paint();
 	}
@@ -292,26 +301,28 @@ export class StudioWebLaunchpad extends Disposable {
 		}
 	}
 
-	private clearInboxRequest(): void {
-		const action = this.inboxRequest?.action;
-		this.inboxRequest = undefined;
-		if (action) { this.view.setInboxActionBusy(action, false); }
-	}
-
 	private async openInbox(conversation?: string, user?: string, action?: InboxAction, title?: string): Promise<void> {
 		const target = conversation ? `conversation:${conversation}` : user ? `user:${user}` : action;
-		if (!this.account?.signedIn || !target || this.inboxRequest?.target === target) { return; }
-		this.clearInboxRequest();
-		const request = this.inboxRequest = { id: generateUuid(), target, action };
+		if (!this.account?.signedIn || !target || this.inboxRequests.has(target)) { return; }
+		const id = generateUuid();
+		this.inboxRequests.set(target, id);
 		this.view.closePicker();
 		if (action) { this.view.setInboxActionBusy(action, true); }
+		let opened = false;
 		try {
-			const result = await this.commands.executeCommand<true | string>('studio.openLaunchpadInbox', request.id, conversation, user, action, title).catch(() => undefined);
-			if (result !== true && this.inboxRequest === request) {
+			// Open the tab while the click still has user activation, not after the gateway round trip.
+			if (!await this.app.open(id, title)) { return; }
+			const result = await this.commands.executeCommand<true | string>('studio.openLaunchpadInbox', id, conversation, user, action, title).catch(() => undefined);
+			opened = result === true;
+			if (!opened && this.app.isOpen(id)) {
 				this.notifications.warn(typeof result === 'string' ? result : studioLabel('Could not open IM', '无法打开 IM'));
 			}
 		} finally {
-			if (this.inboxRequest === request) { this.clearInboxRequest(); }
+			if (!opened) { this.app.close(id); }
+			if (this.inboxRequests.get(target) === id) {
+				this.inboxRequests.delete(target);
+				if (action) { this.view.setInboxActionBusy(action, false); }
+			}
 		}
 	}
 
@@ -402,11 +413,11 @@ export class StudioWebLaunchpad extends Disposable {
 		});
 		const uri = selection?.[0];
 		if (uri?.scheme === Schemas.vscodeRemote && uri.authority === this.authority && !this._store.isDisposed) {
-			await this.host.openWindow([folder ? { folderUri: uri } : { workspaceUri: uri }], { forceReuseWindow: true });
+			await this.host.openWindow([folder ? { folderUri: uri } : { workspaceUri: uri }], { forceNewWindow: true });
 		}
 	}
 
-	private async openProject(project: LaunchpadProject): Promise<void> {
+	private async openProject(project: LaunchpadProject, entry?: { entryId?: string }): Promise<void> {
 		const uri = URI.parse(project.uri);
 		try {
 			const stat = await this.files.stat(uri);
@@ -416,7 +427,9 @@ export class StudioWebLaunchpad extends Disposable {
 			this.notifications.warn(studioLabel(`Project not found: ${project.path}`, `找不到项目：${project.path}`));
 			return;
 		}
-		if (!this._store.isDisposed) { await this.host.openWindow([project.kind === 'folder' ? { folderUri: uri } : { workspaceUri: uri }], { forceReuseWindow: true }); }
+		if (!this._store.isDisposed) {
+			await this.host.openWindow([project.kind === 'folder' ? { folderUri: uri } : { workspaceUri: uri }], { forceNewWindow: true, studioProjectEntry: entry });
+		}
 	}
 
 	private async removeProject(project: LaunchpadProject): Promise<void> {

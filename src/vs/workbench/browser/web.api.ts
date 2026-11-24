@@ -16,6 +16,7 @@ import type { TunnelProviderFeatures } from '../../platform/tunnel/common/tunnel
 import type { IProgress, IProgressCompositeOptions, IProgressDialogOptions, IProgressNotificationOptions, IProgressOptions, IProgressStep, IProgressWindowOptions } from '../../platform/progress/common/progress.js';
 import type { ITextEditorOptions } from '../../platform/editor/common/editor.js';
 import type { IFolderToOpen, IWorkspaceToOpen } from '../../platform/window/common/window.js';
+import type { IStudioProjectEntry } from '../../platform/window/common/studioProjectWindow.js';
 import type { EditorGroupLayout } from '../services/editor/common/editorGroupsService.js';
 import type { IEmbedderTerminalOptions } from '../services/terminal/common/embedderTerminalService.js';
 import type { IAuthenticationProvider } from '../services/authentication/common/authentication.js';
@@ -150,6 +151,7 @@ export interface IWorkbenchConstructionOptions {
 	/** Set by the managed SteamHarness Studio Web host. */
 	readonly studioWeb?: boolean;
 	readonly studioLaunchpad?: boolean;
+	readonly studioProjectEntry?: IStudioProjectEntry;
 
 	//#region Connection related configuration
 
@@ -412,6 +414,12 @@ export interface IWorkbenchConstructionOptions {
  */
 export type IWorkspace = IWorkspaceToOpen | IFolderToOpen | undefined;
 
+export interface IWorkspaceOpenOptions {
+	readonly reuse?: boolean;
+	readonly payload?: object;
+	readonly studioProjectEntry?: Pick<IStudioProjectEntry, 'entryId'>;
+}
+
 export interface IWorkspaceProvider {
 
 	/**
@@ -441,7 +449,7 @@ export interface IWorkspaceProvider {
 	 *
 	 * @returns true if successfully opened, false otherwise.
 	 */
-	open(workspace: IWorkspace, options?: { reuse?: boolean; payload?: object }): Promise<boolean>;
+	open(workspace: IWorkspace, options?: IWorkspaceOpenOptions): Promise<boolean>;
 }
 
 export interface IResourceUriProvider {

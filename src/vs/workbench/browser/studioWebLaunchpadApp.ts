@@ -3,77 +3,109 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { mainWindow } from '../../base/browser/window.js';
+import { addDisposableListener } from '../../base/browser/dom.js';
 import { DeferredPromise, RunOnceScheduler } from '../../base/common/async.js';
-import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
+import { Disposable, DisposableMap, DisposableStore, IDisposable, toDisposable } from '../../base/common/lifecycle.js';
 import { URI } from '../../base/common/uri.js';
 import { IClipboardService } from '../../platform/clipboard/common/clipboardService.js';
 import { IOpenerService } from '../../platform/opener/common/opener.js';
 import { IWebviewService } from '../contrib/webview/browser/webview.js';
-import { button, element, LaunchpadLabel } from './studioLaunchpadPicker.js';
+import { IAuxiliaryWindow, IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+import { element, LaunchpadLabel } from './studioLaunchpadPicker.js';
 
 interface LaunchpadAppView { id: string; title: string; html: string }
+interface ChatTab extends IDisposable {
+	readonly life: DisposableStore;
+	window?: IAuxiliaryWindow;
+	loading?: HTMLElement;
+	key?: string;
+}
 
-/** The extension supplies a gateway-scoped preview, so no desktop port mapping or native window is needed. */
+/** The launchpad owns the gateway preview; each conversation gets its own browser tab. */
 export class StudioWebLaunchpadApp extends Disposable {
 
 	private prepared?: { key: string; accountUrl?: string };
-	private readonly current = this._register(new MutableDisposable<DisposableStore>());
-	private readonly pending = this._register(new MutableDisposable<DisposableStore>());
+	private readonly tabs = this._register(new DisposableMap<string, ChatTab>());
 
 	constructor(
-		private readonly container: HTMLElement,
+		private readonly windows: IAuxiliaryWindowService,
 		private readonly t: LaunchpadLabel,
 		private readonly webviews: IWebviewService,
 		private readonly opener: IOpenerService,
 		private readonly clipboard: IClipboardService,
-		private readonly onOpen: () => void,
-		private readonly onBack: () => void,
 		private readonly openConversation: (conversation?: string, user?: string) => void,
 	) { super(); }
 
 	prepare(key: string, accountUrl: string | undefined): boolean {
-		if (this.prepared?.key !== key) { this.reset(); this.prepared = { key, accountUrl }; }
+		if (this.prepared?.key !== key) {
+			if (this.prepared) { this.clear(this.prepared.key); }
+			this.prepared = { key, accountUrl };
+		}
 		return true;
 	}
 
-	clear(key: string): void { if (this.prepared?.key === key) { this.reset(); } }
-
-	dismiss(): void { this.pending.clear(); this.current.clear(); }
+	clear(key: string): void {
+		if (this.prepared?.key !== key) { return; }
+		this.prepared = undefined;
+		for (const [id, tab] of this.tabs) {
+			if (tab.key === key) { this.close(id); }
+		}
+	}
 
 	reset(): void {
 		this.prepared = undefined;
-		const wasOpen = !!this.current.value;
-		this.dismiss();
-		if (wasOpen) { this.onBack(); }
+		this.tabs.clearAndDisposeAll();
 	}
 
-	async show(key: string, view: LaunchpadAppView, isRequested: () => boolean): Promise<boolean> {
-		const prepared = this.prepared;
-		if (!prepared || prepared.key !== key || !view?.id || this._store.isDisposed || !isRequested()) { return false; }
+	async open(id: string, title?: string): Promise<boolean> {
+		if (this._store.isDisposed) { return false; }
 		const life = new DisposableStore();
-		this.pending.value = life;
+		const tab: ChatTab = { life, dispose: () => life.dispose() };
+		this.tabs.set(id, tab);
+		try {
+			const window = await this.windows.open({ asTab: true });
+			if (life.isDisposed || window.window.closed) { window.dispose(); this.close(id); return false; }
+			tab.window = window;
+			life.add(window);
+			life.add(addDisposableListener(window.window, 'pagehide', () => this.close(id)));
+			window.window.document.title = title || 'IM';
+			tab.loading = window.container.appendChild(element('div', 'studio-chat-loading', this.t('Opening IM…', '正在打开 IM…')));
+			tab.loading.setAttribute('role', 'status');
+			return true;
+		} catch { this.close(id); return false; }
+	}
+
+	isOpen(id: string): boolean {
+		const tab = this.tabs.get(id);
+		return !!tab?.window && !tab.life.isDisposed && !tab.window.window.closed;
+	}
+
+	close(id: string): void { this.tabs.deleteAndLeak(id)?.dispose(); }
+
+	async show(key: string, id: string, view: LaunchpadAppView): Promise<boolean> {
+		const prepared = this.prepared, tab = this.tabs.get(id), window = tab?.window;
+		if (!prepared || prepared.key !== key || !view?.id || !tab || !window || tab.key || !this.isOpen(id)) { return false; }
+		tab.key = key;
+		const life = tab.life;
+		const isCurrent = () => this.prepared === prepared && this.isOpen(id);
 		const ready = new DeferredPromise<boolean>();
 		life.add(toDisposable(() => { void ready.complete(false); }));
-		const surface = element('div', 'studio-launchpad-settings');
+		const surface = element('div', 'studio-chat-window');
 		surface.setAttribute('role', 'document');
 		surface.setAttribute('aria-label', view.title);
 		surface.style.visibility = 'hidden';
-		const close = () => {
-			if (this.pending.value === life) { this.pending.clear(); }
-			if (this.current.value === life) { this.current.clear(); this.onBack(); }
-		};
-		const back = button(this.t('Back to Launchpad', '返回启动台'), 'chevron-left', close, 'studio-launchpad-app-close');
-		life.add(toDisposable(() => { surface.remove(); back.remove(); }));
+		life.add(toDisposable(() => surface.remove()));
+		let shown = false;
+		const fail = () => { if (shown) { this.close(id); } else { void ready.complete(false); } };
 		try {
 			const webview = life.add(this.webviews.createWebviewElement({ title: view.title, options: {}, extension: undefined,
 				contentOptions: { allowScripts: true, localResourceRoots: [] } }));
-			const deadline = life.add(new RunOnceScheduler(close, 20_000));
-			life.add(webview.onFatalError(close));
+			const deadline = life.add(new RunOnceScheduler(fail, 20_000));
+			life.add(webview.onFatalError(fail));
 			life.add(webview.onMessage(({ message }) => {
 				if (message?.type === 'studio-launchpad-ready') { void ready.complete(true); }
-				if (this.current.value !== life) { return; }
-				if (message?.type === 'studio-launchpad-close') { close(); }
+				if (!shown || !isCurrent()) { return; }
+				if (message?.type === 'studio-launchpad-close') { this.close(id); }
 				else if (message?.type === 'studio-launchpad-open-conversation') {
 					if (typeof message.conversation === 'string') { this.openConversation(message.conversation); }
 					else if (typeof message.user === 'string') { this.openConversation(undefined, message.user); }
@@ -82,22 +114,22 @@ export class StudioWebLaunchpadApp extends Disposable {
 					if (uri.scheme === 'https' || uri.scheme === 'http') { void this.opener.open(uri, { openExternal: true }).catch(() => undefined); }
 				} else if (message?.type === 'studio-web-app-clipboard' && webview.isFocused && typeof message.requestId === 'string' &&
 					message.requestId.length <= 128 && typeof message.text === 'string' && message.text.length > 0 && message.text.length <= 1_000_000) {
-					const reply = (ok: boolean) => { if (this.current.value === life) { void webview.postMessage({ type: 'studio-web-app-clipboard-result', requestId: message.requestId, ok }); } };
+					const reply = (ok: boolean) => { if (isCurrent()) { void webview.postMessage({ type: 'studio-web-app-clipboard-result', requestId: message.requestId, ok }); } };
 					void this.clipboard.writeText(message.text).then(() => reply(true), () => reply(false));
 				}
 			}));
-			this.container.append(surface);
-			webview.mountTo(surface, mainWindow);
+			window.container.append(surface);
+			webview.mountTo(surface, window.window);
 			deadline.schedule();
 			webview.setHtml(view.html);
-			if (!await ready.p || this.pending.value !== life || this.prepared !== prepared || !isRequested()) { close(); return false; }
+			if (!await ready.p || !isCurrent()) { return false; }
 			deadline.cancel();
-			this.current.value = this.pending.clearAndLeak();
-			this.onOpen();
+			shown = true;
+			window.window.document.title = view.title;
+			tab.loading?.remove();
+			tab.loading = undefined;
 			surface.style.visibility = '';
-			this.container.append(back);
-			back.focus({ preventScroll: true });
 			return true;
-		} catch { close(); return false; }
+		} catch { return false; }
 	}
 }

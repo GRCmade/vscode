@@ -230,7 +230,7 @@ export class StudioModeContribution extends Disposable {
 				if (next) {
 					let prepared: boolean | undefined;
 					const prepare = async () => {
-						try { return await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject', projectUri, ...(entry ? [entry.entryId, entry.conversationId] : [])); }
+						try { return await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject', projectUri, ...(entry ? [entry.entryId, entry.conversationId, entry.botArtifacts] : [])); }
 						catch (error) {
 							if (revision !== this.revision || this._store.isDisposed) { return undefined; }
 							throw error;

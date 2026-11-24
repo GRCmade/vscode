@@ -30,6 +30,7 @@ export interface LibraryActions {
 	importProjects(): void;
 	project(p: LaunchpadProject, entryId?: string): void;
 	runProject?(p: LaunchpadProject, entryId?: string): void;
+	openBotArtifacts?(p: LaunchpadProject, entryId?: string): void;
 	remove(p: LaunchpadProject): void;
 	reveal?(p: LaunchpadProject): void;
 	copyPath(p: LaunchpadProject): void;
@@ -427,12 +428,30 @@ export class LaunchpadLibrary extends Disposable {
 			const bot = this.detailActionGroup(selected, t('Bot instances', 'Bot 分身'), studioBotIcon);
 			const im = this.detailActionGroup(selected, t('IM integration', 'IM 集成'), 'comment-discussion');
 			secondaryActions.append(bot.element, im.element);
+			const entryBots = (selected.entries ?? []).filter(entry => entry.type === 'bot');
+			const botEntries = entryBots.length ? entryBots : selected.projectType === 'bot' ? [undefined] : [];
+			const artifacts = this.actions.openBotArtifacts && !selected.missing && selected.uri.startsWith('file:') && botEntries.length > 0;
+			if (artifacts) {
+				const group = element('section', 'lp-detail-action-group');
+				const label = t('Bot management', 'Bot 管理');
+				group.setAttribute('aria-label', label);
+				const controls = element('div', 'lp-detail-group-actions');
+				for (const entry of botEntries) {
+					const title = t('Artifact library', '产物库');
+					const open = button(botEntries.length > 1 ? `${title} · ${entry?.name ?? entry?.entryId}` : title, 'archive',
+						() => this.actions.openBotArtifacts?.(selected, entry?.entryId), 'studio-project-action lp-outline');
+					open.dataset.key = `bot-artifacts:${selected.uri}:${entry?.entryId ?? ''}`;
+					controls.append(open);
+				}
+				group.append(element('h2', '', label), controls);
+				secondaryActions.append(group);
+			}
 			// Local actions resolve independently of IM. Update each group only when its actions change.
 			const local = this.detailActions(selected, 'local'), account = this.detailActions(selected, 'account');
 			this.updateDetailActions = () => {
 				bot.update(local?.items);
 				im.update(account?.items);
-				secondaryActions.hidden = bot.element.hidden && im.element.hidden;
+				secondaryActions.hidden = bot.element.hidden && im.element.hidden && !artifacts;
 			};
 			this.updateDetailActions();
 			const usage = this.projectUsage(selected);

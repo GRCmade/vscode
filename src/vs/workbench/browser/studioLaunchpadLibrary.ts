@@ -31,9 +31,11 @@ export interface LibraryActions {
 	project(p: LaunchpadProject, entryId?: string): void;
 	runProject?(p: LaunchpadProject, entryId?: string): void;
 	openBotArtifacts?(p: LaunchpadProject, entryId?: string): void;
+	openBotMemory?(p: LaunchpadProject, entryId?: string): void;
 	remove(p: LaunchpadProject): void;
 	reveal?(p: LaunchpadProject): void;
 	copyPath(p: LaunchpadProject): void;
+	openWorkflowSchedules?(p: LaunchpadProject, entryId?: string): void;
 	contextMenu: IContextMenuService;
 	hoverService: IHoverService;
 	usage?: ProjectUsageBridge;
@@ -280,7 +282,7 @@ export class LaunchpadLibrary extends Disposable {
 		return state;
 	}
 
-	private detailActionGroup(project: LaunchpadProject, label: string, defaultIcon: string) {
+	private detailActionGroup(project: LaunchpadProject, label: string, defaultIcon: string, alwaysVisible = false) {
 		const group = element('section', 'lp-detail-action-group');
 		group.setAttribute('aria-label', label);
 		const controls = element('div', 'lp-detail-group-actions');
@@ -310,7 +312,7 @@ export class LaunchpadLibrary extends Disposable {
 					action.dataset.detailAction = item.id;
 					return action;
 				});
-				group.hidden = !buttons.length;
+				group.hidden = !alwaysVisible && !buttons.length;
 				controls.replaceChildren(...buttons);
 				if (focused) { buttons.find(action => action.dataset.key === focused)?.focus({ preventScroll: true }); }
 			},
@@ -430,32 +432,57 @@ export class LaunchpadLibrary extends Disposable {
 			secondaryActions.append(bot.element, im.element);
 			const entryBots = (selected.entries ?? []).filter(entry => entry.type === 'bot');
 			const botEntries = entryBots.length ? entryBots : selected.projectType === 'bot' ? [undefined] : [];
-			const artifacts = this.actions.openBotArtifacts && !selected.missing && selected.uri.startsWith('file:') && botEntries.length > 0;
-			if (artifacts) {
-				const group = element('section', 'lp-detail-action-group');
-				const label = t('Bot management', 'Bot 管理');
+			const canManageBot = (this.actions.openBotArtifacts || this.actions.openBotMemory) && !selected.missing && selected.uri.startsWith('file:') && botEntries.length > 0;
+			const label = t('Bot management', 'Bot 管理');
+			const management = canManageBot && selected.managed ? this.detailActionGroup(selected, label, 'settings-gear', true) : undefined;
+			if (canManageBot) {
+				const group = management?.element ?? element('section', 'lp-detail-action-group');
 				group.setAttribute('aria-label', label);
 				const controls = element('div', 'lp-detail-group-actions');
 				for (const entry of botEntries) {
-					const title = t('Artifact library', '产物库');
-					const open = button(botEntries.length > 1 ? `${title} · ${entry?.name ?? entry?.entryId}` : title, 'archive',
-						() => this.actions.openBotArtifacts?.(selected, entry?.entryId), 'studio-project-action lp-outline');
-					open.dataset.key = `bot-artifacts:${selected.uri}:${entry?.entryId ?? ''}`;
-					controls.append(open);
+					const add = (key: string, title: string, icon: string, action: () => void) => {
+						const open = button(botEntries.length > 1 ? `${title} · ${entry?.name ?? entry?.entryId}` : title, icon, action, 'studio-project-action lp-outline');
+						open.dataset.key = `${key}:${selected.uri}:${entry?.entryId ?? ''}`;
+						controls.append(open);
+					};
+					if (this.actions.openBotArtifacts) { add('bot-artifacts', t('Artifact library', '产物库'), 'archive', () => this.actions.openBotArtifacts?.(selected, entry?.entryId)); }
+					if (this.actions.openBotMemory) { add('bot-memory', t('Memory management', '记忆管理'), 'database', () => this.actions.openBotMemory?.(selected, entry?.entryId)); }
 				}
-				group.append(element('h2', '', label), controls);
+				if (!management) { group.append(element('h2', '', label)); }
+				group.append(controls);
 				secondaryActions.append(group);
 			}
 			// Local actions resolve independently of IM. Update each group only when its actions change.
 			const local = this.detailActions(selected, 'local'), account = this.detailActions(selected, 'account');
 			this.updateDetailActions = () => {
-				bot.update(local?.items);
+				bot.update(management ? [] : local?.items);
+				management?.update(local?.items);
 				im.update(account?.items);
-				secondaryActions.hidden = bot.element.hidden && im.element.hidden && !artifacts;
+				secondaryActions.hidden = bot.element.hidden && im.element.hidden && !canManageBot;
 			};
 			this.updateDetailActions();
+			let detailActions = secondaryActions;
+			if (this.actions.openWorkflowSchedules && selected.distribution === 'source' && selected.kind === 'folder' && !selected.missing && !selected.builtin && !selected.managed && selected.uri.startsWith('file:')) {
+				const entries = (selected.entries ?? []).filter(entry => entry.type === 'workflow');
+				const workflows = entries.length ? entries : selected.projectType === 'workflow' ? [undefined] : [];
+				if (workflows.length) {
+					const label = t('Workflow schedules', 'Workflow 定时计划');
+					const group = element('section', 'lp-detail-action-group');
+					const controls = element('div', 'lp-detail-group-actions');
+					for (const entry of workflows) {
+						const title = workflows.length > 1 ? `${label} · ${entry?.name ?? entry?.entryId}` : label;
+						const open = button(title, 'calendar', () => this.actions.openWorkflowSchedules?.(selected, entry?.entryId), 'studio-project-action lp-outline');
+						open.dataset.key = `workflow-schedules:${selected.uri}:${entry?.entryId ?? ''}`;
+						controls.append(open);
+					}
+					group.setAttribute('aria-label', label);
+					group.append(element('h2', '', label), controls);
+					detailActions = element('div', 'lp-detail-secondary');
+					detailActions.append(secondaryActions, group);
+				}
+			}
 			const usage = this.projectUsage(selected);
-			const detail = projectDetails(selected, t, { actions, secondaryActions, usage: usage?.element,
+			const detail = projectDetails(selected, t, { actions, secondaryActions: detailActions, usage: usage?.element,
 				openEntry: canRun ? runProject : undefined });
 			this.content.replaceChildren(detail); restoreFocus();
 			usage?.setVisible(this.visible);

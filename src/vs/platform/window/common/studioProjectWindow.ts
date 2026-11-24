@@ -14,20 +14,22 @@ export interface IStudioProjectEntry {
 	readonly entryId?: string;
 	readonly conversationId?: string;
 	readonly botArtifacts?: true;
+	readonly botMemory?: true;
 }
 
 export function studioEntryForOpenables(toOpen: readonly IWindowOpenable[], options: IOpenWindowOptions): IStudioProjectEntry | undefined {
 	const [item] = toOpen;
 	const entry = options.studioProjectEntry;
 	if (!entry || toOpen.length !== 1 || options.addMode || options.removeMode) { return undefined; }
-	const { conversationId, botArtifacts } = entry;
+	const { conversationId, botArtifacts, botMemory } = entry;
 	if (conversationId !== undefined && (typeof conversationId !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(conversationId))) { return undefined; }
-	if (botArtifacts !== undefined && botArtifacts !== true) { return undefined; }
+	if (botArtifacts !== undefined && botArtifacts !== true || botMemory !== undefined && botMemory !== true || botArtifacts && botMemory) { return undefined; }
+	const navigation = { ...(conversationId && { conversationId }), ...(botArtifacts && { botArtifacts }), ...(botMemory && { botMemory }) };
 	if (isFolderToOpen(item)) {
-		return { uri: URI.revive(item.folderUri).toString(), entryId: entry.entryId, ...(conversationId && { conversationId }), ...(botArtifacts && { botArtifacts }) };
+		return { uri: URI.revive(item.folderUri).toString(), entryId: entry.entryId, ...navigation };
 	}
-	if ((conversationId || botArtifacts) && isWorkspaceToOpen(item) && hasWorkspaceFileExtension(URI.revive(item.workspaceUri))) {
-		return { uri: URI.revive(item.workspaceUri).toString(), ...(conversationId && { conversationId }), ...(botArtifacts && { botArtifacts }) };
+	if ((conversationId || botArtifacts || botMemory) && isWorkspaceToOpen(item) && hasWorkspaceFileExtension(URI.revive(item.workspaceUri))) {
+		return { uri: URI.revive(item.workspaceUri).toString(), ...navigation };
 	}
 	return undefined;
 }
@@ -41,7 +43,7 @@ export function studioEntryForFolder(entry: IStudioProjectEntry | undefined, fol
 
 export function studioEntryForWorkspace(entry: IStudioProjectEntry | undefined, workspace: IAnyWorkspaceIdentifier | undefined): IStudioProjectEntry | undefined {
 	if (isSingleFolderWorkspaceIdentifier(workspace)) { return studioEntryForFolder(entry, workspace.uri); }
-	if ((entry?.conversationId || entry?.botArtifacts) && isWorkspaceIdentifier(workspace)) { return studioEntryForFolder(entry, workspace.configPath); }
+	if ((entry?.conversationId || entry?.botArtifacts || entry?.botMemory) && isWorkspaceIdentifier(workspace)) { return studioEntryForFolder(entry, workspace.configPath); }
 	return undefined;
 }
 

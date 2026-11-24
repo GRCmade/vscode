@@ -231,7 +231,8 @@ export class StudioModeContribution extends Disposable {
 					let prepared: boolean | undefined;
 					const prepare = async () => {
 						try {
-							const target = [projectUri, ...(entry ? [entry.entryId] : []), ...(entry?.conversationId || entry?.botArtifacts ? [entry.conversationId] : []), ...(entry?.botArtifacts ? [true] : [])];
+							const target = [projectUri, ...(entry ? [entry.entryId] : []), ...(entry?.conversationId || entry?.botArtifacts || entry?.botMemory ? [entry.conversationId] : []),
+								...(entry?.botArtifacts || entry?.botMemory ? [entry.botArtifacts] : []), ...(entry?.botMemory ? [true] : [])];
 							return await this.commands.executeCommand<boolean>('studio.internalPrepareSteamProject', ...target);
 						}
 						catch (error) {

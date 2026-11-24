@@ -138,10 +138,12 @@ export class StudioLaunchpad extends Disposable {
 			importProjects: () => run(this.pickProjectsToImport()),
 			project: (project, entryId) => run(this.openProject(project, entryId)),
 			openBotArtifacts: (project, entryId) => run(this.openProject(project, entryId, undefined, true)),
+			openBotMemory: (project, entryId) => run(this.openProject(project, entryId, undefined, undefined, true)),
 			remove: project => run(this.removeProject(project)),
 			reveal: project => run(native.showItemInFolder(project.managed ? project.path : URI.parse(project.uri).fsPath)),
 			copyPath: project => run(clipboard.writeText(project.path)), contextMenu, hoverService,
 			usage: projectUsageBridge(commands, clipboard),
+			openWorkflowSchedules: (project, entryId) => run(commands.executeCommand('studio.internalOpenWorkflowSchedules', { uri: project.uri, entryId })),
 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
 			cover: project => this.cover(project),
 			readActivity: projects => commands.executeCommand<string[] | undefined>('studio.internalReadLibraryActivity', projects),
@@ -152,7 +154,7 @@ export class StudioLaunchpad extends Disposable {
 			runDetailAction: async (project, id) => {
 				if (!this.start.state?.platform) { return; }
 				try {
-					if (id === 'create-folder-bot') {
+					if (['create-folder-bot', 'edit-folder-bot-profile', 'copy-folder-bot', 'export-folder-bot-template', 'import-folder-bot-template'].includes(id)) {
 						const local = await commands.executeCommand<{ workspace?: string } | undefined>('studio.runFolderBotAction', project.uri, id);
 						if (local?.workspace) { await this.openManagedWorkspace(local.workspace); }
 						return;
@@ -479,14 +481,14 @@ export class StudioLaunchpad extends Disposable {
 		return true;
 	}
 
-	private async openProject(project: LaunchpadProject, entryId?: string, conversationId?: string, botArtifacts?: true): Promise<void> {
+	private async openProject(project: LaunchpadProject, entryId?: string, conversationId?: string, botArtifacts?: true, botMemory?: true): Promise<void> {
 		if (project.builtin) {
-			await this.openBuiltinProject(project, entryId, botArtifacts);
+			await this.openBuiltinProject(project, entryId, botArtifacts, botMemory);
 			return;
 		}
 		if (project.managed) {
 			const result = await this.commands.executeCommand<{ workspace?: string } | undefined>('studio.runFolderBotAction', project.uri, 'open-folder-bot');
-			if (result?.workspace) { await this.openManagedWorkspace(result.workspace, undefined, botArtifacts); }
+			if (result?.workspace) { await this.openManagedWorkspace(result.workspace, undefined, botArtifacts, botMemory); }
 			return;
 		}
 		const uri = URI.parse(project.uri);
@@ -503,18 +505,18 @@ export class StudioLaunchpad extends Disposable {
 			distribution = metadata?.distribution;
 		}
 		if (this._store.isDisposed) { return; }
-		const runEntry = project.kind === 'folder' && (!!distribution || entryId !== undefined || !!conversationId || !!botArtifacts);
+		const runEntry = project.kind === 'folder' && (!!distribution || entryId !== undefined || !!conversationId || !!botArtifacts || !!botMemory);
 		const live = this.windows.find(row => row.uri === project.uri && row.windowId === project.windowId) ?? this.windows.find(row => row.uri === project.uri);
 		if (!runEntry && live?.windowId !== undefined) {
 			await this.native.focusWindow({ targetWindowId: live.windowId, mode: FocusMode.Force }); return;
 		}
 		this.missing.delete(project.uri);
 		await this.native.openWindow([project.kind === 'workspace' ? { workspaceUri: uri } : { folderUri: uri }], {
-			forceNewWindow: true, ...(runEntry ? { studioProjectEntry: { entryId, conversationId, botArtifacts } } : {}),
+			forceNewWindow: true, ...(runEntry ? { studioProjectEntry: { entryId, conversationId, botArtifacts, botMemory } } : {}),
 		});
 	}
 
-	private async openBuiltinProject(project: LaunchpadProject, entryId?: string, botArtifacts?: true): Promise<void> {
+	private async openBuiltinProject(project: LaunchpadProject, entryId?: string, botArtifacts?: true, botMemory?: true): Promise<void> {
 		if (this.openingBuiltins.has(project.uri)) { return; }
 		this.openingBuiltins.add(project.uri);
 		try {
@@ -524,21 +526,21 @@ export class StudioLaunchpad extends Disposable {
 				.then(([declaration, manifest]) => parseStudioReleaseProject(project.uri, declaration, manifest, this.language), () => undefined);
 			if (this._store.isDisposed) { return; }
 			if (!release) { throw new Error(this.language.startsWith('zh') ? '内置项目的发行文件不可用，请重新构建或修复 Studio。' : 'The built-in project release is unavailable. Rebuild or repair Studio.'); }
-			const windows = entryId === undefined && !botArtifacts ? await this.native.getWindows({ includeAuxiliaryWindows: false }) : [];
+			const windows = entryId === undefined && !botArtifacts && !botMemory ? await this.native.getWindows({ includeAuxiliaryWindows: false }) : [];
 			if (this._store.isDisposed) { return; }
 			const live = windows.find(window => isSingleFolderWorkspaceIdentifier(window.workspace) && extUriBiasedIgnorePathCase.isEqual(URI.revive(window.workspace.uri), uri));
 			if (live) { await this.native.focusWindow({ targetWindowId: live.id, mode: FocusMode.Force }); }
-			else { await this.native.openWindow([{ folderUri: uri }], { forceNewWindow: true, noRecentEntry: true, studioProjectEntry: { entryId, botArtifacts } }); }
+			else { await this.native.openWindow([{ folderUri: uri }], { forceNewWindow: true, noRecentEntry: true, studioProjectEntry: { entryId, botArtifacts, botMemory } }); }
 		} finally { this.openingBuiltins.delete(project.uri); }
 	}
 
-	private async openManagedWorkspace(value: string, conversationId?: string, botArtifacts?: true): Promise<void> {
+	private async openManagedWorkspace(value: string, conversationId?: string, botArtifacts?: true, botMemory?: true): Promise<void> {
 		const uri = URI.parse(value);
 		if (uri.scheme !== 'file' || uri.query || uri.fragment || !uri.path.endsWith('.code-workspace') || this.openingManaged.has(value)) { return; }
 		this.openingManaged.add(value);
 		try {
-			if (conversationId || botArtifacts) {
-				await this.native.openWindow([{ workspaceUri: uri }], { forceNewWindow: true, studioProjectEntry: { conversationId, botArtifacts } });
+			if (conversationId || botArtifacts || botMemory) {
+				await this.native.openWindow([{ workspaceUri: uri }], { forceNewWindow: true, studioProjectEntry: { conversationId, botArtifacts, botMemory } });
 				return;
 			}
 			const windows = await this.native.getWindows({ includeAuxiliaryWindows: false });

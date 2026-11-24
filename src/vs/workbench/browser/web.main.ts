@@ -101,6 +101,7 @@ import { IDefaultAccountService } from '../../platform/defaultAccount/common/def
 import { DefaultAccountService } from '../services/accounts/browser/defaultAccount.js';
 import { AccountPolicyService, IAccountPolicyGateService } from '../services/policies/common/accountPolicyService.js';
 import { StudioWebLaunchpad, StudioWebLaunchpadNavigation } from './studioWebLaunchpad.js';
+import { StudioWebLaunchpadApp } from './studioWebLaunchpadApp.js';
 import { StudioNotificationInbox } from './studioNotificationInbox.js';
 
 export interface IBrowserMainWorkbench {
@@ -154,11 +155,15 @@ export class BrowserMain extends Disposable {
 		// Window
 		this._register(instantiationService.createInstance(BrowserWindow));
 		if (this.configuration.studioWeb) {
-			const inbox = this._register(instantiationService.createInstance(StudioNotificationInbox));
-			if (studioLaunchpad && this.configuration.remoteAuthority) {
-				this._register(instantiationService.createInstance(StudioWebLaunchpad, this.configuration.remoteAuthority, inbox));
+			if (this.configuration.studioIm && this.configuration.remoteAuthority) {
+				this._register(instantiationService.createInstance(StudioWebLaunchpadApp, this.configuration.studioIm));
 			} else {
-				this._register(instantiationService.createInstance(StudioWebLaunchpadNavigation));
+				const inbox = this._register(instantiationService.createInstance(StudioNotificationInbox));
+				if (studioLaunchpad && this.configuration.remoteAuthority) {
+					this._register(instantiationService.createInstance(StudioWebLaunchpad, this.configuration.remoteAuthority, inbox));
+				} else {
+					this._register(instantiationService.createInstance(StudioWebLaunchpadNavigation));
+				}
 			}
 		}
 
@@ -278,8 +283,10 @@ export class BrowserMain extends Disposable {
 	}
 
 	protected createWorkbench(domElement: HTMLElement, serviceCollection: ServiceCollection, logService: ILogService): IBrowserMainWorkbench {
-		const launchpad = this.configuration.studioWeb && this.configuration.studioLaunchpad && this.configuration.remoteAuthority;
-		return new Workbench(domElement, launchpad ? { extraClasses: ['studio-launchpad-window', 'studio-web-launchpad-window', 'lp-no-native-bar'] } : undefined, serviceCollection, logService);
+		const studioWeb = this.configuration.studioWeb && this.configuration.remoteAuthority;
+		const extraClasses = studioWeb && this.configuration.studioIm ? ['studio-web-im-window'] : studioWeb && this.configuration.studioLaunchpad
+			? ['studio-launchpad-window', 'studio-web-launchpad-window', 'lp-no-native-bar'] : undefined;
+		return new Workbench(domElement, extraClasses ? { extraClasses } : undefined, serviceCollection, logService);
 	}
 
 	private registerListeners(workbench: IBrowserMainWorkbench): void {

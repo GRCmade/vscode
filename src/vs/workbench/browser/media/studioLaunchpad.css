@@ -260,6 +260,15 @@
 .studio-launchpad-app-close > .codicon { display: grid; place-items: center; flex: none; width: 16px; height: 16px; line-height: 16px; }
 .studio-launchpad-app-close.lp-pointer:focus { outline: none !important; }
 .studio-chat-window { position: absolute; inset: 0; overflow: hidden; background: var(--vscode-editor-background); }
+.monaco-workbench.studio-web-im-window .part { visibility: hidden; }
+.studio-web-im-window :is(.studio-chat-window,.studio-chat-status) { position: fixed; inset: 0; z-index: 24; background: var(--vscode-editor-background); }
+.studio-chat-status { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px; text-align: center; padding: 16px; color: var(--vscode-foreground); }
+.studio-chat-status p { margin: 0; overflow-wrap: anywhere; }
+.studio-chat-status[hidden],.studio-chat-actions[hidden] { display: none; }
+.studio-chat-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.studio-chat-actions a { color: var(--vscode-textLink-foreground); }
+.studio-chat-actions button { font: inherit; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 1px solid var(--vscode-button-border,transparent); border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+.studio-chat-actions button:hover { background: var(--vscode-button-hoverBackground); }
 .studio-chat-titlebar-drag { position: absolute; z-index: 1; inset: 0 0 auto; height: var(--studio-chat-titlebar-height, 38px); pointer-events: none; }
 .studio-chat-titlebar-drag:not(.has-layout)::before, .studio-chat-titlebar-drag:not(.has-layout)::after, .studio-chat-titlebar-drag-region { position: absolute; pointer-events: auto; -webkit-app-region: drag; }
 .studio-chat-titlebar-drag:not(.has-layout)::before { content: ''; inset: 0 0 auto; height: 5px; }

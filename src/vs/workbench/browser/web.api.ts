@@ -17,6 +17,7 @@ import type { IProgress, IProgressCompositeOptions, IProgressDialogOptions, IPro
 import type { ITextEditorOptions } from '../../platform/editor/common/editor.js';
 import type { IFolderToOpen, IWorkspaceToOpen } from '../../platform/window/common/window.js';
 import type { IStudioProjectEntry } from '../../platform/window/common/studioProjectWindow.js';
+import type { StudioWebImTarget } from '../common/studioWebImRoute.js';
 import type { EditorGroupLayout } from '../services/editor/common/editorGroupsService.js';
 import type { IEmbedderTerminalOptions } from '../services/terminal/common/embedderTerminalService.js';
 import type { IAuthenticationProvider } from '../services/authentication/common/authentication.js';
@@ -151,6 +152,7 @@ export interface IWorkbenchConstructionOptions {
 	/** Set by the managed SteamHarness Studio Web host. */
 	readonly studioWeb?: boolean;
 	readonly studioLaunchpad?: boolean;
+	readonly studioIm?: StudioWebImTarget | 'invalid';
 	readonly studioProjectEntry?: IStudioProjectEntry;
 
 	//#region Connection related configuration

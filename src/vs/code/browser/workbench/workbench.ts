@@ -19,6 +19,7 @@ import product from '../../../platform/product/common/product.js';
 import { ISecretStorageProvider } from '../../../platform/secrets/common/secrets.js';
 import { isFolderToOpen, isWorkspaceToOpen } from '../../../platform/window/common/window.js';
 import type { IWorkbenchConstructionOptions, IWorkspace, IWorkspaceOpenOptions, IWorkspaceProvider } from '../../../workbench/browser/web.api.js';
+import { readStudioWebImRoute, type StudioWebImTarget } from '../../../workbench/common/studioWebImRoute.js';
 import { AuthenticationSessionInfo } from '../../../workbench/services/authentication/browser/authenticationService.js';
 import type { IURLCallbackProvider } from '../../../workbench/services/url/browser/urlService.js';
 import { create } from '../../../workbench/workbench.web.main.internal.js';
@@ -423,6 +424,10 @@ class WorkspaceProvider implements IWorkspaceProvider {
 		let payload = Object.create(null);
 
 		const query = new URL(document.location.href).searchParams;
+		const studioIm = config.studioWeb && config.remoteAuthority ? readStudioWebImRoute(query) : undefined;
+		if (studioIm) {
+			return new WorkspaceProvider(undefined, payload, config, false, studioIm);
+		}
 		query.forEach((value, key) => {
 			switch (key) {
 
@@ -489,6 +494,7 @@ class WorkspaceProvider implements IWorkspaceProvider {
 		readonly payload: object,
 		private readonly config: IWorkbenchConstructionOptions,
 		readonly studioLaunchpad: boolean,
+		readonly studioIm?: StudioWebImTarget | 'invalid',
 	) {
 	}
 
@@ -644,6 +650,7 @@ function readCookie(name: string): string | undefined {
 	create(mainWindow.document.body, {
 		...config,
 		studioLaunchpad: workspaceProvider.studioLaunchpad,
+		studioIm: workspaceProvider.studioIm,
 		studioProjectEntry,
 		windowIndicator: config.windowIndicator ?? { label: '$(remote)', tooltip: `${product.nameShort} Web` },
 		settingsSyncOptions: config.settingsSyncOptions ? { enabled: config.settingsSyncOptions.enabled, } : undefined,

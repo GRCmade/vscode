@@ -10,7 +10,6 @@ import { Disposable, toDisposable } from '../../base/common/lifecycle.js';
 import { Schemas } from '../../base/common/network.js';
 import { basenameOrAuthority } from '../../base/common/resources.js';
 import { URI } from '../../base/common/uri.js';
-import { generateUuid } from '../../base/common/uuid.js';
 import { getNLSLanguage } from '../../nls.js';
 import { IClipboardService } from '../../platform/clipboard/common/clipboardService.js';
 import { CommandsRegistry, ICommandService } from '../../platform/commands/common/commands.js';
@@ -22,9 +21,9 @@ import { ILabelService } from '../../platform/label/common/label.js';
 import { INotificationService } from '../../platform/notification/common/notification.js';
 import { IOpenerService } from '../../platform/opener/common/opener.js';
 import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
+import { studioWebImTarget } from '../common/studioWebImRoute.js';
 import { IWebviewService } from '../contrib/webview/browser/webview.js';
 import { IWebviewViewService } from '../contrib/webviewView/browser/webviewViewService.js';
-import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
 import { IHostService } from '../services/host/browser/host.js';
 import { IWorkbenchLayoutService } from '../services/layout/browser/layoutService.js';
 import { IStatusbarService, StatusbarAlignment } from '../services/statusbar/browser/statusbar.js';
@@ -35,7 +34,7 @@ import { StudioLaunchpadSettings } from './studioLaunchpadSettings.js';
 import { CatalogPage } from './studioLaunchpadStore.js';
 import { LaunchpadProjectMetadata, StoreListingDetails } from './studioLaunchpadCards.js';
 import { StudioNotificationInbox } from './studioNotificationInbox.js';
-import { StudioWebLaunchpadApp } from './studioWebLaunchpadApp.js';
+import { openStudioWebIm } from './studioWebLaunchpadApp.js';
 import './media/studioLaunchpad.css';
 
 function studioLabel(en: string, zh: string): string { return getNLSLanguage()?.startsWith('zh') ? zh : en; }
@@ -71,14 +70,12 @@ export class StudioWebLaunchpad extends Disposable {
 
 	private readonly view: StudioLaunchpadView;
 	private readonly settings: StudioLaunchpadSettings;
-	private readonly app: StudioWebLaunchpadApp;
 	private readonly refreshInbox = this._register(new RunOnceScheduler(() => void this.readInbox(), 160));
 	private readonly refreshNotices = this._register(new RunOnceScheduler(() => void this.readNotices(), 160));
 	private account?: LaunchpadAccount;
 	private accountRevision = 0;
 	private inbox?: LaunchpadInbox;
 	private inboxRevision = 0;
-	private readonly inboxRequests = new Map<string, string>();
 	private socialUnread = false;
 	private noticeRevision = 0;
 	private projects?: LaunchpadProject[];
@@ -106,7 +103,6 @@ export class StudioWebLaunchpad extends Disposable {
 		@IHoverService hoverService: IHoverService,
 		@IWebviewService webviews: IWebviewService,
 		@IWebviewViewService webviewViews: IWebviewViewService,
-		@IAuxiliaryWindowService windows: IAuxiliaryWindowService,
 	) {
 		super();
 		const run = (operation: Promise<unknown>) => { void operation.catch(error => notifications.error(error)); };
@@ -126,10 +122,10 @@ export class StudioWebLaunchpad extends Disposable {
 			profile: {
 				contextMenu,
 				signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),
-				inbox: (id, title) => run(this.openInbox(id, undefined, undefined, title)),
-				chatUser: (id, title) => run(this.openInbox(undefined, id, undefined, title)),
-				addContact: () => run(this.openInbox(undefined, undefined, 'add-contact', studioLabel('Add friend', '添加好友'))),
-				createGroup: () => run(this.openInbox(undefined, undefined, 'create-group', studioLabel('Start a group chat', '发起群聊'))),
+				inbox: id => this.openInbox(id),
+				chatUser: id => this.openInbox(undefined, id),
+				addContact: () => this.openInbox(undefined, undefined, 'add-contact'),
+				createGroup: () => this.openInbox(undefined, undefined, 'create-group'),
 				confirmRemoveFriend: async name => (await dialogService.confirm({
 					message: studioLabel(`Remove “${name}” from your friends?`, `从好友中移除「${name}」？`),
 					primaryButton: studioLabel('Remove friend', '移除好友'),
@@ -170,7 +166,6 @@ export class StudioWebLaunchpad extends Disposable {
 		this._register(toDisposable(() => {
 			++this.revision;
 			++this.accountRevision; ++this.inboxRevision; ++this.noticeRevision;
-			this.inboxRequests.clear();
 			start.setVisible('launchpad', false);
 			for (const part of parts) { part.inert = false; }
 			this.view.element.remove();
@@ -199,19 +194,12 @@ export class StudioWebLaunchpad extends Disposable {
 			this.refreshProfile();
 		};
 		this.settings = this._register(new StudioLaunchpadSettings(root, studioLabel, showHome, hideHome, message => notifications.error(message), webviews, webviewViews));
-		this.app = this._register(new StudioWebLaunchpadApp(windows, studioLabel, webviews, opener, clipboard,
-			(conversation, user) => run(this.openInbox(conversation, user))));
 		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadSettings', (_accessor, title: string) =>
 			this.settings.show(title, this.view.element.classList.contains('lp-pointer'))));
 		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadSettings', () => { if (this.settings.isOpen) { showHome(); } }));
 		this._register(CommandsRegistry.registerCommand('studio.internalRevealStore', () => {
 			showHome(); this.view.select('store'); return true;
 		}));
-		this._register(CommandsRegistry.registerCommand('studio.internalPrepareLaunchpadApp', (_accessor, key: string, app: { accountUrl?: string }) =>
-			!!this.account?.signedIn && this.app.prepare(key, app?.accountUrl)));
-		this._register(CommandsRegistry.registerCommand('studio.internalShowLaunchpadApp', (_accessor, key: string, id: string, view: Parameters<StudioWebLaunchpadApp['show']>[2]) =>
-			this.app.show(key, id, view)));
-		this._register(CommandsRegistry.registerCommand('studio.internalCloseLaunchpadApp', (_accessor, key: string) => this.app.clear(key)));
 		this._register(CommandsRegistry.registerCommand('studio.internalStudioSocialChanged', () => this.refreshProfile()));
 		this._register(CommandsRegistry.registerCommand('studio.internalLaunchpadInboxChanged', () => {
 			this.refreshInbox.schedule(); this.view.refreshDirectory();
@@ -267,10 +255,7 @@ export class StudioWebLaunchpad extends Disposable {
 		if (changed) {
 			++this.inboxRevision; ++this.noticeRevision;
 			this.inbox = undefined; this.socialUnread = false;
-			this.inboxRequests.clear();
-			this.view.setInboxActionBusy('add-contact', false);
-			this.view.setInboxActionBusy('create-group', false);
-			this.app.reset(); this.refreshProfile();
+			this.refreshProfile();
 		}
 		this.paint();
 	}
@@ -310,29 +295,11 @@ export class StudioWebLaunchpad extends Disposable {
 		}
 	}
 
-	private async openInbox(conversation?: string, user?: string, action?: InboxAction, title?: string): Promise<void> {
-		const target = conversation ? `conversation:${conversation}` : user ? `user:${user}` : action;
-		if (!this.account?.signedIn || !target || this.inboxRequests.has(target)) { return; }
-		const id = generateUuid();
-		this.inboxRequests.set(target, id);
+	private openInbox(conversation?: string, user?: string, action?: InboxAction): void {
+		const target = studioWebImTarget(conversation, user, action);
+		if (!this.account?.signedIn || !target) { return; }
 		this.view.closePicker();
-		if (action) { this.view.setInboxActionBusy(action, true); }
-		let opened = false;
-		try {
-			// Open the tab while the click still has user activation, not after the gateway round trip.
-			if (!await this.app.open(id, title)) { return; }
-			const result = await this.commands.executeCommand<true | string>('studio.openLaunchpadInbox', id, conversation, user, action, title).catch(() => undefined);
-			opened = result === true;
-			if (!opened && this.app.isOpen(id)) {
-				this.notifications.warn(typeof result === 'string' ? result : studioLabel('Could not open IM', '无法打开 IM'));
-			}
-		} finally {
-			if (!opened) { this.app.close(id); }
-			if (this.inboxRequests.get(target) === id) {
-				this.inboxRequests.delete(target);
-				if (action) { this.view.setInboxActionBusy(action, false); }
-			}
-		}
+		openStudioWebIm(target, this.notifications);
 	}
 
 	private hostUri(uri: URI): URI | undefined {

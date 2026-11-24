@@ -446,7 +446,7 @@ export interface ICommonNativeHostService {
 	getStudioDesktopNotificationStatus(): Promise<IStudioDesktopNotificationStatus>;
 	openStudioNotificationSettings(): Promise<boolean>;
 	setStudioTrayNotifications(notices: IStudioTrayNotifications, scope: string): Promise<void>;
-	finishStudioTrayMarkAll(requestId: string, success: boolean): Promise<void>;
+	finishStudioTrayNotificationAction(requestId: string, success: boolean): Promise<void>;
 
 	// Zip
 	/**

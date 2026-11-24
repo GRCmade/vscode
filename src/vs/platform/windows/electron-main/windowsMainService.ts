@@ -63,7 +63,7 @@ import { ResourceSet } from '../../../base/common/map.js';
 import { VSBuffer } from '../../../base/common/buffer.js';
 import { resolveAgentsWindowFolder } from './agentsWindow.js';
 import { createStudioTray, IStudioTray } from './studioTray.js';
-import { emptyStudioTrayNotifications, IStudioTrayNotifications, studioTrayPreviewLimit } from '../common/studioTrayNotifications.js';
+import { emptyStudioTrayNotifications, IStudioTrayNotifications, StudioTrayNotificationAction, studioTrayPreviewLimit } from '../common/studioTrayNotifications.js';
 import { readStudioReleaseProject } from '../node/studioReleaseProject.js';
 import { studioEntryForFolder, type IStudioProjectEntry } from '../../window/common/studioProjectWindow.js';
 
@@ -293,7 +293,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 	private launchpadOpening?: Promise<ICodeWindow>;
 	private studioTray?: IStudioTray;
 	private studioTrayScope?: string;
-	private studioTrayMarkAll?: { readonly windowId: number; readonly requestId: string; readonly result: DeferredPromise<boolean> };
+	private studioTrayAction?: { readonly windowId: number; readonly requestId: string; readonly result: DeferredPromise<boolean> };
 	get hasStudioLaunchpad(): boolean { return this.studioLaunchpadEnabled; }
 
 	setStudioTrayNotifications(windowId: number, notices: IStudioTrayNotifications, scope: string): void {
@@ -309,25 +309,34 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 		const reset = scope !== this.studioTrayScope;
 		if (reset) {
 			this.studioTrayScope = scope;
-			void this.studioTrayMarkAll?.result.complete(false);
+			void this.studioTrayAction?.result.complete(false);
 		}
 		setStudioDockUnreadCount(notices.count);
 		this.studioTray?.setNotifications(notices, reset);
 	}
 
-	private async markAllStudioTrayNotifications(): Promise<boolean> {
+	private async runStudioTrayNotificationAction(action: StudioTrayNotificationAction): Promise<boolean> {
 		const window = this.getWindows().find(window => window.isStudioLaunchpad && window.isReady && !window.win?.isDestroyed());
-		if (!window?.win || !this.studioTrayScope || this.studioTrayMarkAll) { return false; }
-		const request = this.studioTrayMarkAll = { windowId: window.id, requestId: generateUuid(), result: new DeferredPromise<boolean>() };
+		if (!window?.win || !this.studioTrayScope || this.studioTrayAction) { return false; }
+		const request = this.studioTrayAction = { windowId: window.id, requestId: generateUuid(), result: new DeferredPromise<boolean>() };
 		try {
-			window.send('vscode:studioTrayMarkAll', request.requestId, this.studioTrayScope);
+			window.send('vscode:studioTrayNotificationAction', request.requestId, this.studioTrayScope, action);
 			return await raceTimeout(request.result.p, 60_000) === true;
-		} finally { this.studioTrayMarkAll = undefined; }
+		} finally { this.studioTrayAction = undefined; }
 	}
 
-	finishStudioTrayMarkAll(windowId: number, requestId: string, success: boolean): void {
-		const request = this.studioTrayMarkAll;
+	finishStudioTrayNotificationAction(windowId: number, requestId: string, success: boolean): void {
+		const request = this.studioTrayAction;
 		if (request?.windowId === windowId && request.requestId === requestId) { void request.result.complete(success === true); }
+	}
+
+	private async clearReadStudioTrayNotifications(): Promise<void> {
+		const scope = this.studioTrayScope;
+		if (!scope || this.studioTrayAction) { return; }
+		if (!await this.runStudioTrayNotificationAction('clearRead') && scope === this.studioTrayScope) {
+			const zh = getNLSLanguage()?.toLowerCase().startsWith('zh');
+			await this.dialogMainService.showMessageBox({ type: 'warning', message: zh ? '未能清空所有已读消息，请重试。' : 'Could not clear all read notifications. Try again.' });
+		}
 	}
 
 	enableStudioLaunchpad(): void {
@@ -340,7 +349,8 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 			this.studioTray = this._register(createStudioTray(
 				() => { void this.openStudioLaunchpad().catch(error => this.logService.error(error)); },
 				() => { void this.lifecycleMainService.quit(); },
-				() => this.markAllStudioTrayNotifications(),
+				() => this.runStudioTrayNotificationAction('markAllRead'),
+				() => { void this.clearReadStudioTrayNotifications().catch(error => this.logService.error(error)); },
 				error => this.logService.warn('Studio could not show its tray notification preview', error),
 			));
 		} catch (error) {

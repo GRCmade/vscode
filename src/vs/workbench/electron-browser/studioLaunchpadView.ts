@@ -16,6 +16,7 @@ export type { LaunchpadProject, LaunchpadAccount, LaunchpadInbox };
 export interface LaunchpadState {
 	windows: LaunchpadProject[]; recent: LaunchpadProject[]; platform: boolean; canCreate: boolean;
 	account?: LaunchpadAccount; inbox?: LaunchpadInbox; store?: { items: StoreListing[] }; notices: StudioNotice[]; notificationUnread: boolean;
+	dismissedSocialNoticeIds?: ReadonlySet<string>;
 	libraryCategory?: LibraryProjectCategory;
 }
 interface LaunchpadActions extends ProfileActions, LibraryActions, StoreActions {
@@ -156,7 +157,7 @@ export class StudioLaunchpadView extends Disposable {
 		this.bell.classList.toggle('lp-has-unread', state.notificationUnread);
 		this.library.update(state.recent, state.windows, state.canCreate, state.platform && state.account?.signedIn ? state.account.scopeKey ?? 'signed-in' : '', state.libraryCategory);
 		this.store.update(this.active === 'store', state.platform, state.account?.scopeKey ?? state.account?.storeScopeKey, state.store?.items ?? []);
-		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices, state.notificationUnread);
+		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices, state.notificationUnread, state.dismissedSocialNoticeIds);
 		if (this.picker.dialog.open) { this.picker.update(); }
 	}
 }

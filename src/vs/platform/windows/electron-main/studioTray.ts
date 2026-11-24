@@ -54,13 +54,14 @@ export interface IStudioTray extends IDisposable {
 	setNotifications(notices: IStudioTrayNotifications, reset?: boolean): void;
 }
 
-export function createStudioTray(show: () => void, quit: () => void, markAll: () => Promise<boolean>, onError: (error: unknown) => void): IStudioTray {
+export function createStudioTray(show: () => void, quit: () => void, markAll: () => Promise<boolean>, clearRead: () => void, onError: (error: unknown) => void): IStudioTray {
 	const zh = getNLSLanguage()?.toLowerCase().startsWith('zh');
 	const image = nativeImage.createFromBuffer(Buffer.from(isMacintosh ? templatePng : colorPng, 'base64'), { scaleFactor: 2 });
 	if (isMacintosh) { image.setTemplateImage(true); }
 	const tray = new Tray(image);
 	const menu = Menu.buildFromTemplate([
 		{ label: zh ? '显示启动台' : 'Show Launchpad', click: show },
+		{ label: zh ? '清空已读消息' : 'Clear Read Notifications', click: clearRead },
 		{ type: 'separator' },
 		{ label: zh ? '退出 SteamHarness Studio' : 'Quit SteamHarness Studio', click: quit },
 	]);

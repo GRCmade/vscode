@@ -41,7 +41,7 @@ export interface IWindowsMainService {
 	readonly hasStudioLaunchpad: boolean;
 	enableStudioLaunchpad(): void;
 	setStudioTrayNotifications(windowId: number, notices: IStudioTrayNotifications, scope: string): void;
-	finishStudioTrayMarkAll(windowId: number, requestId: string, success: boolean): void;
+	finishStudioTrayNotificationAction(windowId: number, requestId: string, success: boolean): void;
 	openStudioLaunchpad(background?: boolean, page?: 'home' | 'inbox' | 'store'): Promise<ICodeWindow>;
 	open(openConfig: IOpenConfiguration): Promise<ICodeWindow[]>;
 	openEmptyWindow(openConfig: IOpenEmptyConfiguration, options?: IOpenEmptyWindowOptions): Promise<ICodeWindow[]>;

@@ -17,6 +17,8 @@ export const studioTrayPreviewLimit = 12;
 
 export const emptyStudioTrayNotifications: IStudioTrayNotifications = { count: 0, items: [] };
 
+export type StudioTrayNotificationAction = 'markAllRead' | 'clearRead';
+
 export interface IStudioTrayPreview extends IStudioTrayNotifications {
 	readonly language: string;
 	readonly labels: {

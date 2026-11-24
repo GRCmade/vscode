@@ -1427,8 +1427,8 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 		if (windowId !== undefined) { this.windowsMainService.setStudioTrayNotifications(windowId, notices, scope); }
 	}
 
-	async finishStudioTrayMarkAll(windowId: number | undefined, requestId: string, success: boolean): Promise<void> {
-		if (windowId !== undefined) { this.windowsMainService.finishStudioTrayMarkAll(windowId, requestId, success); }
+	async finishStudioTrayNotificationAction(windowId: number | undefined, requestId: string, success: boolean): Promise<void> {
+		if (windowId !== undefined) { this.windowsMainService.finishStudioTrayNotificationAction(windowId, requestId, success); }
 	}
 
 	private readonly activeToasts = this._register(new DisposableMap<string>());

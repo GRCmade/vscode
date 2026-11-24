@@ -114,6 +114,7 @@ export class LaunchpadProfile extends Disposable {
 	private section: Section = 'activity';
 	private inbox?: LaunchpadInbox;
 	private nativeNotices: StudioNotice[] = [];
+	private dismissedSocialNoticeIds?: ReadonlySet<string>;
 	private notificationUnread = false;
 	private platform = false;
 	private account?: LaunchpadAccount;
@@ -192,14 +193,15 @@ export class LaunchpadProfile extends Disposable {
 		this.renderSection(); this.content.scrollTop = 0;
 		void this.load();
 	}
-	update(active: boolean, platform: boolean, account: LaunchpadAccount | undefined, inbox: LaunchpadInbox | undefined, notices: StudioNotice[], notificationUnread: boolean): void {
+	update(active: boolean, platform: boolean, account: LaunchpadAccount | undefined, inbox: LaunchpadInbox | undefined, notices: StudioNotice[], notificationUnread: boolean, dismissedSocialNoticeIds?: ReadonlySet<string>): void {
 		const scope = JSON.stringify([platform, account?.signedIn, account?.scopeKey ?? account?.email ?? account?.name]);
 		const changed = this.scope !== scope, enter = active && !this.active;
 		const identityChanged = changed || JSON.stringify(this.account) !== JSON.stringify(account);
 		const repaint = changed || enter || (this.section === 'activity' && inbox !== this.inbox) || (this.section === 'notifications' &&
-			(notificationUnread !== this.notificationUnread || JSON.stringify(notices) !== JSON.stringify(this.nativeNotices)));
+			(notificationUnread !== this.notificationUnread || dismissedSocialNoticeIds !== this.dismissedSocialNoticeIds || JSON.stringify(notices) !== JSON.stringify(this.nativeNotices)));
 		if (!platform) { this.section = 'notifications'; } else if (!this.platform) { this.section = 'activity'; }
 		this.active = active; this.platform = platform; this.account = account; this.inbox = inbox; this.nativeNotices = notices; this.notificationUnread = notificationUnread;
+		this.dismissedSocialNoticeIds = dismissedSocialNoticeIds;
 		if (changed) { this.pending = undefined; this.cache.clear(); this.changing = new Set(); this.markingAll = this.markAllFailed = false; this.debounce.cancel(); this.failure = undefined; this.scope = scope; this.filter.value = ''; this.toggleRecentSearch(false, false); }
 		if (identityChanged) { this.renderAccount(); }
 		if (changed || (active && repaint)) { this.renderSection(); }
@@ -486,7 +488,10 @@ export class LaunchpadProfile extends Disposable {
 	private renderRows(): void {
 		const t = this.t, needsSocial = this.section !== 'activity' && this.platform && !!this.account?.signedIn;
 		const recentQuery = this.section === 'activity' ? this.recentFilter.value.trim().toLocaleLowerCase() : '';
-		const query = this.query, data = this.cache.get(query)?.snapshot;
+		const query = this.query, snapshot = this.cache.get(query)?.snapshot, dismissed = this.dismissedSocialNoticeIds;
+		const data = this.section === 'notifications' && snapshot && dismissed?.size
+			? { ...snapshot, notices: snapshot.notices.filter(n => n.read !== true || n.inviteId || n.legacyInvite || !dismissed.has(n.id)) }
+			: snapshot;
 		const directory = data?.directory ?? this.cache.get('')?.snapshot.directory;
 		const directoryUnavailable = this.section === 'people' && data?.directoryUnavailable;
 		this.readAll.hidden = this.section !== 'notifications';

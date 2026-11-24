@@ -246,19 +246,20 @@ export class StudioLaunchpad extends Disposable {
 			void this.readImTrayNotices();
 			this.view.refreshDirectory();
 		}));
-		const onTrayMarkAll = async (_event: unknown, requestId: unknown, scope: unknown) => {
+		const onTrayNotificationAction = async (_event: unknown, requestId: unknown, scope: unknown, action: unknown) => {
 			if (typeof requestId !== 'string') { return; }
 			let success = false;
 			try {
-				if (scope === this.trayScope) {
-					await this.markAllNoticesRead(true);
-					success = scope === this.trayScope;
+				if (scope === this.trayScope && !this._store.isDisposed && (action === 'markAllRead' || action === 'clearRead')) {
+					if (action === 'markAllRead') { await this.markAllNoticesRead(true); }
+					else { await this.clearReadNotices(); }
+					success = scope === this.trayScope && !this._store.isDisposed;
 				}
 			} catch { /* The tray reports a retryable error without generating another notification. */ }
-			await native.finishStudioTrayMarkAll(requestId, success).catch(() => undefined);
+			await native.finishStudioTrayNotificationAction(requestId, success).catch(() => undefined);
 		};
-		ipcRenderer.on('vscode:studioTrayMarkAll', onTrayMarkAll);
-		this._register(toDisposable(() => ipcRenderer.removeListener('vscode:studioTrayMarkAll', onTrayMarkAll)));
+		ipcRenderer.on('vscode:studioTrayNotificationAction', onTrayNotificationAction);
+		this._register(toDisposable(() => ipcRenderer.removeListener('vscode:studioTrayNotificationAction', onTrayNotificationAction)));
 		let platform = false, accountRevision = 0;
 		const setAccount = (state?: LaunchpadMenuAccount) => {
 			const scopeChanged = state?.scopeKey !== this.account?.scopeKey || state?.status !== 'authenticated' || !this.account?.signedIn;
@@ -747,3 +748,17 @@ export class StudioLaunchpad extends Disposable {
 			libraryCategory: this.libraryCategory });
 	}
 }
+	private async clearReadNotices(): Promise<void> {
+		const scope = this.trayScope;
+		this.notices.clearRead();
+		if (!this.start.state?.platform || !this.account?.signedIn) { return; }
+		const account = this.account.scopeKey;
+		if (!account) { throw new Error('The notification account is unavailable'); }
+		const feed = await this.commands.executeCommand<SocialResult>('studio.getSocialSnapshot', '', 'notices', account);
+		if (scope !== this.trayScope || this._store.isDisposed) { return; }
+		if (!feed) { throw new Error('Social data unavailable'); }
+		if ('notices' in feed) { this.notices.dismissReadSocialNotices(account, feed.notices); }
+		if (!document.hidden && !this.view.element.hidden) { this.view.refreshSocial(); }
+	}
+
+			dismissedSocialNoticeIds: this.notices.dismissedSocialNoticeIds,

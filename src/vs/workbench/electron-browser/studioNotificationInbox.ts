@@ -15,6 +15,7 @@ import { NotificationService } from '../services/notification/common/notificatio
 import type { StudioNotice } from './studioLaunchpadProfile.js';
 
 const prefix = 'studio.notificationInbox.';
+const socialDismissalsPrefix = 'studio.dismissedSocialNotifications.';
 const scope = StorageScope.PROFILE, target = StorageTarget.MACHINE;
 const titleLimit = 500;
 interface Notice extends StudioNotice { owner: string; fingerprint?: string }
@@ -29,6 +30,7 @@ function fingerprint(item: INotificationViewItem): string {
 export class StudioNotificationInbox extends Disposable {
 	private owner?: string;
 	private stored?: Notice[];
+	private dismissedSocial?: ReadonlySet<string>;
 	private revision = 0;
 	private readonly change = this._register(new Emitter<void>());
 	private readonly acknowledgements = this._register(new DisposableMap<INotificationViewItem>());
@@ -39,7 +41,7 @@ export class StudioNotificationInbox extends Disposable {
 		const update = (value: unknown) => {
 			const account = value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
 			const owner = account?.localProfile === true ? 'local' : account?.status === 'authenticated' && account.hasAccount === true && typeof account.scopeKey === 'string' && /^[a-f\d]{64}$/.test(account.scopeKey) ? account.scopeKey : undefined;
-			if (owner !== this.owner) { this.owner = owner; this.stored = undefined; this.change.fire(); }
+			if (owner !== this.owner) { this.owner = owner; this.stored = this.dismissedSocial = undefined; this.change.fire(); }
 		};
 		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
 			if (commandId === 'studio.internalUpdateAccountMenuState') { this.revision++; update(args[0]); }
@@ -54,7 +56,10 @@ export class StudioNotificationInbox extends Disposable {
 				this.add(item, owner);
 			}
 		}));
-		this._register(storage.onDidChangeValue(scope, undefined, this._store)(e => { if (e.key.startsWith(prefix)) { this.stored = undefined; this.change.fire(); } }));
+		this._register(storage.onDidChangeValue(scope, undefined, this._store)(e => {
+			if (e.key.startsWith(prefix)) { this.stored = undefined; this.change.fire(); }
+			else if (this.owner && e.key === socialDismissalsPrefix + this.owner) { this.dismissedSocial = undefined; this.change.fire(); }
+		}));
 		// Until the profile is known, do not persist potentially account-specific text.
 		const rev = this.revision;
 		void commands.executeCommand('studio.internalGetAccountMenuState').then(a => { if (rev === this.revision && !this._store.isDisposed) { update(a); } }, () => undefined);
@@ -111,6 +116,29 @@ export class StudioNotificationInbox extends Disposable {
 	unread(): StudioNotice[] { return this.groups().flatMap(group => group.find(notice => !notice.read) ?? []); }
 	hasUnread(): boolean { return this.owned().some(notice => !notice.read); }
 	readAll(): void { this.markRead(this.owned()); }
+	clearRead(): void {
+		// Clear every occurrence of a read group, not just the one shown in the list.
+		const entries = this.groups().filter(group => group.every(notice => notice.read === true))
+			.flatMap(group => group.map(notice => ({ key: prefix + notice.id, value: undefined, scope, target })));
+		this.storage.storeAll(entries, false);
+	}
+
+	get dismissedSocialNoticeIds(): ReadonlySet<string> | undefined {
+		if (!this.owner || this.owner === 'local') { return undefined; }
+		return this.dismissedSocial ??= new Set(this.storage.getObject<string[]>(socialDismissalsPrefix + this.owner, scope, []));
+	}
+
+	dismissReadSocialNotices(owner: string, notices: readonly StudioNotice[]): void {
+		if (owner !== this.owner || owner === 'local') { throw new Error('The notification account changed'); }
+		// Only dismiss the desktop copies. Pending invitations must stay actionable.
+		const ids = new Set(this.dismissedSocialNoticeIds);
+		const previousSize = ids.size;
+		for (const notice of notices) {
+			if (notice.read === true && !notice.inviteId && !notice.legacyInvite) { ids.add(notice.id); }
+		}
+		if (ids.size > previousSize) { this.storage.store(socialDismissalsPrefix + owner, [...ids].slice(-1000), scope, target); }
+	}
+
 	read(id: string): void {
 		const notice = this.get(id);
 		if (notice) {

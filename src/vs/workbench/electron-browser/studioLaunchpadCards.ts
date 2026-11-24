@@ -19,6 +19,7 @@ export interface LibraryArtwork {
 export interface LaunchpadProject extends StudioProjectDetails {
 	artwork?: LibraryArtwork;
 	managed?: true;
+	parentUri?: string;
 }
 
 export interface StoreListing {

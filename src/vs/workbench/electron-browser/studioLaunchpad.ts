@@ -11,8 +11,9 @@ import { encodeBase64 } from '../../base/common/buffer.js';
 import { CancellationTokenSource } from '../../base/common/cancellation.js';
 import { Event } from '../../base/common/event.js';
 import { Disposable, DisposableStore, MutableDisposable, toDisposable } from '../../base/common/lifecycle.js';
+import { ResourceSet } from '../../base/common/map.js';
 import { Schemas } from '../../base/common/network.js';
-import { basenameOrAuthority } from '../../base/common/resources.js';
+import { basenameOrAuthority, extUriBiasedIgnorePathCase } from '../../base/common/resources.js';
 import { MicrotaskDelay } from '../../base/common/symbols.js';
 import { URI } from '../../base/common/uri.js';
 import { generateUuid } from '../../base/common/uuid.js';
@@ -29,6 +30,7 @@ import { IHoverService } from '../../platform/hover/browser/hover.js';
 import { FocusMode, INativeHostService } from '../../platform/native/common/native.js';
 import { INotificationService } from '../../platform/notification/common/notification.js';
 import { IOpenerService } from '../../platform/opener/common/opener.js';
+import { IUserDataProfilesService } from '../../platform/userDataProfile/common/userDataProfile.js';
 import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../platform/workspace/common/workspace.js';
 import { emptyStudioTrayNotifications, IStudioTrayNotifications, studioTrayPreviewLimit } from '../../platform/windows/common/studioTrayNotifications.js';
 import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
@@ -49,7 +51,9 @@ import type { LibraryDetailAction, LibraryProjectCategory } from './studioLaunch
 import './media/studioLaunchpad.css';
 
 type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries' | 'description'> & { projectName?: string };
+type LibraryExtras = { projects: LaunchpadProject[]; hiddenUris: string[] };
 type LaunchpadMenuAccount = Omit<LaunchpadAccount, 'signedIn'> & { status: string };
+const workstationExtensionId = 'studio.studio-workstation';
 const launchpadSettingsViewType = 'studio.launchpadSettings';
 
 export class StudioLaunchpad extends Disposable {
@@ -60,12 +64,14 @@ export class StudioLaunchpad extends Disposable {
 	private readonly appRequests = new Map<string, string>();
 	private windows: LaunchpadProject[] = [];
 	private recent: LaunchpadProject[] = [];
+	private hasProjectSnapshot = false;
+	private managedWorkspaceUris = new Set<string>();
 	private readonly savedProjects = new Map<string, LibraryMetadata & { name?: string; lastOpened?: number }>();
 	private readonly missing = new Set<string>();
 	private readonly editsSinceSnapshot = new Map<number, boolean>();
 	private inbox?: LaunchpadInbox;
 	private libraryCategory?: LibraryProjectCategory;
-	private libraryExtras = { projects: [] as LaunchpadProject[], hiddenUris: [] as string[] };
+	private libraryExtras?: LibraryExtras;
 	private readonly openingManaged = new Set<string>();
 	private account?: LaunchpadState['account'];
 	private windowRevision = 0;
@@ -101,12 +107,13 @@ export class StudioLaunchpad extends Disposable {
 		@IContextMenuService contextMenu: IContextMenuService,
 		@IHoverService hoverService: IHoverService,
 		@IClipboardService clipboard: IClipboardService,
+		@IUserDataProfilesService private readonly profiles: IUserDataProfilesService,
 	) {
 		super();
 		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener, native, contextMenu,
 			(conversation, user) => this.openInbox(conversation, user).catch(error => { notifications.error(error); return false; })));
 		// Read the extension's profile memento synchronously; native history still owns membership and ordering.
-		const saved = extensionStorage.getExtensionState('studio.studio-workstation', true)?.['studio.recentProjects'];
+		const saved = extensionStorage.getExtensionState(workstationExtensionId, true)?.['studio.recentProjects'];
 		if (Array.isArray(saved)) {
 			for (const row of saved.slice(0, 50)) {
 				if (typeof row?.uri === 'string' && typeof row.label === 'string' && Number.isFinite(row.lastOpened)) {
@@ -575,15 +582,35 @@ export class StudioLaunchpad extends Disposable {
 		if (uri.toString() !== project.uri) { await this.workspaces.removeRecentlyOpened([URI.parse(project.uri)]); }
 	}
 
+	private async readManagedWorkspaceRoots(): Promise<URI[]> {
+		const roots = new ResourceSet(uri => extUriBiasedIgnorePathCase.getComparisonKey(uri));
+		for (const profile of this.profiles.profiles) {
+			roots.add(URI.joinPath(profile.globalStorageHome.with({ scheme: Schemas.file }), workstationExtensionId));
+		}
+		// Generated workspaces can use canonical paths even when the profile uses an alias.
+		const canonical = await Promise.all([...roots].map(root => this.files.realpath(root).catch(() => undefined)));
+		for (const root of canonical) {
+			if (root) { roots.add(URI.file(root.fsPath)); }
+		}
+		return [...roots];
+	}
+
 	private async readProjects(): Promise<void> {
 		const revision = ++this.windowRevision;
 		// An edit/save can arrive after getWindows takes its snapshot but before history returns.
 		this.editsSinceSnapshot.clear();
-		const [windows, recent] = await Promise.all([this.native.getWindows({ includeAuxiliaryWindows: false }), this.workspaces.getRecentlyOpened()]);
+		const [windows, recent, managedRoots] = await Promise.all([
+			this.native.getWindows({ includeAuxiliaryWindows: false }), this.workspaces.getRecentlyOpened(), this.readManagedWorkspaceRoots(),
+		]);
 		if (this.windowRevision !== revision) { return; }
+		const managedUris = new Set<string>();
 		const project = (raw: URI, kind: LaunchpadProject['kind'], label?: string): LaunchpadProject => {
 			const uri = URI.revive(raw);
-			return { kind, uri: uri.toString(), name: label || basenameOrAuthority(uri), path: uri.scheme === 'file' ? uri.fsPath : uri.toString(true) };
+			const key = uri.toString();
+			if (kind === 'workspace' && managedRoots.some(root => extUriBiasedIgnorePathCase.isEqualOrParent(uri, root))) {
+				managedUris.add(key);
+			}
+			return { kind, uri: key, name: label || basenameOrAuthority(uri), path: uri.scheme === Schemas.file ? uri.fsPath : uri.toString(true) };
 		};
 		this.windows = windows.flatMap(window => {
 			const dirty = this.editsSinceSnapshot.get(window.id) ?? window.dirty;
@@ -593,6 +620,8 @@ export class StudioLaunchpad extends Disposable {
 			return isWorkspaceIdentifier(window.workspace) ? [{ ...project(window.workspace.configPath, 'workspace'), windowId: window.id, dirty }] : [];
 		});
 		this.recent = recent.workspaces.map(row => isRecentFolder(row) ? project(row.folderUri, 'folder', row.label) : project(row.workspace.configPath, 'workspace', row.label));
+		this.managedWorkspaceUris = managedUris;
+		this.hasProjectSnapshot = true;
 		const members = new Set([...this.recent, ...this.windows].map(row => row.uri));
 		for (const uri of this.savedProjects.keys()) { if (!members.has(uri)) { this.savedProjects.delete(uri); } }
 		for (const uri of this.missing) { if (!this.recent.some(row => row.uri === uri)) { this.missing.delete(uri); } }
@@ -608,17 +637,19 @@ export class StudioLaunchpad extends Disposable {
 
 	private scheduleLibraryCategory(): void {
 		++this.libraryCategoryRevision;
-		if (this.start.state?.platform) { this.refreshLibraryCategory.schedule(); }
+		// Resolve parent aliases against the first native snapshot before showing managed projects.
+		if (this.hasProjectSnapshot && this.start.state?.platform) { this.refreshLibraryCategory.schedule(this.libraryExtras ? undefined : 0); }
 		else { this.refreshLibraryCategory.cancel(); }
 	}
 
 	private async readLibraryProducts(): Promise<void> {
 		const revision = this.libraryCategoryRevision;
-		const extra = await this.commands.executeCommand<typeof this.libraryExtras>('studio.listLibraryExtraProjects').catch(() => undefined);
+		const folders = [...new Set([...this.recent, ...this.windows].filter(p => p.kind === 'folder' && p.uri.startsWith('file:')).map(p => p.uri))];
+		const extra = await this.commands.executeCommand<LibraryExtras>('studio.listLibraryExtraProjects', folders).catch(() => undefined);
 		if (revision !== this.libraryCategoryRevision) { return; }
 		if (extra && JSON.stringify(extra) !== JSON.stringify(this.libraryExtras)) { this.libraryExtras = extra; this.paint(); }
 		if (!this.account?.signedIn) { return; }
-		const uris = [...new Set([...this.recent.filter(p => p.kind === 'folder'), ...this.windows.filter(p => p.kind === 'folder'), ...this.libraryExtras.projects].filter(p => p.uri.startsWith('file:')).map(p => p.uri))];
+		const uris = [...new Set([...folders, ...(this.libraryExtras?.projects ?? []).map(p => p.uri).filter(uri => uri.startsWith('file:'))])];
 		const category = await this.commands.executeCommand<LibraryProjectCategory | null | undefined>('studio.getLibraryProjectCategory', uris).catch(() => undefined);
 		// Undefined means temporarily unavailable; null explicitly removes the optional category.
 		if (revision !== this.libraryCategoryRevision || category === undefined) { return; }
@@ -720,10 +751,26 @@ export class StudioLaunchpad extends Disposable {
 		}
 	}
 
+	private async clearReadNotices(): Promise<void> {
+		const scope = this.trayScope;
+		this.notices.clearRead();
+		if (!this.start.state?.platform || !this.account?.signedIn) { return; }
+		const account = this.account.scopeKey;
+		if (!account) { throw new Error('The notification account is unavailable'); }
+		const feed = await this.commands.executeCommand<SocialResult>('studio.getSocialSnapshot', '', 'notices', account);
+		if (scope !== this.trayScope || this._store.isDisposed) { return; }
+		if (!feed) { throw new Error('Social data unavailable'); }
+		if ('notices' in feed) { this.notices.dismissReadSocialNotices(account, feed.notices); }
+		if (!document.hidden && !this.view.element.hidden) { this.view.refreshSocial(); }
+	}
+
 	private paint(): void {
 		const state = this.start.state;
-		const extra = new Map(this.libraryExtras.projects.map(project => [project.uri, project]));
-		const hidden = new Set(this.libraryExtras.hiddenUris);
+		const projects = this.libraryExtras?.projects ?? [];
+		const extra = new Map(projects.map(project => [project.uri, project]));
+		const hidden = new Set(this.libraryExtras?.hiddenUris);
+		// Extension-owned workspaces need their library record, not a filename fallback.
+		const visible = (row: LaunchpadProject) => !hidden.has(row.uri) && (extra.has(row.uri) || !this.managedWorkspaceUris.has(row.uri));
 		const metadata = new Map(state?.recent.map(row => [row.uri, row]));
 		const live = new Map<string, LaunchpadProject>();
 		for (const window of this.windows) {
@@ -741,24 +788,11 @@ export class StudioLaunchpad extends Disposable {
 				name: details.projectName || info?.label || saved?.name || row.name, lastOpened: info?.lastOpened ?? saved?.lastOpened,
 				windowId: row.windowId ?? window?.windowId, dirty: row.dirty ?? window?.dirty, missing: !window && row.windowId === undefined && this.missing.has(row.uri) };
 		};
-		const history = new Map(this.recent.filter(row => !hidden.has(row.uri)).map(row => [row.uri, row]));
-		for (const row of this.libraryExtras.projects) { if (!history.has(row.uri)) { history.set(row.uri, row); } }
-		this.view.update({ windows: this.windows.filter(row => !hidden.has(row.uri)).map(row => enrich(row)), recent: [...history.values()].map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
+		const history = new Map(this.recent.filter(visible).map(row => [row.uri, row]));
+		for (const row of projects) { if (!history.has(row.uri)) { history.set(row.uri, row); } }
+		this.view.update({ windows: this.windows.filter(visible).map(row => enrich(row)), recent: [...history.values()].map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
 			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox, notices: this.notices.list(), notificationUnread: this.socialUnread || this.notices.hasUnread(),
+			dismissedSocialNoticeIds: this.notices.dismissedSocialNoticeIds,
 			libraryCategory: this.libraryCategory });
 	}
 }
-	private async clearReadNotices(): Promise<void> {
-		const scope = this.trayScope;
-		this.notices.clearRead();
-		if (!this.start.state?.platform || !this.account?.signedIn) { return; }
-		const account = this.account.scopeKey;
-		if (!account) { throw new Error('The notification account is unavailable'); }
-		const feed = await this.commands.executeCommand<SocialResult>('studio.getSocialSnapshot', '', 'notices', account);
-		if (scope !== this.trayScope || this._store.isDisposed) { return; }
-		if (!feed) { throw new Error('Social data unavailable'); }
-		if ('notices' in feed) { this.notices.dismissReadSocialNotices(account, feed.notices); }
-		if (!document.hidden && !this.view.element.hidden) { this.view.refreshSocial(); }
-	}
-
-			dismissedSocialNoticeIds: this.notices.dismissedSocialNoticeIds,

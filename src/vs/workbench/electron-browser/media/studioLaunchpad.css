@@ -97,6 +97,12 @@
 .studio-launchpad .lp-index-row { justify-content: start; width: 100%; min-height: 29px; gap: 8px; }
 .lp-index-row img { width: 18px; height: 18px; border-radius: 3px; }
 .studio-launchpad .lp-index-row[aria-current=page] { color: var(--lp-strong); background: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover)); }
+.lp-index-branch,.lp-index-line { display: flex; gap: 2px; }
+.lp-index-branch,.lp-index-children { flex-direction: column; }
+.lp-index-line > .lp-index-row { flex: 1; min-width: 0; }
+.studio-launchpad .lp-index-toggle { flex: 0 0 26px; padding: 0; }
+.lp-index-children { display: flex; gap: 2px; margin-inline-start: 15px; padding-inline-start: 4px; border-inline-start: 1px solid var(--lp-line); }
+.lp-index-children[hidden] { display: none; }
 .lp-ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .lp-shelf,.lp-store-content { padding: 22px var(--lp-pad) 32px; }
 .lp-library-title { display: grid; gap: 12px; }

@@ -50,6 +50,8 @@ export class LaunchpadLibrary extends Disposable {
 	private readonly search = element('input', 'lp-query');
 	private readonly filters = element('div', 'lp-filters');
 	private readonly categoryButton: HTMLButtonElement;
+	private readonly collapsed = new Set<string>();
+	private readonly searchCollapsed = new Set<string>();
 	private category?: LibraryProjectCategory;
 	private filter = 'all';
 	private signature?: string;
@@ -72,7 +74,7 @@ export class LaunchpadLibrary extends Disposable {
 		super();
 		const rail = element('aside', 'lp-rail');
 		this.search.type = 'search'; this.search.placeholder = t('Find a project', '查找项目'); this.search.setAttribute('aria-label', this.search.placeholder);
-		this.search.addEventListener('input', () => { this.pendingSelection = this.selected = undefined; this.shelf.scrollTop = 0; this.render(); });
+		this.search.addEventListener('input', () => { this.searchCollapsed.clear(); this.pendingSelection = this.selected = undefined; this.shelf.scrollTop = 0; this.render(); });
 		const field = element('label', 'lp-search-field'); field.append(icon('search'), this.search);
 		const railHeading = element('div', 'lp-rail-heading');
 		const hover: IDelayedHoverOptions = {
@@ -130,6 +132,7 @@ export class LaunchpadLibrary extends Disposable {
 
 	resetFilters(): void {
 		this.homeScroll = this.shelf.scrollTop = 0;
+		this.searchCollapsed.clear();
 		if (this.search.value || this.filter !== 'all') { this.search.value = ''; this.filter = 'all'; this.render(); }
 	}
 
@@ -138,6 +141,9 @@ export class LaunchpadLibrary extends Disposable {
 		this.pendingSelection = uri && !this.projects.has(uri) ? uri : undefined;
 		if (this.pendingSelection || uri === this.selected) { return; }
 		if (!this.selected) { this.homeScroll = this.shelf.scrollTop; }
+		const project = uri ? this.projects.get(uri) : undefined;
+		const parent = project && this.parentProject(project);
+		if (parent) { (this.search.value.trim() ? this.searchCollapsed : this.collapsed).delete(parent.uri); }
 		this.selected = uri; this.render();
 		this.shelf.scrollTop = uri ? 0 : this.homeScroll;
 		if (uri) { this.content.querySelector('h1')?.focus({ preventScroll: true }); }
@@ -230,7 +236,8 @@ export class LaunchpadLibrary extends Disposable {
 
 	private detailActions(project: LaunchpadProject, source: DetailActionSource): DetailActionState | undefined {
 		if (source === 'account' && !this.actionScope) { this.detailActionStates.delete(source); return; }
-		const key = JSON.stringify([project.uri, project.kind, project.missing, project.managed, project.projectType, project.distribution, source === 'account' ? this.actionScope : '']);
+		const target = [project.uri, project.missing, project.managed];
+		const key = JSON.stringify(source === 'local' ? target : [...target, project.kind, project.projectType, project.distribution, this.actionScope]);
 		let state = this.detailActionStates.get(source);
 		if (!state || state.key !== key) {
 			state = { key, items: [] };
@@ -250,12 +257,61 @@ export class LaunchpadLibrary extends Disposable {
 		return state;
 	}
 
+	private parentProject(project: LaunchpadProject): LaunchpadProject | undefined {
+		const parent = project.parentUri ? this.projects.get(project.parentUri) : undefined;
+		return parent && !parent.parentUri ? parent : undefined;
+	}
+
+	private renderIndex(rows: LaunchpadProject[], collapsed: Set<string>): void {
+		const roots = new Set(rows.map(p => p.uri));
+		const branches = new Map<string, LaunchpadProject[]>();
+		for (const p of rows) {
+			const parent = this.parentProject(p);
+			if (!parent) { continue; }
+			roots.delete(p.uri);
+			roots.add(parent.uri);
+			let children = branches.get(parent.uri);
+			if (!children) { branches.set(parent.uri, children = []); }
+			children.push(p);
+		}
+		const row = (p: LaunchpadProject) => {
+			const b = button('', '', () => this.show(p.uri), 'lp-index-row'); b.append(projectMark(p), element('span', 'lp-ellipsis', p.name)); b.title = p.path; b.dataset.key = 'index:' + p.uri;
+			if (p.uri === this.selected) { b.setAttribute('aria-current', 'page'); }
+			this.bindMenu(b, p); return b;
+		};
+		const items: HTMLElement[] = [];
+		for (const p of this.projects.values()) {
+			if (!roots.has(p.uri)) { continue; }
+			const children = branches.get(p.uri);
+			if (!children) { items.push(row(p)); continue; }
+			const branch = element('div', 'lp-index-branch'), line = element('div', 'lp-index-line');
+			const group = element('div', 'lp-index-children'); group.id = 'lp-index-children-' + items.length;
+			const project = row(p); project.id = group.id + '-parent';
+			group.setAttribute('role', 'group'); group.setAttribute('aria-labelledby', project.id);
+			group.append(...children.map(row));
+			const toggle = button('', '', () => {
+				if (!collapsed.delete(p.uri)) { collapsed.add(p.uri); }
+				update();
+			}, 'lp-index-toggle');
+			const update = () => {
+				group.hidden = collapsed.has(p.uri);
+				toggle.title = `${group.hidden ? this.t('Expand Bot instances', '展开 Bot 分身') : this.t('Collapse Bot instances', '折叠 Bot 分身')}: ${p.name}`;
+				toggle.setAttribute('aria-label', toggle.title);
+				toggle.setAttribute('aria-expanded', String(!group.hidden));
+				toggle.replaceChildren(icon(group.hidden ? 'chevron-right' : 'chevron-down'));
+			};
+			toggle.dataset.key = 'branch:' + p.uri;
+			toggle.setAttribute('aria-controls', group.id);
+			update(); line.append(project, toggle); branch.append(line, group); items.push(branch);
+		}
+		this.index.replaceChildren(...items);
+	}
+
 	private render(): void {
 		const t = this.t, query = this.search.value.trim().toLocaleLowerCase();
 		const category = this.filter === 'product' ? this.category : undefined;
 		const members = category && new Set(category.projectUris);
-		const rows = [...this.projects.values()].filter(p => {
-			if (query && !`${p.name} ${p.path}`.toLocaleLowerCase().includes(query)) { return false; }
+		const inFilter = (p: LaunchpadProject) => {
 			switch (this.filter) {
 				case 'installed': return p.distribution === 'release' || p.distribution === 'download';
 				case 'source': return p.distribution === 'source';
@@ -263,15 +319,18 @@ export class LaunchpadLibrary extends Disposable {
 				case 'product': return !p.missing && members?.has(p.uri) === true;
 				default: return true;
 			}
+		};
+		const matches = [...this.projects.values()].filter(p => !query || `${p.name} ${p.path}`.toLocaleLowerCase().includes(query));
+		const rows = matches.filter(inFilter);
+		// In the index, instances inherit their parent's folder/source/installed category, but not its IM binding.
+		const indexRows = this.filter === 'all' || category ? rows : matches.filter(p => {
+			const parent = this.parentProject(p);
+			return inFilter(p) || !!(parent && inFilter(parent));
 		});
 		const focus = document.activeElement instanceof HTMLElement && this.element.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
 		for (const b of this.filters.querySelectorAll('button')) { b.setAttribute('aria-pressed', String(b.dataset.id === this.filter)); }
 		const heading = (title: string, count?: number) => { const h = element('header', 'lp-shelf-head'); h.append(element('h2', '', title)); if (count !== undefined) { h.append(element('small', '', String(count))); } return h; };
-		this.index.replaceChildren(...rows.map(p => {
-			const b = button('', '', () => this.show(p.uri), 'lp-index-row'); b.append(projectMark(p), element('span', 'lp-ellipsis', p.name)); b.title = p.path; b.dataset.key = 'index:' + p.uri;
-			if (p.uri === this.selected) { b.setAttribute('aria-current', 'page'); }
-			this.bindMenu(b, p); return b;
-		}));
+		this.renderIndex(indexRows, query ? this.searchCollapsed : this.collapsed);
 		const selected = this.selected && this.projects.get(this.selected);
 		this.toolbar.hidden = !!selected;
 		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };

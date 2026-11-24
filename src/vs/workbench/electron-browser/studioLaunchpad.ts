@@ -143,7 +143,7 @@ export class StudioLaunchpad extends Disposable {
 			reveal: project => run(native.showItemInFolder(project.managed ? project.path : URI.parse(project.uri).fsPath)),
 			copyPath: project => run(clipboard.writeText(project.path)), contextMenu, hoverService,
 			usage: projectUsageBridge(commands, clipboard),
-			openWorkflowSchedules: (project, entryId) => run(commands.executeCommand('studio.internalOpenWorkflowSchedules', { uri: project.uri, entryId })),
+			openProjectSchedules: (project, entryId) => run(commands.executeCommand('studio.internalOpenProjectSchedules', { uri: project.uri, entryId })),
 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
 			cover: project => this.cover(project),
 			readActivity: projects => commands.executeCommand<string[] | undefined>('studio.internalReadLibraryActivity', projects),

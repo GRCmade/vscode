@@ -35,7 +35,7 @@ export interface LibraryActions {
 	remove(p: LaunchpadProject): void;
 	reveal?(p: LaunchpadProject): void;
 	copyPath(p: LaunchpadProject): void;
-	openWorkflowSchedules?(p: LaunchpadProject, entryId?: string): void;
+	openProjectSchedules?(p: LaunchpadProject, entryId?: string): void;
 	contextMenu: IContextMenuService;
 	hoverService: IHoverService;
 	usage?: ProjectUsageBridge;
@@ -462,7 +462,7 @@ export class LaunchpadLibrary extends Disposable {
 			};
 			this.updateDetailActions();
 			let detailActions = secondaryActions;
-			if (this.actions.openWorkflowSchedules && selected.distribution === 'source' && selected.kind === 'folder' && !selected.missing && !selected.builtin && !selected.managed && selected.uri.startsWith('file:')) {
+			if (this.actions.openProjectSchedules && selected.distribution === 'source' && selected.kind === 'folder' && !selected.missing && !selected.builtin && !selected.managed && selected.uri.startsWith('file:')) {
 				const entries = (selected.entries ?? []).filter(entry => entry.type === 'workflow');
 				const workflows = entries.length ? entries : selected.projectType === 'workflow' ? [undefined] : [];
 				if (workflows.length) {
@@ -471,7 +471,7 @@ export class LaunchpadLibrary extends Disposable {
 					const controls = element('div', 'lp-detail-group-actions');
 					for (const entry of workflows) {
 						const title = workflows.length > 1 ? `${label} · ${entry?.name ?? entry?.entryId}` : label;
-						const open = button(title, 'calendar', () => this.actions.openWorkflowSchedules?.(selected, entry?.entryId), 'studio-project-action lp-outline');
+						const open = button(title, 'calendar', () => this.actions.openProjectSchedules?.(selected, entry?.entryId), 'studio-project-action lp-outline');
 						open.dataset.key = `workflow-schedules:${selected.uri}:${entry?.entryId ?? ''}`;
 						controls.append(open);
 					}

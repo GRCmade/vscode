@@ -6,27 +6,40 @@
 import { extUriBiasedIgnorePathCase } from '../../../base/common/resources.js';
 import { URI } from '../../../base/common/uri.js';
 import { getNLSLanguage, localize } from '../../../nls.js';
-import { hasWorkspaceFileExtension } from '../../workspace/common/workspace.js';
+import { hasWorkspaceFileExtension, IAnyWorkspaceIdentifier, isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../workspace/common/workspace.js';
 import { IOpenWindowOptions, IWindowOpenable, isFileToOpen, isFolderToOpen, isWorkspaceToOpen } from './window.js';
 
 export interface IStudioProjectEntry {
 	readonly uri: string;
 	readonly entryId?: string;
+	readonly conversationId?: string;
 }
 
 export function studioEntryForOpenables(toOpen: readonly IWindowOpenable[], options: IOpenWindowOptions): IStudioProjectEntry | undefined {
-	const [folder] = toOpen;
+	const [item] = toOpen;
 	const entry = options.studioProjectEntry;
-	if (entry && toOpen.length === 1 && isFolderToOpen(folder) && !options.addMode && !options.removeMode) {
-		return { uri: URI.revive(folder.folderUri).toString(), entryId: entry.entryId };
+	if (!entry || toOpen.length !== 1 || options.addMode || options.removeMode) { return undefined; }
+	const { conversationId } = entry;
+	if (conversationId !== undefined && (typeof conversationId !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(conversationId))) { return undefined; }
+	if (isFolderToOpen(item)) {
+		return { uri: URI.revive(item.folderUri).toString(), entryId: entry.entryId, ...(conversationId && { conversationId }) };
+	}
+	if (conversationId && isWorkspaceToOpen(item) && hasWorkspaceFileExtension(URI.revive(item.workspaceUri))) {
+		return { uri: URI.revive(item.workspaceUri).toString(), conversationId };
 	}
 	return undefined;
 }
 
 export function studioEntryForFolder(entry: IStudioProjectEntry | undefined, folder: URI | undefined): IStudioProjectEntry | undefined {
 	if (entry && folder && extUriBiasedIgnorePathCase.isEqual(folder, URI.parse(entry.uri))) {
-		return { uri: folder.toString(), entryId: entry.entryId };
+		return { ...entry, uri: folder.toString() };
 	}
+	return undefined;
+}
+
+export function studioEntryForWorkspace(entry: IStudioProjectEntry | undefined, workspace: IAnyWorkspaceIdentifier | undefined): IStudioProjectEntry | undefined {
+	if (isSingleFolderWorkspaceIdentifier(workspace)) { return studioEntryForFolder(entry, workspace.uri); }
+	if (entry?.conversationId && isWorkspaceIdentifier(workspace)) { return studioEntryForFolder(entry, workspace.configPath); }
 	return undefined;
 }
 

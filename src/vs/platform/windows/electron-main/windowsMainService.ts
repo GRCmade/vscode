@@ -65,7 +65,7 @@ import { resolveAgentsWindowFolder } from './agentsWindow.js';
 import { createStudioTray, IStudioTray } from './studioTray.js';
 import { emptyStudioTrayNotifications, IStudioTrayNotifications, StudioTrayNotificationAction, studioTrayPreviewLimit } from '../common/studioTrayNotifications.js';
 import { readStudioReleaseProject } from '../node/studioReleaseProject.js';
-import { studioEntryForFolder, type IStudioProjectEntry } from '../../window/common/studioProjectWindow.js';
+import { studioEntryForWorkspace, type IStudioProjectEntry } from '../../window/common/studioProjectWindow.js';
 
 //#region Helper Interfaces
 
@@ -843,7 +843,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 			termProgram: configuration?.userEnv?.['TERM_PROGRAM']
 		};
 		window.sendWhenReady('vscode:openFiles', CancellationToken.None, params);
-		const entry = studioEntryForFolder(configuration.studioProjectEntry, isSingleFolderWorkspaceIdentifier(window.openedWorkspace) ? window.openedWorkspace.uri : undefined);
+		const entry = studioEntryForWorkspace(configuration.studioProjectEntry, window.openedWorkspace);
 		if (entry) {
 			window.sendWhenReady('vscode:runAction', CancellationToken.None, { id: 'studio.internalLaunchProjectEntry', from: 'mouse', args: [entry] });
 		}
@@ -923,7 +923,7 @@ export class WindowsMainService extends Disposable implements IWindowsMainServic
 		return this.openInBrowserWindow({
 			workspace: folderOrWorkspace.workspace,
 			studioOpenedFromLibrary: typeof openConfig.contextWindowId === 'number' && this.getWindowById(openConfig.contextWindowId)?.isStudioLaunchpad,
-			studioProjectEntry: studioEntryForFolder(openConfig.studioProjectEntry, isSingleFolderWorkspaceIdentifier(folderOrWorkspace.workspace) ? folderOrWorkspace.workspace.uri : undefined),
+			studioProjectEntry: studioEntryForWorkspace(openConfig.studioProjectEntry, folderOrWorkspace.workspace),
 			userEnv: openConfig.userEnv,
 			cli: openConfig.cli,
 			initialStartup: openConfig.initialStartup,

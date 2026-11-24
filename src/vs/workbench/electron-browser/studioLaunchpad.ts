@@ -115,7 +115,8 @@ export class StudioLaunchpad extends Disposable {
 	) {
 		super();
 		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener, native, contextMenu,
-			(conversation, user) => this.openInbox(conversation, user).catch(error => { notifications.error(error); return false; })));
+			(conversation, user) => this.openInbox(conversation, user).catch(error => { notifications.error(error); return false; }),
+			(key, link, isCurrent) => this.openProjectLink(key, link, isCurrent)));
 		// Read the extension's profile memento synchronously; native history still owns membership and ordering.
 		const saved = extensionStorage.getExtensionState(workstationExtensionId, true)?.['studio.recentProjects'];
 		if (Array.isArray(saved)) {
@@ -464,7 +465,20 @@ export class StudioLaunchpad extends Disposable {
 		}
 	}
 
-	private async openProject(project: LaunchpadProject, entryId?: string): Promise<void> {
+	private async openProjectLink(key: string, link: string, isCurrent: () => boolean): Promise<boolean> {
+		const target = await this.commands.executeCommand<{ uri: string; conversationId: string; managed?: boolean } | undefined>('studio.internalResolveHostedProjectLink', key, link);
+		if (!target || !isCurrent() || this._store.isDisposed) { return false; }
+		const uri = URI.parse(target.uri);
+		if (uri.scheme !== 'file' || uri.query || uri.fragment || target.managed && !uri.path.endsWith('.code-workspace')) { return false; }
+		if (target.managed) {
+			await this.openManagedWorkspace(target.uri, target.conversationId);
+		} else {
+			await this.openProject({ uri: target.uri, kind: 'folder', path: uri.fsPath, name: uri.path.split('/').pop() || '' }, undefined, target.conversationId);
+		}
+		return true;
+	}
+
+	private async openProject(project: LaunchpadProject, entryId?: string, conversationId?: string): Promise<void> {
 		if (project.builtin) {
 			await this.openBuiltinProject(project, entryId);
 			return;
@@ -482,20 +496,20 @@ export class StudioLaunchpad extends Disposable {
 			if (!present) { await this.locateProject(project); return; }
 		}
 		let distribution = project.distribution;
-		if (!distribution && !project.artwork && project.kind === 'folder') {
+		if (!conversationId && !distribution && !project.artwork && project.kind === 'folder') {
 			// A click can arrive before the asynchronous library scan populates this row.
 			const [metadata] = await this.commands.executeCommand<LaunchpadProjectMetadata[]>('studio.internalDetectProjectTypes', [project.uri]).catch(() => []) ?? [];
 			distribution = metadata?.distribution;
 		}
 		if (this._store.isDisposed) { return; }
-		const runEntry = project.kind === 'folder' && (!!distribution || entryId !== undefined);
+		const runEntry = project.kind === 'folder' && (!!distribution || entryId !== undefined || !!conversationId);
 		const live = this.windows.find(row => row.uri === project.uri && row.windowId === project.windowId) ?? this.windows.find(row => row.uri === project.uri);
 		if (!runEntry && live?.windowId !== undefined) {
 			await this.native.focusWindow({ targetWindowId: live.windowId, mode: FocusMode.Force }); return;
 		}
 		this.missing.delete(project.uri);
 		await this.native.openWindow([project.kind === 'workspace' ? { workspaceUri: uri } : { folderUri: uri }], {
-			forceNewWindow: true, ...(runEntry ? { studioProjectEntry: entryId === undefined ? {} : { entryId } } : {}),
+			forceNewWindow: true, ...(runEntry ? { studioProjectEntry: { entryId, conversationId } } : {}),
 		});
 	}
 
@@ -517,11 +531,15 @@ export class StudioLaunchpad extends Disposable {
 		} finally { this.openingBuiltins.delete(project.uri); }
 	}
 
-	private async openManagedWorkspace(value: string): Promise<void> {
+	private async openManagedWorkspace(value: string, conversationId?: string): Promise<void> {
 		const uri = URI.parse(value);
 		if (uri.scheme !== 'file' || uri.query || uri.fragment || !uri.path.endsWith('.code-workspace') || this.openingManaged.has(value)) { return; }
 		this.openingManaged.add(value);
 		try {
+			if (conversationId) {
+				await this.native.openWindow([{ workspaceUri: uri }], { forceNewWindow: true, studioProjectEntry: { conversationId } });
+				return;
+			}
 			const windows = await this.native.getWindows({ includeAuxiliaryWindows: false });
 			const live = windows.find(window => isWorkspaceIdentifier(window.workspace) && URI.revive(window.workspace.configPath).toString() === value);
 			if (live) { await this.native.focusWindow({ targetWindowId: live.id, mode: FocusMode.Force }); }

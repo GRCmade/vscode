@@ -31,7 +31,8 @@ export class StudioChatWindow extends Disposable {
 
 	constructor(private readonly windows: IAuxiliaryWindowService, private readonly webviews: IWebviewService, private readonly opener: IOpenerService,
 		private readonly native: INativeHostService, private readonly contextMenu: IContextMenuService,
-		private readonly openConversation: (conversation?: string, user?: string) => Promise<boolean>) { super(); }
+		private readonly openConversation: (conversation?: string, user?: string) => Promise<boolean>,
+		private readonly openProjectLink: (key: string, link: string, isCurrent: () => boolean) => Promise<boolean>) { super(); }
 
 	prepare(key: string, app: LaunchpadApp): boolean {
 		if (this.prepared?.key !== key) { this.clear(this.prepared?.key); this.prepared = { key, app }; }
@@ -86,6 +87,13 @@ export class StudioChatWindow extends Disposable {
 					} else if (typeof user === 'string') { void this.openConversation(undefined, user); }
 				} else if (message?.type === 'studio-sidebar-account' && app.accountUrl) {
 					const uri = URI.parse(app.accountUrl); if (uri.scheme === 'https' || uri.scheme === 'http') { void this.opener.open(uri, { openExternal: true }); }
+				} else if (message?.type === 'studio-web-app-project-link') {
+					const { requestId, link } = message;
+					if (validRequestId(requestId) && typeof link === 'string' && link.length <= 256 && window.window.document.hasFocus()) {
+						void this.openProjectLink(prepared.key, link, isCurrent).catch(() => false).then(ok => {
+							if (isCurrent()) { void webview.postMessage({ type: 'studio-web-app-project-link-result', requestId, ok }); }
+						});
+					}
 				} else if (message?.type === 'studio-web-app-clipboard') {
 					const { requestId, text } = message;
 					if (validRequestId(requestId) && typeof text === 'string' && text.length > 0 && text.length <= 1_000_000 && window.window.document.hasFocus()) {

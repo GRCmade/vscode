@@ -110,7 +110,6 @@ export class StudioWebLaunchpad extends Disposable {
 	) {
 		super();
 		const run = (operation: Promise<unknown>) => { void operation.catch(error => notifications.error(error)); };
-		const openSettings = (section: string) => run(commands.executeCommand('studio.openSettings', { section, target: 'user' }));
 		this.view = this._register(new StudioLaunchpadView(getNLSLanguage() ?? 'en', {
 			open: () => run(this.pickAndOpen('folder')),
 			workspace: () => run(this.pickAndOpen('workspace')),
@@ -123,8 +122,7 @@ export class StudioWebLaunchpad extends Disposable {
 			openLabel: project => project.builtin ? studioLabel('Open in new tab', '在新标签页打开') : studioLabel('Open in workbench', '在工作台打开'),
 			contextMenu, hoverService,
 			cover: async () => undefined,
-			settings: () => openSettings('general'),
-			account: () => { if (start.state?.platform) { openSettings('account'); } else { this.view.select('profile'); } },
+			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'general', target: 'user' })),
 			profile: {
 				contextMenu,
 				signIn: () => run(commands.executeCommand('studio.launchpadSignIn')),

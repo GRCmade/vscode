@@ -58,7 +58,7 @@ export class LaunchpadLibrary extends Disposable {
 	private actionScope = '';
 	private readonly detailActionStates = new Map<DetailActionSource, DetailActionState>();
 	private readonly runningActions = new Set<string>();
-	private updateDetailButtons?: () => void;
+	private updateDetailActions?: () => void;
 	private projects = new Map<string, LaunchpadProject>();
 	private history = new Set<string>();
 	private selected?: string;
@@ -252,11 +252,48 @@ export class LaunchpadLibrary extends Disposable {
 			void pending.then(items => {
 				if (items && this.detailActionStates.get(source) === current) {
 					current.items = items;
-					this.updateDetailButtons?.();
+					this.updateDetailActions?.();
 				}
 			}).catch(() => undefined).finally(() => { current.loading = false; });
 		}
 		return state;
+	}
+
+	private detailActionGroup(project: LaunchpadProject, label: string, defaultIcon: string) {
+		const group = element('section', 'lp-detail-action-group');
+		group.setAttribute('aria-label', label);
+		const controls = element('div', 'lp-detail-group-actions');
+		group.append(element('h2', '', label), controls);
+		let rendered: string | undefined;
+		return {
+			element: group,
+			update: (items: readonly LibraryDetailAction[] = []) => {
+				const signature = JSON.stringify(items);
+				if (rendered === signature) { return; }
+				rendered = signature;
+				const active = controls.ownerDocument.activeElement;
+				const focused = active instanceof HTMLElement && controls.contains(active) ? active.dataset.key : undefined;
+				const buttons = items.map(item => {
+					const key = `action:${project.uri}:${item.id}`;
+					const action = button(item.label, item.icon ?? defaultIcon, () => {
+						if (this.runningActions.has(key)) { return; }
+						this.runningActions.add(key);
+						action.disabled = true;
+						void Promise.resolve(this.actions.runDetailAction?.(project, item.id)).finally(() => {
+							this.runningActions.delete(key);
+							if (this.selected === project.uri) { this.render(); }
+						});
+					}, 'studio-project-action lp-outline');
+					action.disabled = this.runningActions.has(key);
+					action.dataset.key = key;
+					action.dataset.detailAction = item.id;
+					return action;
+				});
+				group.hidden = !buttons.length;
+				controls.replaceChildren(...buttons);
+				if (focused) { buttons.find(action => action.dataset.key === focused)?.focus({ preventScroll: true }); }
+			},
+		};
 	}
 
 	private parentProject(project: LaunchpadProject): LaunchpadProject | undefined {
@@ -361,47 +398,28 @@ export class LaunchpadLibrary extends Disposable {
 				run.dataset.key = 'run:' + selected.uri;
 				actions.unshift(run);
 			}
+			const secondaryActions = element('div', 'lp-detail-secondary');
+			const bot = this.detailActionGroup(selected, t('Bot instances', 'Bot 分身'), 'hubot');
+			const im = this.detailActionGroup(selected, t('IM integration', 'IM 集成'), 'comment-discussion');
+			secondaryActions.append(bot.element, im.element);
+			// Local actions resolve independently of IM. Update each group only when its actions change.
+			const local = this.detailActions(selected, 'local'), account = this.detailActions(selected, 'account');
+			this.updateDetailActions = () => {
+				bot.update(local?.items);
+				im.update(account?.items);
+				secondaryActions.hidden = bot.element.hidden && im.element.hidden;
+			};
+			this.updateDetailActions();
 			const usage = this.projectUsage(selected);
-			const detail = projectDetails(selected, t, { actions, usage: usage?.element,
+			const detail = projectDetails(selected, t, { actions, secondaryActions, usage: usage?.element,
 				openEntry: canRun ? entryId => this.actions.project(selected, entryId) : undefined });
 			this.content.replaceChildren(detail); restoreFocus();
 			usage?.setVisible(this.visible);
-			// Local actions resolve independently of IM. Keep confirmed actions while revalidating them.
-			const local = this.detailActions(selected, 'local'), account = this.detailActions(selected, 'account');
-			let rendered = '';
-			this.updateDetailButtons = () => {
-				const items = [...(local?.items ?? []), ...(account?.items ?? [])].slice(0, 4);
-				const signature = JSON.stringify(items);
-				if (rendered === signature) { return; }
-				rendered = signature;
-				const controls = more.parentElement;
-				const focused = document.activeElement instanceof HTMLElement && controls?.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
-				controls?.querySelectorAll('[data-detail-action]').forEach(item => item.remove());
-				for (const item of items) {
-					const key = `action:${selected.uri}:${item.id}`;
-					const action = button(item.label, item.icon ?? '', () => {
-						if (this.runningActions.has(key)) { return; }
-						this.runningActions.add(key);
-						action.disabled = true;
-						void Promise.resolve(this.actions.runDetailAction?.(selected, item.id)).finally(() => {
-							this.runningActions.delete(key);
-							if (this.selected === selected.uri) { this.render(); }
-						});
-					}, 'studio-project-action lp-outline');
-					action.disabled = this.runningActions.has(key);
-					action.dataset.key = key;
-					action.dataset.detailAction = item.id;
-					controls?.insertBefore(action, more);
-					if (key === focused) { action.focus({ preventScroll: true }); }
-				}
-				if (focus?.startsWith('action:') && (document.activeElement === document.body || !document.activeElement?.isConnected)) { restoreFocus(); }
-			};
-			this.updateDetailButtons();
 			return;
 		}
 		this.projectUsage();
 		this.detailActionStates.clear();
-		this.updateDetailButtons = undefined;
+		this.updateDetailActions = undefined;
 		this.content.replaceChildren();
 		const showBuiltins = builtins.length > 0 && (this.filter === 'all' || this.filter === 'installed');
 		if (!rows.length && !showBuiltins) {

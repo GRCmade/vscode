@@ -11,10 +11,11 @@
 }
 .lp-project-details { max-width: 880px; margin-inline: auto; }
 .lp-detail-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding-block: 4px 21px; border-bottom: 1px solid var(--detail-line); }
+.lp-detail-project { display: flex; align-items: center; gap: 14px; flex: 1 1 254px; min-width: 0; }
 .lp-detail-mark { display: grid; place-items: center; flex: none; width: 52px; height: 52px; background: var(--vscode-sideBar-background,var(--vscode-editor-background)); border-radius: 6px; }
 .lp-detail-mark img { width: 100%; height: 100%; object-fit: contain; border-radius: inherit; }
 .lp-detail-mark .codicon { font-size: 28px; }
-.lp-detail-identity { flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; }
+.lp-detail-identity { min-width: 0; overflow-wrap: anywhere; }
 .lp-project-details .lp-section-kicker { color: var(--detail-muted); font-size: 12px; }
 .lp-project-details h1 { margin: 0; color: var(--vscode-editor-foreground,var(--detail-fg)); font-size: 24px; line-height: 1.22; font-weight: 600; }
 .monaco-workbench .lp-project-details h1[tabindex="-1"]:focus { outline: none; }
@@ -27,6 +28,12 @@
 .lp-detail-facts > div { display: grid; grid-template-columns: minmax(90px,22%) minmax(0,1fr); gap: 12px; padding-block: 6px; }
 .lp-detail-facts dt, .lp-detail-entries small { color: var(--detail-muted); }
 .lp-detail-facts dd { margin: 0; overflow-wrap: anywhere; }
+.lp-detail-secondary { display: grid; gap: 8px; border-top: 1px solid var(--detail-line); padding-block: 12px; }
+.lp-detail-secondary[hidden], .lp-detail-action-group[hidden] { display: none; }
+.lp-detail-action-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; }
+.lp-detail-action-group h2 { min-inline-size: min(100%,max(90px,22%)); max-inline-size: 100%; margin: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.lp-detail-group-actions { display: flex; flex: 1 1 240px; min-width: 0; flex-wrap: wrap; align-items: center; gap: 6px; }
+.lp-detail-group-actions > .studio-project-action { box-sizing: border-box; min-block-size: 32px; }
 .lp-project-usage { border-top: 1px solid var(--detail-line); padding-block: 13px 14px; min-width: 0; }
 .lp-project-usage [hidden], .lp-project-usage:has(.lp-usage-metrics:empty) .lp-usage-metrics { display: none; }
 .lp-usage-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 9px; }

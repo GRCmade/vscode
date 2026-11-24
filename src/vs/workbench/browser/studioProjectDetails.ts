@@ -63,6 +63,7 @@ export function edition(p: StudioProjectDetails, t: StudioLabel): string {
 
 interface ProjectDetailsOptions {
 	actions: readonly HTMLElement[];
+	secondaryActions?: HTMLElement;
 	openEntry?(entryId: string): void;
 	currentWindow?: boolean;
 	extraFacts?: [label: string, value: string | undefined][];
@@ -77,9 +78,11 @@ export function projectDetails(p: StudioProjectDetails, t: StudioLabel, options:
 	const identity = element('div', 'lp-detail-identity'), title = element('h1', '', p.name);
 	title.tabIndex = -1; title.dataset.key = 'detail:' + p.uri;
 	identity.append(element('span', 'lp-section-kicker', t('Project details', '项目详情')), title);
+	const project = element('div', 'lp-detail-project');
+	project.append(mark, identity);
 	const controls = element('div', 'lp-detail-actions');
 	controls.append(...options.actions);
-	head.append(mark, identity, controls); page.append(head);
+	head.append(project, controls); page.append(head);
 
 	if (p.description?.trim()) { page.append(element('p', 'lp-detail-description', p.description)); }
 	const facts = element('dl', 'lp-detail-facts');
@@ -95,6 +98,7 @@ export function projectDetails(p: StudioProjectDetails, t: StudioLabel, options:
 	fact(t('Location', '位置'), p.path, 'lp-detail-location');
 	fact(t('Project ID', '项目 ID'), p.projectId);
 	page.append(facts);
+	if (options.secondaryActions) { page.append(options.secondaryActions); }
 	if (options.usage) { page.append(options.usage); }
 	if (p.entries?.length) {
 		page.append(projectEntryList(p.entries, t, options.openEntry, p.uri));

@@ -94,6 +94,8 @@
 .lp-status-guide .lp-index-dot { margin-block-start: .4em; }
 .lp-status-guide p { margin: 2px 0 0; color: var(--vscode-descriptionForeground, currentColor); }
 .lp-index { display: flex; flex-direction: column; gap: 2px; }
+.lp-index-builtin { display: flex; flex-direction: column; gap: 2px; padding-block-end: 8px; margin-block-end: 6px; border-block-end: 1px solid var(--lp-line); }
+.lp-index-builtin-title { margin: 0; padding: 0 7px 4px; font-size: 12px; font-weight: 600; color: var(--lp-muted); }
 .studio-launchpad .lp-index-row { justify-content: start; width: 100%; min-height: 29px; gap: 8px; }
 .lp-index-row img { width: 18px; height: 18px; border-radius: 3px; }
 .studio-launchpad .lp-index-row[aria-current=page] { color: var(--lp-strong); background: var(--vscode-list-inactiveSelectionBackground,var(--lp-hover)); }

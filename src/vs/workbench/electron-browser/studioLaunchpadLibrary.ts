@@ -104,9 +104,9 @@ export class LaunchpadLibrary extends Disposable {
 		this.element.append(rail, this.shelf);
 	}
 
-	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean, actionScope: string, category?: LibraryProjectCategory): void {
+	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean, actionScope: string, category?: LibraryProjectCategory, builtinProjects: LaunchpadProject[] = []): void {
 		this.createButton.disabled = !canCreate;
-		const signature = JSON.stringify([recent, windows, actionScope, category]); if (signature === this.signature) { return; }
+		const signature = JSON.stringify([recent, windows, actionScope, category, builtinProjects]); if (signature === this.signature) { return; }
 		this.signature = signature; this.history = new Set(recent.map(p => p.uri));
 		this.actionScope = actionScope;
 		this.category = category;
@@ -120,6 +120,7 @@ export class LaunchpadLibrary extends Disposable {
 		const previously = this.projects;
 		this.projects = new Map(recent.map(p => [p.uri, p]));
 		for (const p of windows) { if (!this.projects.has(p.uri)) { this.projects.set(p.uri, p); } }
+		for (const p of builtinProjects) { this.projects.set(p.uri, p); }
 		for (const uri of this.activeProjects) {
 			const current = this.projects.get(uri), prior = previously.get(uri);
 			if (!current || current.missing || current.projectId !== prior?.projectId || current.distribution !== prior?.distribution || current.managed !== prior?.managed) {
@@ -157,7 +158,7 @@ export class LaunchpadLibrary extends Disposable {
 		items.push(new Separator());
 		if (p.uri.startsWith('file:') && !p.missing) { items.push(action('reveal', t('Show in file manager', '在文件管理器中显示'), () => this.actions.reveal(p))); }
 		items.push(action('copyPath', t('Copy path', '复制路径'), () => this.actions.copyPath(p)));
-		if (p.managed || this.history.has(p.uri)) { items.push(new Separator(), action('forget', p.managed ? t('Remove folder Bot…', '移除分身…') : t('Remove from history…', '移除打开记录…'), () => this.actions.remove(p))); }
+		if (!p.builtin && (p.managed || this.history.has(p.uri))) { items.push(new Separator(), action('forget', p.managed ? t('Remove folder Bot…', '移除分身…') : t('Remove from history…', '移除打开记录…'), () => this.actions.remove(p))); }
 		this.actions.contextMenu.showContextMenu({ getAnchor: () => point ?? origin, getActions: () => items, autoSelectFirstItem: !point });
 	}
 
@@ -235,6 +236,7 @@ export class LaunchpadLibrary extends Disposable {
 	}
 
 	private detailActions(project: LaunchpadProject, source: DetailActionSource): DetailActionState | undefined {
+		if (project.builtin) { this.detailActionStates.delete(source); return; }
 		if (source === 'account' && !this.actionScope) { this.detailActionStates.delete(source); return; }
 		const target = [project.uri, project.missing, project.managed];
 		const key = JSON.stringify(source === 'local' ? target : [...target, project.kind, project.projectType, project.distribution, this.actionScope]);
@@ -262,7 +264,7 @@ export class LaunchpadLibrary extends Disposable {
 		return parent && !parent.parentUri ? parent : undefined;
 	}
 
-	private renderIndex(rows: LaunchpadProject[], collapsed: Set<string>): void {
+	private renderIndex(rows: LaunchpadProject[], builtins: LaunchpadProject[], collapsed: Set<string>): void {
 		const roots = new Set(rows.map(p => p.uri));
 		const branches = new Map<string, LaunchpadProject[]>();
 		for (const p of rows) {
@@ -280,6 +282,14 @@ export class LaunchpadLibrary extends Disposable {
 			this.bindMenu(b, p); return b;
 		};
 		const items: HTMLElement[] = [];
+		if (builtins.length) {
+			const section = element('section', 'lp-index-builtin');
+			const label = element('h3', 'lp-index-builtin-title', this.t('Built-in projects', '内置项目'));
+			label.id = 'lp-index-builtin-title';
+			section.setAttribute('aria-labelledby', label.id);
+			section.append(label, ...builtins.map(row));
+			items.push(section);
+		}
 		for (const p of this.projects.values()) {
 			if (!roots.has(p.uri)) { continue; }
 			const children = branches.get(p.uri);
@@ -320,7 +330,9 @@ export class LaunchpadLibrary extends Disposable {
 				default: return true;
 			}
 		};
-		const matches = [...this.projects.values()].filter(p => !query || `${p.name} ${p.path}`.toLocaleLowerCase().includes(query));
+		const matching = (p: LaunchpadProject) => !query || `${p.name} ${p.path}`.toLocaleLowerCase().includes(query);
+		const builtins = [...this.projects.values()].filter(p => p.builtin && matching(p));
+		const matches = [...this.projects.values()].filter(p => !p.builtin && matching(p));
 		const rows = matches.filter(inFilter);
 		// In the index, instances inherit their parent's folder/source/installed category, but not its IM binding.
 		const indexRows = this.filter === 'all' || category ? rows : matches.filter(p => {
@@ -330,21 +342,21 @@ export class LaunchpadLibrary extends Disposable {
 		const focus = document.activeElement instanceof HTMLElement && this.element.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
 		for (const b of this.filters.querySelectorAll('button')) { b.setAttribute('aria-pressed', String(b.dataset.id === this.filter)); }
 		const heading = (title: string, count?: number) => { const h = element('header', 'lp-shelf-head'); h.append(element('h2', '', title)); if (count !== undefined) { h.append(element('small', '', String(count))); } return h; };
-		this.renderIndex(indexRows, query ? this.searchCollapsed : this.collapsed);
+		this.renderIndex(indexRows, builtins, query ? this.searchCollapsed : this.collapsed);
 		const selected = this.selected && this.projects.get(this.selected);
 		this.toolbar.hidden = !!selected;
 		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };
 		this.updateIndexStatuses();
 		if (selected) {
 			const canRun = !!selected.distribution && !selected.missing;
-			const open = button(openProjectLabel(selected, t), 'open-in-window', () => this.actions.project(selected), `studio-project-action ${canRun ? 'lp-outline' : 'lp-primary'}`);
+			const open = button(openProjectLabel(selected, t), 'open-in-window', () => this.actions.project(selected), `studio-project-action ${canRun && !selected.builtin ? 'lp-outline' : 'lp-primary'}`);
 			open.disabled = !!(selected.managed && selected.missing);
 			open.dataset.key = 'open:' + selected.uri;
 			const more = button('', 'ellipsis', () => this.manage(selected, more), 'studio-project-action lp-outline lp-tool');
 			more.dataset.key = 'more:' + selected.uri;
 			more.title = t('Project actions', '项目操作'); more.setAttribute('aria-label', more.title); more.setAttribute('aria-haspopup', 'menu');
 			const actions = [open, more];
-			if (canRun) {
+			if (canRun && !selected.builtin) {
 				const run = button(t('Run project', '运行项目'), 'play', () => this.actions.project(selected), 'studio-project-action lp-primary');
 				run.dataset.key = 'run:' + selected.uri;
 				actions.unshift(run);
@@ -391,7 +403,8 @@ export class LaunchpadLibrary extends Disposable {
 		this.detailActionStates.clear();
 		this.updateDetailButtons = undefined;
 		this.content.replaceChildren();
-		if (!rows.length) {
+		const showBuiltins = builtins.length > 0 && (this.filter === 'all' || this.filter === 'installed');
+		if (!rows.length && !showBuiltins) {
 			const message = (!query && category?.emptyLabel) || (query || this.filter !== 'all' ? t('No matching projects.', '没有匹配的项目。') : t('No projects in your library yet.', '仓库里还没有项目。'));
 			const empty = element('p', 'lp-empty'); empty.append(icon('library'), message); this.content.append(empty); return;
 		}
@@ -412,8 +425,11 @@ export class LaunchpadLibrary extends Disposable {
 			}
 			section.append(heading(title, projects.length), grid); this.content.append(section);
 		};
-		if (this.filter === 'all' && !query) { gallery(t('Recently opened', '最近打开'), 'recent', rows.slice(0, 6)); }
-		gallery(category?.label ?? t('All projects', '所有项目'), category ? 'product' : 'all', rows);
+		if (showBuiltins) { gallery(t('Built-in projects', '内置项目'), 'builtins', builtins); }
+		if (rows.length) {
+			if (this.filter === 'all' && !query) { gallery(t('Recently opened', '最近打开'), 'recent', rows.slice(0, 6)); }
+			gallery(category?.label ?? t('All projects', '所有项目'), category ? 'product' : 'all', rows);
+		}
 		restoreFocus();
 	}
 

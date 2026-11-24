@@ -15,6 +15,7 @@ import { LaunchpadStore, StoreActions } from './studioLaunchpadStore.js';
 export type { LaunchpadProject, LaunchpadAccount, LaunchpadInbox };
 export interface LaunchpadState {
 	windows: LaunchpadProject[]; recent: LaunchpadProject[]; platform: boolean; canCreate: boolean;
+	builtinProjects?: LaunchpadProject[];
 	account?: LaunchpadAccount; inbox?: LaunchpadInbox; store?: { items: StoreListing[] }; notices: StudioNotice[]; notificationUnread: boolean;
 	dismissedSocialNoticeIds?: ReadonlySet<string>;
 	libraryCategory?: LibraryProjectCategory;
@@ -155,7 +156,7 @@ export class StudioLaunchpadView extends Disposable {
 		const preview = notice ? `${notice.title}${notice.detail ? `: ${notice.detail}` : ''}` : '';
 		if (this.noticeContent.textContent !== preview) { this.noticeContent.textContent = this.latestNotice.title = preview; }
 		this.bell.classList.toggle('lp-has-unread', state.notificationUnread);
-		this.library.update(state.recent, state.windows, state.canCreate, state.platform && state.account?.signedIn ? state.account.scopeKey ?? 'signed-in' : '', state.libraryCategory);
+		this.library.update(state.recent, state.windows, state.canCreate, state.platform && state.account?.signedIn ? state.account.scopeKey ?? 'signed-in' : '', state.libraryCategory, state.builtinProjects);
 		this.store.update(this.active === 'store', state.platform, state.account?.scopeKey ?? state.account?.storeScopeKey, state.store?.items ?? []);
 		this.profile.update(this.active === 'profile', state.platform, state.account, state.inbox, state.notices, state.notificationUnread, state.dismissedSocialNoticeIds);
 		if (this.picker.dialog.open) { this.picker.update(); }

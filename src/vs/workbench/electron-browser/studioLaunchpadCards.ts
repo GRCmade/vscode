@@ -18,6 +18,7 @@ export interface LibraryArtwork {
 
 export interface LaunchpadProject extends StudioProjectDetails {
 	artwork?: LibraryArtwork;
+	builtin?: true;
 	managed?: true;
 	parentUri?: string;
 }

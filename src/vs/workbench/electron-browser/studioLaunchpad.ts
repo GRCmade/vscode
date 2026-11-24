@@ -32,6 +32,7 @@ import { INotificationService } from '../../platform/notification/common/notific
 import { IOpenerService } from '../../platform/opener/common/opener.js';
 import { IUserDataProfilesService } from '../../platform/userDataProfile/common/userDataProfile.js';
 import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../platform/workspace/common/workspace.js';
+import { parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
 import { emptyStudioTrayNotifications, IStudioTrayNotifications, studioTrayPreviewLimit } from '../../platform/windows/common/studioTrayNotifications.js';
 import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
 import { IStudioStartService } from '../browser/parts/editor/studioStart.js';
@@ -52,6 +53,7 @@ import './media/studioLaunchpad.css';
 
 type LibraryMetadata = Pick<LaunchpadProject, 'projectId' | 'projectType' | 'avatarUrl' | 'distribution' | 'artwork' | 'version' | 'entries' | 'description'> & { projectName?: string };
 type LibraryExtras = { projects: LaunchpadProject[]; hiddenUris: string[] };
+type BuiltinLibrary = { projects: LaunchpadProject[]; pending?: boolean };
 type LaunchpadMenuAccount = Omit<LaunchpadAccount, 'signedIn'> & { status: string };
 const workstationExtensionId = 'studio.studio-workstation';
 const launchpadSettingsViewType = 'studio.launchpadSettings';
@@ -66,13 +68,16 @@ export class StudioLaunchpad extends Disposable {
 	private recent: LaunchpadProject[] = [];
 	private hasProjectSnapshot = false;
 	private managedWorkspaceUris = new Set<string>();
+	private builtinWorkspaceUris = new Set<string>();
 	private readonly savedProjects = new Map<string, LibraryMetadata & { name?: string; lastOpened?: number }>();
 	private readonly missing = new Set<string>();
 	private readonly editsSinceSnapshot = new Map<number, boolean>();
 	private inbox?: LaunchpadInbox;
 	private libraryCategory?: LibraryProjectCategory;
 	private libraryExtras?: LibraryExtras;
+	private builtinProjects?: LaunchpadProject[];
 	private readonly openingManaged = new Set<string>();
+	private readonly openingBuiltins = new Set<string>();
 	private account?: LaunchpadState['account'];
 	private windowRevision = 0;
 	private libraryCategoryRevision = 0;
@@ -88,6 +93,8 @@ export class StudioLaunchpad extends Disposable {
 	private readonly language = getNLSLanguage() ?? 'en';
 	private readonly refreshInbox = this._register(new RunOnceScheduler(() => void this.readInbox(), 160));
 	private readonly refreshLibraryCategory = this._register(new RunOnceScheduler(() => void this.readLibraryProducts(), 100));
+	private readonly refreshBuiltins = this._register(new RunOnceScheduler(() => void this.readBuiltins(), 100));
+	private readonly builtinReads = this._register(new Throttler());
 
 	constructor(
 		private readonly notices: StudioNotificationInbox,
@@ -295,6 +302,7 @@ export class StudioLaunchpad extends Disposable {
 			}
 		}));
 		const updateStart = () => {
+			if (start.state && !this.builtinProjects && !this.refreshBuiltins.isScheduled()) { this.refreshBuiltins.schedule(); }
 			if (platform !== !!start.state?.platform) {
 				platform = !!start.state?.platform;
 				const revision = ++accountRevision;
@@ -331,7 +339,7 @@ export class StudioLaunchpad extends Disposable {
 		this._register(addDisposableListener(document, 'visibilitychange', () => {
 			if (document.hidden) { clearProjectDrop(); }
 			start.setVisible('launchpad', !document.hidden && !this.view.element.hidden);
-			if (!document.hidden) { changed(); this.refreshInbox.schedule(); this.refreshSocialState(); }
+			if (!document.hidden) { changed(); this.refreshInbox.schedule(); this.refreshSocialState(); if (!this.refreshBuiltins.isScheduled()) { this.refreshBuiltins.schedule(); } }
 		}));
 		// The resident window never becomes an editor, including while an app is opening or closing.
 		const parts = Array.from(layout.mainContainer.querySelectorAll<HTMLElement>('.part:not(.titlebar)')).filter(part => !part.inert);
@@ -515,6 +523,10 @@ export class StudioLaunchpad extends Disposable {
 	}
 
 	private async openProject(project: LaunchpadProject, entryId?: string): Promise<void> {
+		if (project.builtin) {
+			await this.openBuiltinProject(project, entryId);
+			return;
+		}
 		if (project.managed) {
 			const result = await this.commands.executeCommand<{ workspace?: string } | undefined>('studio.runFolderBotAction', project.uri, 'open-folder-bot');
 			if (result?.workspace) { await this.openManagedWorkspace(result.workspace); }
@@ -545,6 +557,24 @@ export class StudioLaunchpad extends Disposable {
 		});
 	}
 
+	private async openBuiltinProject(project: LaunchpadProject, entryId?: string): Promise<void> {
+		if (this.openingBuiltins.has(project.uri)) { return; }
+		this.openingBuiltins.add(project.uri);
+		try {
+			const uri = URI.parse(project.uri);
+			const read = (name: string) => this.files.readFile(URI.joinPath(uri, name), { limits: { size: 2_000_000 } }).then(file => file.value.toString());
+			const release = await Promise.all([read('steamharness.json'), read('steamharness.release.json')])
+				.then(([declaration, manifest]) => parseStudioReleaseProject(project.uri, declaration, manifest, this.language), () => undefined);
+			if (this._store.isDisposed) { return; }
+			if (!release) { throw new Error(this.language.startsWith('zh') ? '内置项目的发行文件不可用，请重新构建或修复 Studio。' : 'The built-in project release is unavailable. Rebuild or repair Studio.'); }
+			const windows = entryId === undefined ? await this.native.getWindows({ includeAuxiliaryWindows: false }) : [];
+			if (this._store.isDisposed) { return; }
+			const live = windows.find(window => isSingleFolderWorkspaceIdentifier(window.workspace) && extUriBiasedIgnorePathCase.isEqual(URI.revive(window.workspace.uri), uri));
+			if (live) { await this.native.focusWindow({ targetWindowId: live.id, mode: FocusMode.Force }); }
+			else { await this.native.openWindow([{ folderUri: uri }], { forceNewWindow: true, noRecentEntry: true, studioProjectEntry: entryId === undefined ? {} : { entryId } }); }
+		} finally { this.openingBuiltins.delete(project.uri); }
+	}
+
 	private async openManagedWorkspace(value: string): Promise<void> {
 		const uri = URI.parse(value);
 		if (uri.scheme !== 'file' || uri.query || uri.fragment || !uri.path.endsWith('.code-workspace') || this.openingManaged.has(value)) { return; }
@@ -558,6 +588,7 @@ export class StudioLaunchpad extends Disposable {
 	}
 
 	private async removeProject(project: LaunchpadProject): Promise<void> {
+		if (project.builtin || this.builtinWorkspaceUris.has(project.uri) || this.builtinProjects?.some(row => row.uri === project.uri)) { return; }
 		if (project.managed) { await this.commands.executeCommand('studio.runFolderBotAction', project.uri, 'remove-folder-bot'); return; }
 		const zh = this.language.startsWith('zh');
 		const { response } = await this.native.showMessageBox({ type: 'question', message: zh ? `移除「${project.name}」的打开记录？` : `Remove “${project.name}” from open history?`,
@@ -604,11 +635,16 @@ export class StudioLaunchpad extends Disposable {
 		]);
 		if (this.windowRevision !== revision) { return; }
 		const managedUris = new Set<string>();
+		const builtinUris = new Set<string>();
+		const builtinRoots = managedRoots.map(root => URI.joinPath(root, 'workflow', 'builtin-apps'));
 		const project = (raw: URI, kind: LaunchpadProject['kind'], label?: string): LaunchpadProject => {
 			const uri = URI.revive(raw);
 			const key = uri.toString();
 			if (kind === 'workspace' && managedRoots.some(root => extUriBiasedIgnorePathCase.isEqualOrParent(uri, root))) {
 				managedUris.add(key);
+			}
+			if (kind === 'folder' && builtinRoots.some(root => /^[a-f0-9]{24}(?:\/project)?$/.test(extUriBiasedIgnorePathCase.relativePath(root, uri) ?? ''))) {
+				builtinUris.add(key);
 			}
 			return { kind, uri: key, name: label || basenameOrAuthority(uri), path: uri.scheme === Schemas.file ? uri.fsPath : uri.toString(true) };
 		};
@@ -621,6 +657,7 @@ export class StudioLaunchpad extends Disposable {
 		});
 		this.recent = recent.workspaces.map(row => isRecentFolder(row) ? project(row.folderUri, 'folder', row.label) : project(row.workspace.configPath, 'workspace', row.label));
 		this.managedWorkspaceUris = managedUris;
+		this.builtinWorkspaceUris = builtinUris;
 		this.hasProjectSnapshot = true;
 		const members = new Set([...this.recent, ...this.windows].map(row => row.uri));
 		for (const uri of this.savedProjects.keys()) { if (!members.has(uri)) { this.savedProjects.delete(uri); } }
@@ -640,6 +677,17 @@ export class StudioLaunchpad extends Disposable {
 		// Resolve parent aliases against the first native snapshot before showing managed projects.
 		if (this.hasProjectSnapshot && this.start.state?.platform) { this.refreshLibraryCategory.schedule(this.libraryExtras ? undefined : 0); }
 		else { this.refreshLibraryCategory.cancel(); }
+	}
+
+	private async readBuiltins(): Promise<void> {
+		await this.builtinReads.queue(async () => {
+			const result = await this.commands.executeCommand<BuiltinLibrary | undefined>('studio.internalListBuiltinProjects').catch(() => undefined);
+			if (!result || this._store.isDisposed) { return; }
+			const projects = result.projects.filter(p => p.kind === 'folder' && p.distribution === 'release' && p.uri.startsWith('file:'))
+				.map(p => ({ ...p, builtin: true as const }));
+			if (JSON.stringify(projects) !== JSON.stringify(this.builtinProjects)) { this.builtinProjects = projects; this.paint(); }
+			if (result.pending && !document.hidden) { this.refreshBuiltins.schedule(1500); }
+		});
 	}
 
 	private async readLibraryProducts(): Promise<void> {
@@ -769,8 +817,9 @@ export class StudioLaunchpad extends Disposable {
 		const projects = this.libraryExtras?.projects ?? [];
 		const extra = new Map(projects.map(project => [project.uri, project]));
 		const hidden = new Set(this.libraryExtras?.hiddenUris);
+		const builtinUris = new Set(this.builtinProjects?.map(p => p.uri));
 		// Extension-owned workspaces need their library record, not a filename fallback.
-		const visible = (row: LaunchpadProject) => !hidden.has(row.uri) && (extra.has(row.uri) || !this.managedWorkspaceUris.has(row.uri));
+		const visible = (row: LaunchpadProject) => !builtinUris.has(row.uri) && !this.builtinWorkspaceUris.has(row.uri) && !hidden.has(row.uri) && (extra.has(row.uri) || !this.managedWorkspaceUris.has(row.uri));
 		const metadata = new Map(state?.recent.map(row => [row.uri, row]));
 		const live = new Map<string, LaunchpadProject>();
 		for (const window of this.windows) {
@@ -790,9 +839,10 @@ export class StudioLaunchpad extends Disposable {
 		};
 		const history = new Map(this.recent.filter(visible).map(row => [row.uri, row]));
 		for (const row of projects) { if (!history.has(row.uri)) { history.set(row.uri, row); } }
+		const builtinProjects = this.builtinProjects?.map(row => ({ ...row, windowId: live.get(row.uri)?.windowId }));
 		this.view.update({ windows: this.windows.filter(visible).map(row => enrich(row)), recent: [...history.values()].map(row => enrich(row, live.get(row.uri))), canCreate: !!state?.canCreate && !state.busy,
 			platform: !!state?.platform, account: this.account, store: state?.recommendations, inbox: this.inbox, notices: this.notices.list(), notificationUnread: this.socialUnread || this.notices.hasUnread(),
 			dismissedSocialNoticeIds: this.notices.dismissedSocialNoticeIds,
-			libraryCategory: this.libraryCategory });
+			libraryCategory: this.libraryCategory, builtinProjects });
 	}
 }

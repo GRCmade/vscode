@@ -7,6 +7,7 @@ import './bootstrap-server.js'; // this MUST come before other imports as it cha
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import * as os from 'node:os';
 import * as readline from 'node:readline';
@@ -51,6 +52,24 @@ if (shouldSpawnCli) {
 	});
 } else {
 	installServerProcessExitDiagnostics();
+	const studioGatewayKey = process.env['STEAMHARNESS_STUDIO_WEB_BACKEND_KEY'];
+	delete process.env['STEAMHARNESS_STUDIO_WEB_BACKEND_KEY'];
+	if (studioGatewayKey && process.connected) {
+		process.once('disconnect', () => process.exit(0));
+	}
+	function fromStudioGateway(req: http.IncomingMessage): boolean {
+		if (!studioGatewayKey) {
+			return true;
+		}
+		const supplied = req.headers['x-steamharness-gateway'];
+		delete req.headers['x-steamharness-gateway'];
+		if (typeof supplied !== 'string') {
+			return false;
+		}
+		const key = Buffer.from(studioGatewayKey);
+		const candidate = Buffer.from(supplied);
+		return candidate.length === key.length && timingSafeEqual(candidate, key);
+	}
 
 	let _remoteExtensionHostAgentServer: IServerAPI | null = null;
 	let _remoteExtensionHostAgentServerPromise: Promise<IServerAPI> | null = null;
@@ -89,6 +108,10 @@ if (shouldSpawnCli) {
 
 	let address: string | AddressInfo | null = null;
 	const server = http.createServer(async (req, res) => {
+		if (!fromStudioGateway(req)) {
+			res.writeHead(403).end();
+			return;
+		}
 		if (firstRequest) {
 			firstRequest = false;
 			perf.mark('code/server/firstRequest');
@@ -97,6 +120,10 @@ if (shouldSpawnCli) {
 		return remoteExtensionHostAgentServer.handleRequest(req, res);
 	});
 	server.on('upgrade', async (req, socket) => {
+		if (!fromStudioGateway(req)) {
+			socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+			return;
+		}
 		if (firstWebSocket) {
 			firstWebSocket = false;
 			perf.mark('code/server/firstWebSocket');

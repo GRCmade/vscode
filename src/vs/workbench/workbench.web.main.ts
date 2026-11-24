@@ -157,6 +157,7 @@ import './contrib/welcomeBanner/browser/welcomeBanner.contribution.js';
 
 // Webview
 import './contrib/webview/browser/webview.web.contribution.js';
+import './contrib/studioStart/browser/studioWebAccess.contribution.js';
 
 // Extensions Management
 import './contrib/extensions/browser/extensions.web.contribution.js';

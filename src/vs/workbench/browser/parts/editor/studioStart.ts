@@ -54,7 +54,7 @@ export interface IStudioStartService {
 	readonly _serviceBrand: undefined;
 	readonly state: StudioStartState | undefined;
 	readonly onDidChange: Event<void>;
-	setVisible(id: string, visible: boolean): void;
+	setVisible(id: string, visible: boolean): Promise<void> | void;
 }
 
 class StudioStartService extends Disposable implements IStudioStartService {
@@ -77,15 +77,16 @@ class StudioStartService extends Disposable implements IStudioStartService {
 		this._register(CommandsRegistry.registerCommand('studio.internalGetStartVisibility', () => this.visible.has('launchpad')));
 	}
 
-	setVisible(id: string, visible: boolean): void {
+	setVisible(id: string, visible: boolean): Promise<void> | undefined {
 		const wasVisible = this.visible.size > 0;
 		const wasLaunchpadVisible = this.visible.has('launchpad');
 		if (visible) { this.visible.add(id); } else { this.visible.delete(id); }
 		const launchpadVisible = this.visible.has('launchpad');
 		// The overview still activates the extension, but only the launchpad needs periodic refreshes.
 		if (wasVisible !== (this.visible.size > 0) || wasLaunchpadVisible !== launchpadVisible) {
-			void this.commands.executeCommand('studio.internalStartPageVisibility', launchpadVisible).catch(() => undefined);
+			return this.commands.executeCommand<void>('studio.internalStartPageVisibility', launchpadVisible).catch(() => undefined);
 		}
+		return undefined;
 	}
 }
 registerSingleton(IStudioStartService, StudioStartService, InstantiationType.Delayed);

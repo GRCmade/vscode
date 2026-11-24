@@ -49,6 +49,7 @@ export class LaunchpadLibrary extends Disposable {
 	private readonly shelf = element('div', 'lp-shelf lp-scroll');
 	private readonly toolbar = element('header', 'lp-library-title');
 	private readonly content = element('div');
+	private readonly loading = element('div', 'lp-library-loading lp-collection');
 	private readonly createButton: HTMLButtonElement;
 	private readonly search = element('input', 'lp-query');
 	private readonly filters = element('div', 'lp-filters');
@@ -103,12 +104,28 @@ export class LaunchpadLibrary extends Disposable {
 		this.createButton = button(t('New project', '新建项目'), 'add', actions.create, 'lp-primary'); this.createButton.disabled = true;
 		manage.append(button(t('Import project', '导入项目'), 'folder-opened', actions.importProjects, 'lp-outline'), this.createButton);
 		heading.append(element('h1', '', t('Project library', '项目仓库')), manage);
-		this.toolbar.append(heading, this.filters); this.shelf.append(this.toolbar, this.content);
+		const status = element('p', 'lp-library-loading-status', t('Loading projects…', '正在加载项目…'));
+		status.setAttribute('role', 'status');
+		const skeleton = element('div', 'lp-library-skeleton'), caption = element('div', 'lp-caption');
+		skeleton.setAttribute('aria-hidden', 'true');
+		caption.append(element('span', 'lp-library-skeleton-title'), element('span', 'lp-library-skeleton-meta'));
+		skeleton.append(element('div', 'lp-library-skeleton-cover'), caption);
+		this.loading.append(status, skeleton); this.loading.hidden = true;
+		this.toolbar.append(heading, this.filters); this.shelf.append(this.toolbar, this.loading, this.content);
 		this.element.append(rail, this.shelf);
 	}
 
-	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean, actionScope: string, category?: LibraryProjectCategory, builtinProjects: LaunchpadProject[] = []): void {
+	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean, actionScope: string, category?: LibraryProjectCategory, builtinProjects: LaunchpadProject[] = [], loading = false): void {
 		this.createButton.disabled = !canCreate;
+		const wasLoading = !this.loading.hidden;
+		if (wasLoading !== loading) {
+			this.loading.hidden = !loading;
+			if (loading) {
+				this.content.setAttribute('aria-busy', 'true');
+				this.render();
+			} else { this.content.removeAttribute('aria-busy'); }
+		}
+		if (loading) { return; }
 		const signature = JSON.stringify([recent, windows, actionScope, category, builtinProjects]); if (signature === this.signature) { return; }
 		this.signature = signature; this.history = new Set(recent.map(p => p.uri));
 		this.actionScope = actionScope;
@@ -358,6 +375,8 @@ export class LaunchpadLibrary extends Disposable {
 	}
 
 	private render(): void {
+		for (const b of this.filters.querySelectorAll('button')) { b.setAttribute('aria-pressed', String(b.dataset.id === this.filter)); }
+		if (!this.loading.hidden) { return; }
 		const t = this.t, query = this.search.value.trim().toLocaleLowerCase();
 		const category = this.filter === 'product' ? this.category : undefined;
 		const members = category && new Set(category.projectUris);
@@ -380,7 +399,6 @@ export class LaunchpadLibrary extends Disposable {
 			return inFilter(p) || !!(parent && inFilter(parent));
 		});
 		const focus = document.activeElement instanceof HTMLElement && this.element.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
-		for (const b of this.filters.querySelectorAll('button')) { b.setAttribute('aria-pressed', String(b.dataset.id === this.filter)); }
 		const heading = (title: string, count?: number) => { const h = element('header', 'lp-shelf-head'); h.append(element('h2', '', title)); if (count !== undefined) { h.append(element('small', '', String(count))); } return h; };
 		this.renderIndex(indexRows, builtins, query ? this.searchCollapsed : this.collapsed);
 		const selected = this.selected && this.projects.get(this.selected);

@@ -81,7 +81,8 @@ export class StudioWebLaunchpad extends Disposable {
 	private readonly inboxRequests = new Map<string, string>();
 	private socialUnread = false;
 	private noticeRevision = 0;
-	private projects: LaunchpadProject[] = [];
+	private projects?: LaunchpadProject[];
+	private startVisibilitySettled = false;
 	private recent = new Map<string, RecentProject>();
 	private builtinProjects?: LaunchpadProject[];
 	private revision = 0;
@@ -177,7 +178,19 @@ export class StudioWebLaunchpad extends Disposable {
 			this.view.element.remove();
 		}));
 
-		const visible = () => start.setVisible('launchpad', !document.hidden && !this.view.element.hidden);
+		const refresh = this._register(new RunOnceScheduler(() => run(this.refreshProjects()), 100));
+		const changed = () => { ++this.revision; refresh.schedule(); };
+		const visible = () => {
+			const isVisible = !document.hidden && !this.view.element.hidden;
+			const activation = start.setVisible('launchpad', isVisible);
+			if (isVisible && !start.state && !this.startVisibilitySettled && activation) {
+				void activation.then(() => {
+					this.startVisibilitySettled = true;
+					// If the extension failed to publish its state, fall back to browser history.
+					if (!start.state && !this._store.isDisposed) { changed(); }
+				});
+			}
+		};
 		const hideHome = () => { this.view.closePicker(); this.view.setVisible(false); visible(); };
 		const showHome = () => {
 			const fromSettings = this.settings.isOpen;
@@ -232,8 +245,6 @@ export class StudioWebLaunchpad extends Disposable {
 		const poll = mainWindow.setInterval(() => this.refreshProfile(), 60_000);
 		this._register(toDisposable(() => mainWindow.clearInterval(poll)));
 
-		const refresh = this._register(new RunOnceScheduler(() => run(this.refreshProjects()), 100));
-		const changed = () => { ++this.revision; refresh.schedule(); };
 		this._register(workspaces.onDidChangeRecentlyOpened(changed));
 		this._register(start.onDidChange(changed));
 		this._register(addDisposableListener(mainWindow, 'focus', () => { changed(); this.refreshProfile(); }));
@@ -334,12 +345,14 @@ export class StudioWebLaunchpad extends Disposable {
 	}
 
 	private async refreshProjects(): Promise<void> {
+		const state = this.start.state;
+		if (!state && !this.startVisibilitySettled) { return; }
 		const revision = this.revision;
 		const history = await this.workspaces.getRecentlyOpened();
 		if (revision !== this.revision || this._store.isDisposed) { return; }
 		const projects = new Map<string, LaunchpadProject>();
 		const recent = new Map<string, RecentProject>();
-		for (const row of this.start.state?.recent ?? []) {
+		for (const row of state?.recent ?? []) {
 			if (row.kind !== 'folder' && row.kind !== 'workspace') { continue; }
 			const uri = this.hostUri(URI.parse(row.uri));
 			if (!uri) { continue; }
@@ -358,11 +371,11 @@ export class StudioWebLaunchpad extends Disposable {
 		// Browser history keeps paths only. Use the host's file URIs so the desktop reader also matches installed-project records.
 		const uninspected = new Map<string, LaunchpadProject>();
 		for (const project of projects.values()) {
-			if (project.kind === 'folder' && !project.artwork) {
+			if (project.kind === 'folder' && (!this.projects || !project.artwork)) {
 				uninspected.set(URI.parse(project.uri).with({ scheme: Schemas.file, authority: '' }).toString(), project);
 			}
 		}
-		if (this.start.state && uninspected.size) {
+		if (state && uninspected.size) {
 			const detected = await this.commands.executeCommand<(LaunchpadProjectMetadata & { uri: string })[]>('studio.internalDetectProjectTypes', [...uninspected.keys()]).catch(() => undefined);
 			if (revision !== this.revision || this._store.isDisposed) { return; }
 			for (const { uri, projectName, ...metadata } of detected ?? []) {
@@ -391,7 +404,8 @@ export class StudioWebLaunchpad extends Disposable {
 	private paint(): void {
 		const state = this.start.state;
 		const builtins = new Set(this.builtinProjects?.map(project => project.uri));
-		this.view.update({ windows: [], recent: this.projects.filter(project => !builtins.has(project.uri)), builtinProjects: this.builtinProjects,
+		this.view.update({ windows: [], recent: this.projects?.filter(project => !builtins.has(project.uri)) ?? [], builtinProjects: this.builtinProjects,
+			libraryLoading: this.projects === undefined,
 			platform: !!state?.platform, account: this.account, inbox: this.inbox, store: state?.recommendations, canCreate: !!state?.canCreate && !state.busy,
 			notices: this.notices.list(), notificationUnread: this.socialUnread || this.notices.hasUnread() });
 	}

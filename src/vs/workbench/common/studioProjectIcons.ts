@@ -3,11 +3,13 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+export const studioBotIcon = 'steamharness-bot';
+
 /** Shared project glyphs for native Studio surfaces. */
 export function studioProjectIcon(projectType: string | undefined): string | undefined {
 	switch (projectType) {
 		case 'workflow': return 'run-all';
-		case 'bot': return 'hubot';
+		case 'bot': return studioBotIcon;
 		case 'kanban': return 'layout';
 		default: return undefined;
 	}

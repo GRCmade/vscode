@@ -183,7 +183,7 @@
 .monaco-workbench .studio-steam-tab[data-icon="database"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-variableForeground); }
 .monaco-workbench .studio-steam-tab[data-icon="book"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-classForeground); }
 .monaco-workbench .studio-steam-tab[data-icon="package"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-packageForeground); }
-.monaco-workbench .studio-steam-tab[data-icon="hubot"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-methodForeground); }
+.monaco-workbench .studio-steam-tab[data-icon="steamharness-bot"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-methodForeground); }
 .monaco-workbench .studio-steam-tab[data-icon="versions"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-enumForeground); }
 .monaco-workbench .studio-steam-tab[data-icon="history"] .studio-steam-tab-select > .codicon { color: var(--vscode-symbolIcon-eventForeground); }
 .monaco-workbench .studio-steam-tab[data-icon="globe"] .studio-steam-tab-select > .codicon { color: var(--vscode-textLink-foreground); }

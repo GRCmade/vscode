@@ -9,6 +9,7 @@ import { IAction, Separator, toAction } from '../../base/common/actions.js';
 import { Disposable } from '../../base/common/lifecycle.js';
 import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
 import type { IHoverService } from '../../platform/hover/browser/hover.js';
+import { studioBotIcon } from '../common/studioProjectIcons.js';
 import { projectDetails } from './studioProjectDetails.js';
 import { projectUsageKey, StudioProjectUsage, type ProjectUsageBridge } from './studioProjectUsage.js';
 import { artwork, edition, LaunchpadProject, openProjectLabel, projectMark, typeLabel } from './studioLaunchpadCards.js';
@@ -277,7 +278,7 @@ export class LaunchpadLibrary extends Disposable {
 				const focused = active instanceof HTMLElement && controls.contains(active) ? active.dataset.key : undefined;
 				const buttons = items.map(item => {
 					const key = `action:${project.uri}:${item.id}`;
-					const action = button(item.label, item.icon ?? defaultIcon, () => {
+					const action = button(item.label, item.id === 'create-folder-bot' ? studioBotIcon : item.icon ?? defaultIcon, () => {
 						if (this.runningActions.has(key)) { return; }
 						this.runningActions.add(key);
 						action.disabled = true;
@@ -401,7 +402,7 @@ export class LaunchpadLibrary extends Disposable {
 				actions.unshift(run);
 			}
 			const secondaryActions = element('div', 'lp-detail-secondary');
-			const bot = this.detailActionGroup(selected, t('Bot instances', 'Bot 分身'), 'hubot');
+			const bot = this.detailActionGroup(selected, t('Bot instances', 'Bot 分身'), studioBotIcon);
 			const im = this.detailActionGroup(selected, t('IM integration', 'IM 集成'), 'comment-discussion');
 			secondaryActions.append(bot.element, im.element);
 			// Local actions resolve independently of IM. Update each group only when its actions change.

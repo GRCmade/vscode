@@ -3,6 +3,16 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { createCSSRule } from '../../base/browser/domStylesheets.js';
+import { studioBotIcon, studioProjectGlyphMask } from '../common/studioProjectIcons.js';
+
+const botGlyph = studioProjectGlyphMask('bot');
+if (botGlyph) {
+	// ThemeIcon, buttons and menus share the project-card glyph, tinted by their foreground.
+	createCSSRule(`.codicon.codicon-${studioBotIcon}::before`,
+		`content: ''; display: inline-block; width: 1em; height: 1em; vertical-align: top; background: currentColor; mask: url("${botGlyph}") center / contain no-repeat;`);
+}
+
 export type StudioLabel = (en: string, zh: string) => string;
 
 export function element<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] {

@@ -20,7 +20,9 @@ import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
 import { IStudioReleaseProject } from '../../../platform/window/common/studioReleaseProject.js';
 import type { IStudioProjectEntry } from '../../../platform/window/common/studioProjectWindow.js';
 import { IStorageService, StorageScope } from '../../../platform/storage/common/storage.js';
+import { studioBotIcon } from '../../common/studioProjectIcons.js';
 import { studioLocaleStrings } from '../../services/localization/common/studioLocaleStrings.js';
+import { icon as studioIcon } from '../studioUiElements.js';
 
 /** Space reserved by the embedded project for the retained native workbench controls. */
 export const studioWindowChrome = { active: false, projectUri: undefined as string | undefined, height: 52, left: 0, right: 0, revision: 0 };
@@ -32,7 +34,7 @@ export const studioSteamToolDefinitions = [
 	{ id: 'settings', icon: 'settings-gear', command: 'studio.openSettings' },
 	{ id: 'login', icon: 'sign-in', command: 'studio.openLogin' },
 	{ id: 'info', icon: 'package', view: 'studio.projectInfo' },
-	{ id: 'assistant', icon: 'hubot', view: 'studio.developerAssistant' },
+	{ id: 'assistant', icon: studioBotIcon, view: 'studio.developerAssistant' },
 	{ id: 'versions', icon: 'versions', view: 'studio.versions' },
 	{ id: 'trace', icon: 'history', view: 'studio.trace' },
 	{ id: 'terminal', icon: 'terminal', view: 'terminal' },
@@ -354,7 +356,7 @@ export class StudioSteamTabs extends Disposable {
 			const button = append(item, $('button.studio-steam-tab-select', { type: 'button', role: 'tab', 'aria-selected': String(tab.id === active), title: tab.label })) as HTMLButtonElement;
 			button.tabIndex = tab.id === (active ?? tabs[0]?.id) ? 0 : -1;
 			const icon = getIconRegistry().getIcon(`${tab.icon}-compact`)?.id ?? tab.icon;
-			append(button, $(`span.codicon.codicon-${icon}`, { 'aria-hidden': 'true' }));
+			append(button, studioIcon(icon));
 			append(button, $('span.studio-steam-tab-label', undefined, tab.label));
 			const closeLabel = (labels.closeTab ?? 'Close {0}').replace('{0}', tab.label);
 			const close = append(item, $('button.studio-steam-tab-close.codicon.codicon-close-compact', { type: 'button', 'aria-label': closeLabel, title: closeLabel })) as HTMLButtonElement;
@@ -403,7 +405,7 @@ export class StudioSteamTools extends Disposable {
 		const grid = append(content, $('.studio-steam-tools-grid'));
 		for (const { id, icon } of studioSteamToolDefinitions.filter(tool => isStudioSteamToolAvailable(tool.id))) {
 			const button = append(grid, $('button.studio-steam-tool', { type: 'button', 'data-tool': id, title: labels[`${id}Hint`] ?? '' }));
-			append(button, $(`span.codicon.codicon-${icon}`, { 'aria-hidden': 'true' }));
+			append(button, studioIcon(icon));
 			append(button, $('span.studio-steam-tool-label', undefined, labels[id] ?? id));
 			append(button, $('span.studio-steam-tool-hint', undefined, labels[`${id}Hint`] ?? ''));
 			this.buttons.add(addDisposableListener(button, 'click', () => {

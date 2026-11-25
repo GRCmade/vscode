@@ -12,6 +12,7 @@ import { IClipboardService } from '../../../../platform/clipboard/common/clipboa
 import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
+import { IStorageService } from '../../../../platform/storage/common/storage.js';
 import { projectDetails, type StudioProjectDetails } from '../../studioProjectDetails.js';
 import { projectUsageBridge, projectUsageKey, StudioProjectUsage, type ProjectUsageBridge } from '../../studioProjectUsage.js';
 import './media/studioStart.css';
@@ -109,9 +110,10 @@ export class StudioStartView extends Disposable {
 		@IStudioStartService private readonly service: IStudioStartService,
 		@ICommandService private readonly commands: ICommandService,
 		@IClipboardService clipboard: IClipboardService,
+		@IStorageService storage: IStorageService,
 	) {
 		super();
-		this.usageBridge = projectUsageBridge(commands, clipboard);
+		this.usageBridge = projectUsageBridge(commands, clipboard, storage);
 		this.element = append(container, $('main.studio-start.loading'));
 		this.element.tabIndex = -1;
 		this.element.setAttribute('aria-label', 'SteamHarness');

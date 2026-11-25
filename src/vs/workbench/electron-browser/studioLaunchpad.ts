@@ -29,6 +29,7 @@ import { IHoverService } from '../../platform/hover/browser/hover.js';
 import { FocusMode, INativeHostService } from '../../platform/native/common/native.js';
 import { INotificationService } from '../../platform/notification/common/notification.js';
 import { IOpenerService } from '../../platform/opener/common/opener.js';
+import { IStorageService } from '../../platform/storage/common/storage.js';
 import { IUserDataProfilesService } from '../../platform/userDataProfile/common/userDataProfile.js';
 import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../platform/workspace/common/workspace.js';
 import { parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
@@ -112,6 +113,7 @@ export class StudioLaunchpad extends Disposable {
 		@IHoverService hoverService: IHoverService,
 		@IClipboardService clipboard: IClipboardService,
 		@IUserDataProfilesService private readonly profiles: IUserDataProfilesService,
+		@IStorageService storage: IStorageService,
 	) {
 		super();
 		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener, native, contextMenu,
@@ -142,7 +144,7 @@ export class StudioLaunchpad extends Disposable {
 			remove: project => run(this.removeProject(project)),
 			reveal: project => run(native.showItemInFolder(project.managed ? project.path : URI.parse(project.uri).fsPath)),
 			copyPath: project => run(clipboard.writeText(project.path)), contextMenu, hoverService,
-			usage: projectUsageBridge(commands, clipboard),
+			usage: projectUsageBridge(commands, clipboard, storage),
 			openProjectSchedules: (project, entryId) => run(commands.executeCommand('studio.internalOpenProjectSchedules', { uri: project.uri, entryId })),
 			settings: () => run(commands.executeCommand('studio.openSettings', { section: 'account', target: 'user' })),
 			cover: project => this.cover(project),

@@ -145,6 +145,7 @@ export class StudioLaunchpad extends Disposable {
 			project: (project, entryId) => run(this.openProject(project, entryId)),
 			openBotArtifacts: (project, entryId) => run(this.openProject(project, entryId, undefined, true)),
 			openBotMemory: (project, entryId) => run(this.openProject(project, entryId, undefined, undefined, true)),
+			readBotCredentials: (project, entryId) => commands.executeCommand('studio.internalReadBotCredentialList', { uri: project.uri, projectId: project.projectId, entryId }),
 			remove: project => run(this.removeProject(project)),
 			reveal: project => run(native.showItemInFolder(project.managed ? project.path : URI.parse(project.uri).fsPath)),
 			copyPath: project => run(clipboard.writeText(project.path)), contextMenu, hoverService,

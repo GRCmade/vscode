@@ -21,6 +21,7 @@ export interface LibraryProjectCategory {
 	projectUris: string[];
 }
 export interface LibraryDetailAction { id: string; label: string; icon?: string }
+export type LibraryBotCredentialList = { status: 'ok'; rows: { name: string; type: string }[] } | { status: 'untrusted' | 'unavailable' };
 type ActivityProject = Pick<LaunchpadProject, 'uri' | 'projectId' | 'distribution' | 'managed'>;
 type DetailActionSource = 'local' | 'account';
 interface DetailActionState { key: string; items: LibraryDetailAction[]; loading?: boolean }
@@ -32,6 +33,7 @@ export interface LibraryActions {
 	runProject?(p: LaunchpadProject, entryId?: string): void;
 	openBotArtifacts?(p: LaunchpadProject, entryId?: string): void;
 	openBotMemory?(p: LaunchpadProject, entryId?: string): void;
+	readBotCredentials?(p: LaunchpadProject, entryId?: string): Promise<LibraryBotCredentialList | undefined>;
 	remove(p: LaunchpadProject): void;
 	reveal?(p: LaunchpadProject): void;
 	copyPath(p: LaunchpadProject): void;
@@ -76,6 +78,7 @@ export class LaunchpadLibrary extends Disposable {
 	private readingActivity = false;
 	private visible = false;
 	private usage?: { key: string; view: StudioProjectUsage };
+	private credentialList?: { projectKey: string; entryId?: string; panel: HTMLElement };
 
 	constructor(private readonly t: LaunchpadLabel, private readonly actions: LibraryActions) {
 		super();
@@ -405,6 +408,7 @@ export class LaunchpadLibrary extends Disposable {
 		const heading = (title: string, count?: number) => { const h = element('header', 'lp-shelf-head'); h.append(element('h2', '', title)); if (count !== undefined) { h.append(element('small', '', String(count))); } return h; };
 		this.renderIndex(indexRows, builtins, query ? this.searchCollapsed : this.collapsed);
 		const selected = this.selected && this.projects.get(this.selected);
+		if (this.credentialList && (!selected || selected.missing || this.credentialList.projectKey !== this.credentialProjectKey(selected))) { this.credentialList = undefined; }
 		this.toolbar.hidden = !!selected;
 		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };
 		this.updateIndexStatuses();
@@ -432,7 +436,7 @@ export class LaunchpadLibrary extends Disposable {
 			secondaryActions.append(bot.element, im.element);
 			const entryBots = (selected.entries ?? []).filter(entry => entry.type === 'bot');
 			const botEntries = entryBots.length ? entryBots : selected.projectType === 'bot' ? [undefined] : [];
-			const canManageBot = (this.actions.openBotArtifacts || this.actions.openBotMemory) && !selected.missing && selected.uri.startsWith('file:') && botEntries.length > 0;
+			const canManageBot = (this.actions.openBotArtifacts || this.actions.openBotMemory || this.actions.readBotCredentials) && !selected.missing && selected.uri.startsWith('file:') && botEntries.length > 0;
 			const label = t('Bot management', 'Bot 管理');
 			const management = canManageBot && selected.managed ? this.detailActionGroup(selected, label, 'settings-gear', true) : undefined;
 			if (canManageBot) {
@@ -444,12 +448,20 @@ export class LaunchpadLibrary extends Disposable {
 						const open = button(botEntries.length > 1 ? `${title} · ${entry?.name ?? entry?.entryId}` : title, icon, action, 'studio-project-action lp-outline');
 						open.dataset.key = `${key}:${selected.uri}:${entry?.entryId ?? ''}`;
 						controls.append(open);
+						return open;
 					};
 					if (this.actions.openBotArtifacts) { add('bot-artifacts', t('Artifact library', '产物库'), 'archive', () => this.actions.openBotArtifacts?.(selected, entry?.entryId)); }
 					if (this.actions.openBotMemory) { add('bot-memory', t('Memory management', '记忆管理'), 'database', () => this.actions.openBotMemory?.(selected, entry?.entryId)); }
+					if (this.actions.readBotCredentials) {
+						const open = add('bot-credentials', t('Credential management', '凭据管理'), 'key', () => this.toggleBotCredentials(selected, entry?.entryId));
+						const list = this.credentialList;
+						open.setAttribute('aria-expanded', String(!!list && list.entryId === entry?.entryId));
+						if (list && list.entryId === entry?.entryId) { open.setAttribute('aria-controls', list.panel.id); }
+					}
 				}
 				if (!management) { group.append(element('h2', '', label)); }
 				group.append(controls);
+				if (this.credentialList) { group.append(this.credentialList.panel); }
 				secondaryActions.append(group);
 			}
 			// Local actions resolve independently of IM. Update each group only when its actions change.
@@ -537,8 +549,57 @@ export class LaunchpadLibrary extends Disposable {
 		return this.usage?.view;
 	}
 
+	private credentialProjectKey(project: LaunchpadProject): string {
+		return JSON.stringify([project.uri, project.projectId, project.distribution, project.managed, project.builtin, project.projectType,
+			project.entries?.filter(entry => entry.type === 'bot').map(entry => entry.entryId)]);
+	}
+
+	private toggleBotCredentials(project: LaunchpadProject, entryId?: string): void {
+		const read = this.actions.readBotCredentials;
+		if (!read) { return; }
+		const projectKey = this.credentialProjectKey(project);
+		if (this.credentialList?.projectKey === projectKey && this.credentialList.entryId === entryId) {
+			this.credentialList = undefined;
+			this.render();
+			return;
+		}
+		const t = this.t;
+		const panel = element('div', 'lp-bot-credential-list');
+		panel.id = 'studio-bot-credential-list';
+		panel.setAttribute('role', 'region');
+		panel.setAttribute('aria-label', t('Credential management', '凭据管理'));
+		const message = element('p', 'lp-credential-status', t('Loading credentials…', '正在加载凭据…'));
+		message.setAttribute('role', 'status');
+		panel.append(message);
+		const current = this.credentialList = { projectKey, entryId, panel };
+		this.render();
+		void Promise.resolve().then(() => read(project, entryId)).catch(() => undefined).then(result => {
+			if (this.credentialList !== current || this._store.isDisposed) { return; }
+			if (result?.status !== 'ok' || !result.rows.length) {
+				message.textContent = result?.status === 'ok' ? t('No saved credentials.', '暂无已保存的凭据。')
+					: result?.status === 'untrusted' ? t('The project folder is not trusted.', '项目文件夹尚未受信任。')
+						: t('Credential list unavailable.', '无法读取凭据列表。');
+				return;
+			}
+			const table = element('table');
+			const head = element('thead'), titles = element('tr'), body = element('tbody');
+			for (const label of [t('Alias', '别名'), t('Type', '类型')]) {
+				const heading = element('th', '', label); heading.scope = 'col'; titles.append(heading);
+			}
+			head.append(titles);
+			for (const { name, type } of result.rows) {
+				const row = element('tr');
+				row.append(element('td', '', name), element('td', '', type));
+				body.append(row);
+			}
+			table.append(head, body);
+			panel.replaceChildren(table);
+		});
+	}
+
 	override dispose(): void {
 		this.projectUsage();
+		this.credentialList = undefined;
 		super.dispose();
 	}
 }

@@ -254,12 +254,10 @@ export function fromMarketplace(serviceUrl: string, { name: extensionName, versi
 		.pipe(packageJsonFilter.restore);
 }
 
-export function fromVsix(vsixPath: string, { name: extensionName, version, sha256, metadata }: IExtensionDefinition): Stream {
+export function fromVsix(vsixPath: string, { name: extensionName, version, sha256, metadata, preserveVsixContents }: IExtensionDefinition): Stream {
 	fancyLog('Using local VSIX for extension:', ansiColors.yellow(`${extensionName}@${version}`), '...');
 
-	const packageJsonFilter = filter('package.json', { restore: true });
-
-	return gulp.src(vsixPath)
+	const input = gulp.src(vsixPath)
 		.pipe(buffer())
 		.pipe(es.mapSync((f: File) => {
 			const hash = crypto.createHash('sha256');
@@ -272,7 +270,14 @@ export function fromVsix(vsixPath: string, { name: extensionName, version, sha25
 		}))
 		.pipe(vinylZip.src())
 		.pipe(filter('extension/**'))
-		.pipe(rename(p => p.dirname = p.dirname!.replace(/^extension\/?/, '')))
+		.pipe(rename(p => p.dirname = p.dirname!.replace(/^extension\/?/, '')));
+
+	if (preserveVsixContents) {
+		return input;
+	}
+
+	const packageJsonFilter = filter('package.json', { restore: true });
+	return input
 		.pipe(packageJsonFilter)
 		.pipe(buffer())
 		.pipe(jsonEditor({ __metadata: metadata }))
@@ -489,30 +494,25 @@ export function packageCopilotExtensionStream(): Stream {
 	).pipe(util2.setExecutableBit(['**/*.sh']));
 }
 
+export function packageMarketplaceExtensionStream(extension: IExtensionDefinition): NodeJS.ReadWriteStream {
+	const input = getExtensionStream(extension).pipe(rename(p => p.dirname = `extensions/${p.dirname}`));
+	const resources = extension.preserveVsixContents
+		? input
+		: minifyExtensionResources(updateExtensionPackageJSON(input, data => {
+			delete data.scripts;
+			delete data.dependencies;
+			delete data.devDependencies;
+			return data;
+		}));
+	return resources.pipe(util2.setExecutableBit(['**/*.sh']));
+}
+
 export function packageMarketplaceExtensionsStream(forWeb: boolean): Stream {
 	const marketplaceExtensionsDescriptions = [
 		...builtInExtensions.filter(({ name }) => (forWeb ? !marketplaceWebExtensionsExclude.has(name) : true)),
 		...(forWeb ? webBuiltInExtensions : [])
 	];
-	const marketplaceExtensionsStream = minifyExtensionResources(
-		es.merge(
-			...marketplaceExtensionsDescriptions
-				.map(extension => {
-					const src = getExtensionStream(extension).pipe(rename(p => p.dirname = `extensions/${p.dirname}`));
-					return updateExtensionPackageJSON(src, (data: any) => {
-						delete data.scripts;
-						delete data.dependencies;
-						delete data.devDependencies;
-						return data;
-					});
-				})
-		)
-	);
-
-	return (
-		marketplaceExtensionsStream
-			.pipe(util2.setExecutableBit(['**/*.sh']))
-	);
+	return es.merge(...marketplaceExtensionsDescriptions.map(packageMarketplaceExtensionStream));
 }
 
 export interface IScannedBuiltinExtension {

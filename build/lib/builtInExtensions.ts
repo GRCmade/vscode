@@ -23,6 +23,8 @@ export interface IExtensionDefinition {
 	repo: string;
 	platforms?: string[];
 	vsix?: string;
+	/** Preserve the contents of a pinned local VSIX, e.g. when the extension verifies its own files. */
+	preserveVsixContents?: boolean;
 	/**
 	 * Per-target checksums for a platform-specific extension published to a GitHub release.
 	 * Keyed by marketplace target platform (e.g. `win32-x64`, `linux-armhf`, `alpine-x64`).
@@ -83,7 +85,7 @@ function getExtensionDownloadStream(extension: IExtensionDefinition) {
 	let input: Stream;
 
 	if (extension.vsix) {
-		input = ext.fromVsix(path.join(root, extension.vsix), extension);
+		input = ext.fromVsix(path.resolve(root, extension.vsix), extension);
 	} else if (extension.platformSpecific) {
 		// A platform-specific extension publishes its VSIX assets on a GitHub release using a
 		// specific asset naming convention, so it is always downloaded from GitHub and never falls
@@ -125,8 +127,13 @@ function resolvePlatformSpecificAsset(extension: IExtensionDefinition): { assetN
 }
 
 export function getExtensionStream(extension: IExtensionDefinition) {
+	if (extension.preserveVsixContents && !extension.vsix) {
+		throw new Error(`Built-in extension '${extension.name}' requires a local VSIX to preserve its contents.`);
+	}
+
 	// if the extension exists on disk, use those files instead of downloading anew
-	if (isUpToDate(extension)) {
+	// The extracted cache is keyed only by version and may contain previously rewritten files.
+	if (!extension.preserveVsixContents && isUpToDate(extension)) {
 		log('[extensions]', `${extension.name}@${extension.version} up to date`, ansiColors.green('✔︎'));
 		return vfs.src(['**'], { cwd: getExtensionPath(extension), dot: true })
 			.pipe(rename(p => p.dirname = `${extension.name}/${p.dirname}`));

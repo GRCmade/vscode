@@ -212,6 +212,7 @@ export interface IProductConfiguration {
 	readonly serverDocumentationUrl?: string;
 	readonly releaseNotesUrl?: string;
 	readonly studioReleaseNotesBaseUrl?: string;
+	readonly studioVersion?: string;
 	readonly keyboardShortcutsUrlMac?: string;
 	readonly keyboardShortcutsUrlLinux?: string;
 	readonly keyboardShortcutsUrlWin?: string;

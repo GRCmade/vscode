@@ -236,7 +236,7 @@ export class Win32UpdateService extends AbstractUpdateService implements IRelaun
 		const cts = this.checkCancellationTokenSource = new CancellationTokenSource();
 		const token = cts.token;
 
-		const headers = getUpdateRequestHeaders(this.productService.version);
+		const headers = getUpdateRequestHeaders(this.productService.studioVersion ?? this.productService.version);
 		const promise = this.requestService.request({ url, headers, callSite: 'updateService.win32.checkForUpdates' }, token)
 			.then<IUpdate | null>(asJson)
 			.then(update => {
@@ -368,6 +368,12 @@ export class Win32UpdateService extends AbstractUpdateService implements IRelaun
 	}
 
 	protected override async doDownloadUpdate(state: AvailableForDownload): Promise<void> {
+		if (this.productService.studioVersion && this.getUpdateType() === UpdateType.Setup) {
+			// A click on the metered-connection prompt permits the native download.
+			this.setState(State.Idle(UpdateType.Setup));
+			await this.checkForUpdates(true);
+			return;
+		}
 		if (state.update.url) {
 			this.nativeHostMainService.openExternal(undefined, state.update.url);
 		}

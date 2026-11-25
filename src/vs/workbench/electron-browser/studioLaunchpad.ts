@@ -29,7 +29,9 @@ import { IHoverService } from '../../platform/hover/browser/hover.js';
 import { FocusMode, INativeHostService } from '../../platform/native/common/native.js';
 import { INotificationService } from '../../platform/notification/common/notification.js';
 import { IOpenerService } from '../../platform/opener/common/opener.js';
+import { IProductService } from '../../platform/product/common/productService.js';
 import { IStorageService } from '../../platform/storage/common/storage.js';
+import { IUpdateService } from '../../platform/update/common/update.js';
 import { IUserDataProfilesService } from '../../platform/userDataProfile/common/userDataProfile.js';
 import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../platform/workspace/common/workspace.js';
 import { parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
@@ -114,6 +116,8 @@ export class StudioLaunchpad extends Disposable {
 		@IClipboardService clipboard: IClipboardService,
 		@IUserDataProfilesService private readonly profiles: IUserDataProfilesService,
 		@IStorageService storage: IStorageService,
+		@IProductService product: IProductService,
+		@IUpdateService updates: IUpdateService,
 	) {
 		super();
 		this.chat = this._register(new StudioChatWindow(auxiliaryWindows, webviews, opener, native, contextMenu,
@@ -201,7 +205,7 @@ export class StudioLaunchpad extends Disposable {
 			},
 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
 			openStore: () => run(commands.executeCommand('studio.openStore')),
-		}));
+		}, { version: product.studioVersion ?? product.version, updater: product.updateUrl ? updates : undefined }));
 		const zh = this.language.startsWith('zh');
 		this.settings = this._register(new StudioLaunchpadSettings(layout.mainContainer, (en, cn) => zh ? cn : en, () => this.showHome(), () => {
 			this.view.closePicker();

@@ -394,7 +394,7 @@ export abstract class AbstractUpdateService extends Disposable implements IUpdat
 		}
 
 		const to: ILastKnownVersion = {
-			version: this.productService.version,
+			version: this.productService.studioVersion ?? this.productService.version,
 			commit: this.productService.commit,
 			timestamp: Date.now(),
 		};
@@ -663,7 +663,7 @@ export abstract class AbstractUpdateService extends Disposable implements IUpdat
 			return undefined;
 		}
 
-		const headers = getUpdateRequestHeaders(this.productService.version);
+		const headers = getUpdateRequestHeaders(this.productService.studioVersion ?? this.productService.version);
 		this.logService.trace('update#isLatestVersion() - checking update server', { url, headers });
 
 		try {

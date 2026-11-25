@@ -243,7 +243,15 @@
 .lp-profile-empty > .codicon { font-size: 28px; }
 .lp-empty { padding: 30px 0; color: var(--lp-muted); display: flex; align-items: center; gap: 8px; }
 .lp-statusbar { padding-inline: 12px; border-top: 1px solid var(--lp-line); background: var(--lp-chrome); }
-.lp-statusbar > :first-child { flex: none; }
+.lp-statusbar { container-type: inline-size; }
+.lp-statusbar > .lp-status-open { flex: none; }
+.lp-release { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--lp-muted); font-size: 12px; white-space: nowrap; }
+.lp-release.lp-managed-release { flex: 0 1 264px; }
+.lp-release-version { flex: none; font-variant-numeric: tabular-nums; }
+.studio-launchpad .lp-update-action { flex: none; color: var(--lp-accent); }
+.lp-update-status { overflow: hidden; text-overflow: ellipsis; }
+.lp-update-progress { flex: none; inline-size: 44px; block-size: 6px; accent-color: var(--lp-accent); }
+@container (max-width: 360px) { .lp-status-open > span:last-child { display: none; } }
 .studio-launchpad .lp-latest-notice { margin-inline-start: auto; min-width: 0; overflow: hidden; max-width: min(65%,520px); color: var(--lp-muted); }
 .lp-latest-notice > .codicon { flex: none; }
 .lp-latest-notice > span:last-child { min-width: 0; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }

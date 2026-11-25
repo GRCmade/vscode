@@ -67,7 +67,7 @@ export class ShowReleaseNotesAction extends Action2 {
 		const instantiationService = accessor.get(IInstantiationService);
 		const productService = accessor.get(IProductService);
 		if (productService.studioReleaseNotesBaseUrl) {
-			await openStudioReleaseNotes(accessor, productService.version);
+			await openStudioReleaseNotes(accessor, productService.studioVersion ?? productService.version);
 			return;
 		}
 		const openerService = accessor.get(IOpenerService);

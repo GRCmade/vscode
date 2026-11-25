@@ -169,10 +169,10 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 		const sources = es.merge(src, extensions)
 			.pipe(filter(sourceFilterPattern, { dot: true }));
 
-		let version = packageJson.version;
-		const quality = (product as { quality?: string }).quality;
+		const { quality, studioVersion } = product as { quality?: string; studioVersion?: string };
+		let version = studioVersion ?? packageJson.version;
 
-		if (quality && quality !== 'stable') {
+		if (!studioVersion && quality && quality !== 'stable') {
 			version += '-' + quality;
 		}
 
@@ -198,7 +198,8 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 				json.nlsMetadataHash = computeNLSMetadataHash(path.join(import.meta.dirname, '..', out), commit);
 				json.date = readISODate(out);
 				json.checksums = checksums;
-				json.version = version;
+				// Studio's native package has its own version; extension compatibility uses the kernel version.
+				json.version = studioVersion ? packageJson.version : version;
 				json.copilotVersions = {
 					runtime: copilotRuntimeVersion,
 					sdk: getLockedPackageVersion('@github/copilot-sdk'),

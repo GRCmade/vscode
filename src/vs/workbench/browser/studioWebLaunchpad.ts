@@ -20,6 +20,7 @@ import { IHoverService } from '../../platform/hover/browser/hover.js';
 import { ILabelService } from '../../platform/label/common/label.js';
 import { INotificationService } from '../../platform/notification/common/notification.js';
 import { IOpenerService } from '../../platform/opener/common/opener.js';
+import { IProductService } from '../../platform/product/common/productService.js';
 import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
 import { studioWebImTarget } from '../common/studioWebImRoute.js';
 import { IWebviewService } from '../contrib/webview/browser/webview.js';
@@ -103,6 +104,7 @@ export class StudioWebLaunchpad extends Disposable {
 		@IHoverService hoverService: IHoverService,
 		@IWebviewService webviews: IWebviewService,
 		@IWebviewViewService webviewViews: IWebviewViewService,
+		@IProductService product: IProductService,
 	) {
 		super();
 		const run = (operation: Promise<unknown>) => { void operation.catch(error => notifications.error(error)); };
@@ -157,7 +159,7 @@ export class StudioWebLaunchpad extends Disposable {
 			},
 			storeImage: async src => src.startsWith('http:') ? commands.executeCommand<string | undefined>('studio.readLocalStoreImage', src) : src,
 			getListing: (id, platform) => run(commands.executeCommand(platform ? 'studio.getStoreListing' : 'studio.createExample', id)),
-		}));
+		}, { version: product.studioVersion ?? product.version }));
 
 		const root = layout.mainContainer;
 		root.append(this.view.element);

@@ -11,6 +11,7 @@ import { LaunchpadLibrary, LibraryActions, LibraryProjectCategory } from './stud
 import { button, element, icon, LaunchpadLabel, LaunchpadOption, LaunchpadPicker } from './studioLaunchpadPicker.js';
 import { avatar, InboxAction, LaunchpadAccount, LaunchpadInbox, LaunchpadProfile, ProfileActions, StudioNotice } from './studioLaunchpadProfile.js';
 import { LaunchpadStore, StoreActions } from './studioLaunchpadStore.js';
+import { StudioLaunchpadUpdate, type LaunchpadVersion } from './studioLaunchpadUpdate.js';
 
 export type { LaunchpadProject, LaunchpadAccount, LaunchpadInbox };
 export interface LaunchpadState {
@@ -50,7 +51,7 @@ export class StudioLaunchpadView extends Disposable {
 	private active: Tab = 'library';
 	private state?: LaunchpadState;
 
-	constructor(language: string, private readonly actions: LaunchpadActions) {
+	constructor(language: string, private readonly actions: LaunchpadActions, release?: LaunchpadVersion) {
 		super();
 		const zh = language.toLowerCase().startsWith('zh'), t = this.t = (en, cn) => zh ? cn : en;
 		this.picker = new LaunchpadPicker(t);
@@ -102,13 +103,16 @@ export class StudioLaunchpadView extends Disposable {
 			if (!page) { continue; }
 			page.id = `lp-page-${id}`; page.setAttribute('role', 'tabpanel'); page.setAttribute('aria-labelledby', `lp-tab-${id}`); this.panels.append(page);
 		}
-		const foot = element('footer', 'lp-statusbar'); const open = button(t('Open project…', '打开项目…'), 'folder-opened', () => this.openOptions(open));
+		const foot = element('footer', 'lp-statusbar'); const openLabel = t('Open project…', '打开项目…');
+		const open = button('', 'folder-opened', () => this.openOptions(open), 'lp-status-open');
+		open.append(element('span', '', openLabel)); open.title = openLabel; open.setAttribute('aria-label', openLabel);
 		this.latestNotice = button('', 'bell', () => {
 			const notice = this.state?.inbox?.latestNotice;
 			if (notice?.conversation) { actions.profile?.inbox(notice.conversation, notice.title); }
 		}, 'lp-latest-notice');
 		this.latestNotice.hidden = true;
 		this.latestNotice.append(this.noticeContent);
+		if (release) { foot.append(this._register(new StudioLaunchpadUpdate(t, release)).element); }
 		foot.append(open, this.latestNotice); this.drop.append(icon('folder-opened'), t('Drop folders to import projects', '松开以导入项目文件夹')); this.drop.hidden = true;
 		this.element.append(chrome, navigation, this.panels, foot, this.drop, this.picker.dialog); this.select(this.active);
 	}

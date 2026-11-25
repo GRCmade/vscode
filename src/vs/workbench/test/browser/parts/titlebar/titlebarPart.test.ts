@@ -8,16 +8,26 @@ import { CodeWindow, mainWindow } from '../../../../../base/browser/window.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { mock } from '../../../../../base/test/common/mock.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
+import { IMenuService } from '../../../../../platform/actions/common/actions.js';
+import { MenuService } from '../../../../../platform/actions/common/menuService.js';
+import { ICommandService } from '../../../../../platform/commands/common/commands.js';
+import { TestConfigurationService } from '../../../../../platform/configuration/test/common/testConfigurationService.js';
 import { IContextMenuService } from '../../../../../platform/contextview/browser/contextView.js';
+import { ContextKeyService } from '../../../../../platform/contextkey/browser/contextKeyService.js';
+import { IContextKeyService } from '../../../../../platform/contextkey/common/contextkey.js';
 import { IThemeService } from '../../../../../platform/theme/common/themeService.js';
 import { TestColorTheme, TestThemeService } from '../../../../../platform/theme/test/common/testThemeService.js';
+import '../../../../browser/actions/layoutActions.js';
+import { DEFAULT_EDITOR_PART_OPTIONS } from '../../../../browser/parts/editor/editor.js';
 import { BrowserTitlebarPart } from '../../../../browser/parts/titlebar/titlebarPart.js';
 import { WindowTitle } from '../../../../browser/parts/titlebar/windowTitle.js';
+import { AuxiliaryBarVisibleContext } from '../../../../common/contextkeys.js';
 import { MODERN_UI_INACTIVE_SHELL_BACKGROUND, MODERN_UI_SHELL_BACKGROUND, TITLE_BAR_ACTIVE_BACKGROUND, TITLE_BAR_INACTIVE_BACKGROUND } from '../../../../common/theme.js';
+import { CommandService } from '../../../../services/commands/common/commandService.js';
 import { IEditorGroupsContainer } from '../../../../services/editor/common/editorGroupsService.js';
 import { IHostService } from '../../../../services/host/browser/host.js';
 import { IWorkbenchLayoutService, Parts } from '../../../../services/layout/browser/layoutService.js';
-import { TestContextMenuService, TestHostService, TestLayoutService, workbenchInstantiationService } from '../../workbenchTestServices.js';
+import { TestContextMenuService, TestEditorGroupsService, TestHostService, TestLayoutService, workbenchInstantiationService } from '../../workbenchTestServices.js';
 
 suite('TitlebarPart colors', () => {
 	const store = ensureNoDisposablesAreLeakedInTestSuite();
@@ -163,6 +173,93 @@ suite('Workbench - Titlebar Part', () => {
 			bothHidden: [true, true],
 			bothVisible: [false, false],
 		});
+	});
+});
+
+suite('Workbench - Compact titlebar layout controls', () => {
+	const store = ensureNoDisposablesAreLeakedInTestSuite();
+
+	function createTitlebar(type: 'both' | 'menu', enabled = true) {
+		const workbench = document.createElement('div');
+		workbench.className = 'monaco-workbench mac';
+		const titlebar = document.createElement('div');
+		titlebar.className = 'part titlebar';
+		titlebar.style.height = '44px';
+		workbench.appendChild(titlebar);
+		document.body.appendChild(workbench);
+		store.add({ dispose: () => workbench.remove() });
+
+		const instantiationService = workbenchInstantiationService({
+			configurationService: () => new TestConfigurationService({
+				window: { commandCenter: false, menuBarVisibility: 'compact' },
+				workbench: { sideBar: { location: 'left' }, layoutControl: { type, enabled } },
+			}),
+		}, store);
+		const contextKeys = store.add(instantiationService.createInstance(ContextKeyService));
+		instantiationService.stub(IContextKeyService, contextKeys);
+		const commands = store.add(instantiationService.createInstance(CommandService));
+		instantiationService.stub(ICommandService, commands);
+		instantiationService.stub(IMenuService, store.add(instantiationService.createInstance(MenuService)));
+		instantiationService.stubInstance(WindowTitle, { value: 'Project', onDidChange: Event.None, dispose() { } });
+		const visible = AuxiliaryBarVisibleContext.bindTo(contextKeys);
+		instantiationService.stub(IWorkbenchLayoutService, new class extends TestLayoutService {
+			override mainContainer = workbench;
+			override getContainer(): HTMLElement { return workbench; }
+			override toggleSecondarySideBar(): void { visible.set(!visible.get()); }
+		}());
+		const groups = new TestEditorGroupsService();
+		groups.partOptions = DEFAULT_EDITOR_PART_OPTIONS;
+		class TestTitlebar extends BrowserTitlebarPart {
+			protected override get hasStudioModeSwitcher(): boolean { return false; }
+		}
+		const part = store.add(instantiationService.createInstance(TestTitlebar, Parts.TITLEBAR_PART, mainWindow, groups));
+		part.create(titlebar);
+		return {
+			titlebar,
+			commands,
+			isSecondarySideBarVisible: () => visible.get(),
+			layout(width: number, fullscreen: boolean) {
+				workbench.classList.toggle('fullscreen', fullscreen);
+				workbench.style.width = `${width}px`;
+				part.layout(width, 44);
+			},
+		};
+	}
+
+	function assertClickable(element: HTMLElement | null): asserts element is HTMLElement {
+		assert.ok(element);
+		const { x, y, width, height } = element.getBoundingClientRect();
+		assert.ok(width > 0 && height > 0);
+		assert.ok(element.contains(document.elementFromPoint(x + width / 2, y + height / 2)));
+	}
+
+	test('keeps the IDE secondary side bar toggle clickable in compact fullscreen', async () => {
+		const fixture = createTitlebar('both');
+		const toggle = () => fixture.titlebar.querySelector<HTMLElement>('.action-toolbar-container [class*="codicon-auxiliarybar-right-"][role="button"]');
+		fixture.layout(1200, false);
+		assertClickable(toggle());
+		fixture.layout(894, true);
+		assert.strictEqual(fixture.titlebar.querySelectorAll('.action-toolbar-container .action-item').length, 1);
+		for (const visible of [true, false]) {
+			const button = toggle();
+			assertClickable(button);
+			const executed = Event.toPromise(fixture.commands.onDidExecuteCommand);
+			button.click();
+			assert.strictEqual((await executed).commandId, 'workbench.action.toggleAuxiliaryBar');
+			assert.strictEqual(fixture.isSecondarySideBarVisible(), visible);
+		}
+		fixture.layout(1200, false);
+		assertClickable(toggle());
+		assert.ok(fixture.titlebar.querySelectorAll('.action-toolbar-container .action-item').length > 1);
+	});
+
+	test('keeps the layout menu in menu-only mode and leaves disabled layout controls hidden', () => {
+		const menu = createTitlebar('menu');
+		menu.layout(894, true);
+		assertClickable(menu.titlebar.querySelector('.action-toolbar-container .codicon-configure-layout-icon'));
+		const disabled = createTitlebar('both', false);
+		disabled.layout(894, true);
+		assert.strictEqual(mainWindow.getComputedStyle(disabled.titlebar.querySelector('.action-toolbar-container')!).display, 'none');
 	});
 });
 

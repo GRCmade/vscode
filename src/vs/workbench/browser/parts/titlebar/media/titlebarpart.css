@@ -561,8 +561,7 @@
 }
 
 .monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar > .titlebar-left > .window-appicon,
-.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar:not(.studio-auxiliary-titlebar) > .titlebar-left > .menubar,
-.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar:not(.studio-auxiliary-titlebar) > .titlebar-right > .action-toolbar-container {
+.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar:not(.studio-auxiliary-titlebar) > .titlebar-left > .menubar {
 	display: none;
 }
 

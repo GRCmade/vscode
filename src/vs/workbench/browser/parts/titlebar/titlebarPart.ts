@@ -25,11 +25,12 @@ import { Emitter, Event } from '../../../../base/common/event.js';
 import { IStorageService, StorageScope } from '../../../../platform/storage/common/storage.js';
 import { Parts, IWorkbenchLayoutService, ActivityBarPosition, LayoutSettings, EditorActionsLocation, EditorTabsMode } from '../../../services/layout/browser/layoutService.js';
 import { createActionViewItem, fillInActionBarActions, MenuEntryActionViewItem } from '../../../../platform/actions/browser/menuEntryActionViewItem.js';
-import { Action2, IMenu, IMenuService, MenuId, MenuItemAction, registerAction2 } from '../../../../platform/actions/common/actions.js';
+import { Action2, IMenu, IMenuService, MenuId, MenuItemAction, registerAction2, SubmenuItemAction } from '../../../../platform/actions/common/actions.js';
 import { IContextKey, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
 import { IHostService } from '../../../services/host/browser/host.js';
 import { WindowTitle } from './windowTitle.js';
 import { CommandCenterControl } from './commandCenterControl.js';
+import { ToggleAuxiliaryBarAction } from '../auxiliarybar/auxiliaryBarActions.js';
 import { StudioModeSwitcher, studioModeState } from '../studioMode.js';
 import { Categories } from '../../../../platform/action/common/actionCommonCategories.js';
 import { HiddenItemStrategy, MenuWorkbenchToolBar, WorkbenchToolBar } from '../../../../platform/actions/browser/toolbar.js';
@@ -803,12 +804,22 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 			}
 
 			if (this.isStudioTitlebarNarrow) {
-				const alwaysOnTop = new Set(['workbench.action.enableWindowAlwaysOnTop', 'workbench.action.disableWindowAlwaysOnTop']);
-				actions.primary.splice(0, actions.primary.length, ...actions.primary.filter(action => this.isAuxiliary && alwaysOnTop.has(action.id)));
+				if (this.isAuxiliary) {
+					const alwaysOnTop = new Set(['workbench.action.enableWindowAlwaysOnTop', 'workbench.action.disableWindowAlwaysOnTop']);
+					actions.primary.splice(0, actions.primary.length, ...actions.primary.filter(action => alwaysOnTop.has(action.id)));
+				} else {
+					// Keep the secondary side bar reachable, including when layout controls are menu-only.
+					const layoutControl = actions.primary.find(action => action.id === ToggleAuxiliaryBarAction.ID)
+						?? actions.secondary.find(action => action instanceof SubmenuItemAction && action.item.submenu === MenuId.LayoutControlMenuSubmenu);
+					actions.primary.splice(0, actions.primary.length, ...(layoutControl ? [layoutControl] : []));
+				}
 				actions.secondary.length = 0;
 			}
 
-			this.actionToolBar.setActions(prepareActions(actions.primary), prepareActions(actions.secondary));
+			const primary = prepareActions(actions.primary);
+			const secondary = prepareActions(actions.secondary);
+			this.actionToolBarElement.classList.toggle('has-no-actions', primary.length === 0 && secondary.length === 0);
+			this.actionToolBar.setActions(primary, secondary);
 		};
 
 		// Create/Update the menus which should be in the title tool bar

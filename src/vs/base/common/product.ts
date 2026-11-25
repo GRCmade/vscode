@@ -263,6 +263,7 @@ export interface IProductConfiguration {
 
 	readonly msftInternalDomains?: string[];
 	readonly linkProtectionTrustedDomains?: readonly string[];
+	readonly workspaceTrustEnabledByDefault?: boolean;
 
 	readonly authClientIdMetadataUrl?: string;
 

@@ -6,6 +6,7 @@
 import './media/workspaceTrustEditor.css';
 import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
 import { Disposable, MutableDisposable } from '../../../../base/common/lifecycle.js';
+import product from '../../../../platform/product/common/product.js';
 import { localize, localize2 } from '../../../../nls.js';
 import { Action2, registerAction2 } from '../../../../platform/actions/common/actions.js';
 import { ConfigurationScope, Extensions as ConfigurationExtensions, IConfigurationRegistry } from '../../../../platform/configuration/common/configurationRegistry.js';
@@ -798,7 +799,7 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
 		properties: {
 			[WORKSPACE_TRUST_ENABLED]: {
 				type: 'boolean',
-				default: true,
+				default: isWeb || product.workspaceTrustEnabledByDefault !== false,
 				description: localize('workspace.trust.description', "Controls whether or not Workspace Trust is enabled within VS Code."),
 				tags: [WORKSPACE_TRUST_SETTING_TAG],
 				scope: ConfigurationScope.APPLICATION,

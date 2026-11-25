@@ -1708,6 +1708,9 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 		this.workbenchGrid = workbenchGrid;
 		this._register(workbenchGrid.onDidSashChange(() => this._onDidResizeParts.fire()));
 		this.workbenchGrid.edgeSnapping = this.state.runtime.mainWindowFullscreen;
+		if (this.titleService.onDidChangeTitlebarContent) {
+			this._register(this.titleService.onDidChangeTitlebarContent(() => this.updateCustomTitleBarVisibility()));
+		}
 
 		for (const part of [titleBar, editorPart, activityBar, panelPart, sideBar, statusBar, auxiliaryBarPart, bannerPart]) {
 			this._register(part.onDidVisibilityChange(visible => {
@@ -2357,7 +2360,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
 	}
 
 	private shouldShowTitleBar(): boolean {
-		return !this.windowChromeHidden && shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled);
+		return !this.windowChromeHidden && shouldShowCustomTitleBar(this.configurationService, mainWindow, this.state.runtime.menuBar.toggled, this.titleService.hasTitlebarContent);
 	}
 
 	setWindowChromeHidden(hidden: boolean): void {

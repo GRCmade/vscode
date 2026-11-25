@@ -34,6 +34,7 @@ export class CommandCenterControl {
 
 	private readonly _onDidChangeVisibility = this._disposables.add(new Emitter<void>());
 	readonly onDidChangeVisibility: Event<void> = this._onDidChangeVisibility.event;
+	readonly onDidChangeMenuItems: Event<void>;
 
 	readonly element: HTMLElement = document.createElement('div');
 
@@ -61,6 +62,7 @@ export class CommandCenterControl {
 			}
 		});
 
+		this.onDidChangeMenuItems = Event.map(titleToolbar.onDidChangeMenuItems, () => undefined, this._disposables);
 		let quickInputVisible = false;
 		this._disposables.add(Event.filter(quickInputService.onShow, () => isActiveDocument(this.element), this._disposables)(() => {
 			quickInputVisible = true;

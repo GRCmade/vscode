@@ -166,6 +166,7 @@ export class WorkbenchContextKeysHandler extends Disposable {
 
 		// Window
 		this.isMainWindowFullscreenContext = IsMainWindowFullscreenContext.bindTo(this.contextKeyService);
+		this.isMainWindowFullscreenContext.set(isFullscreen(mainWindow));
 		this.isAuxiliaryWindowFocusedContext = IsAuxiliaryWindowFocusedContext.bindTo(this.contextKeyService);
 
 		// Zen Mode

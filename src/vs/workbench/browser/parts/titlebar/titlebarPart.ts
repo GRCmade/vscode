@@ -22,6 +22,7 @@ import { EventType, EventHelper, Dimension, append, $, addDisposableListener, pr
 import { CustomMenubarControl } from './menubarControl.js';
 import { IInstantiationService, ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
+import { RunOnceScheduler } from '../../../../base/common/async.js';
 import { IStorageService, StorageScope } from '../../../../platform/storage/common/storage.js';
 import { Parts, IWorkbenchLayoutService, ActivityBarPosition, LayoutSettings, EditorActionsLocation, EditorTabsMode } from '../../../services/layout/browser/layoutService.js';
 import { createActionViewItem, fillInActionBarActions, MenuEntryActionViewItem } from '../../../../platform/actions/browser/menuEntryActionViewItem.js';
@@ -89,6 +90,10 @@ export interface ITitlebarPart extends IDisposable {
 	 * An event when the menubar visibility changes.
 	 */
 	readonly onMenubarVisibilityChange: Event<boolean>;
+
+	/** Controls contributed to this title bar, even while the layout is hiding it. */
+	readonly hasTitlebarContent?: boolean;
+	readonly onDidChangeTitlebarContent?: Event<void>;
 
 	/**
 	 * Update some environmental title properties.
@@ -202,6 +207,8 @@ export class BrowserTitleService extends MultiWindowParts<BrowserTitlebarPart> i
 	//#region Service Implementation
 
 	readonly onMenubarVisibilityChange: Event<boolean>;
+	get hasTitlebarContent(): boolean { return this.mainPart.hasTitlebarContent; }
+	get onDidChangeTitlebarContent(): Event<void> { return this.mainPart.onDidChangeTitlebarContent; }
 
 	private properties: ITitleProperties | undefined = undefined;
 
@@ -267,6 +274,23 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 	private _onMenubarVisibilityChange = this._register(new Emitter<boolean>());
 	readonly onMenubarVisibilityChange = this._onMenubarVisibilityChange.event;
 
+	private readonly _onDidChangeTitlebarContent = this._register(new Emitter<void>());
+	readonly onDidChangeTitlebarContent = this._onDidChangeTitlebarContent.event;
+	private hadTitlebarContent = false;
+	private readonly reportTitlebarContentChange = this._register(new RunOnceScheduler(() => {
+		const hasContent = this.hasTitlebarContent;
+		if (hasContent !== this.hadTitlebarContent) {
+			this.hadTitlebarContent = hasContent;
+			this._onDidChangeTitlebarContent.fire();
+		}
+	}, 0));
+
+	get hasTitlebarContent(): boolean {
+		return (this.hasStudioModeSwitcher && studioModeState.state.available)
+			|| [this.centerAdjacentToolBarElement, this.updateToolBarElement, this.actionToolBarElement]
+				.some(element => element && !element.classList.contains('has-no-actions'));
+	}
+
 	private readonly _onWillDispose = this._register(new Emitter<void>());
 	readonly onWillDispose = this._onWillDispose.event;
 
@@ -298,6 +322,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 	private readonly updateToolBarDisposable = this._register(new DisposableStore());
 	private updateToolBarElement: HTMLElement | undefined;
 	private titleBarToolBarOverflowScheduler!: AnimationFrameScheduler;
+	private refreshActionToolBar: (() => void) | undefined;
 
 	private globalToolbarMenu: IMenu | undefined;
 	private layoutToolbarMenu: IMenu | undefined;
@@ -427,6 +452,9 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 
 	private recreateTitle(): void {
 		this.createTitle();
+		if (this.isStudioTitlebarNarrow) {
+			this.refreshActionToolBar?.();
+		}
 
 		this._onDidChange.fire(undefined);
 	}
@@ -499,6 +527,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		this.rightContent = append(this.rootContainer, $('.titlebar-right'));
 		if (this.hasStudioModeSwitcher) {
 			this._register(this.instantiationService.createInstance(StudioModeSwitcher, this.leftContent, this.rightContent));
+			this._register(studioModeState.onDidChangeState(() => this.reportTitlebarContentChange.schedule()));
 		}
 
 		// App Icon (Windows, Linux)
@@ -541,7 +570,13 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 			}));
 
 			// Re-evaluate fit when items change, see #303222.
-			this.centerAdjacentToolBarDisposable.add(centerAdjacentToolBar.onDidChangeMenuItems(() => this.titleBarToolBarOverflowScheduler.schedule()));
+			this.centerAdjacentToolBarDisposable.add(centerAdjacentToolBar.onDidChangeMenuItems(() => {
+				if (this.isStudioTitlebarNarrow) {
+					this.refreshActionToolBar?.();
+				}
+				this.reportTitlebarContentChange.schedule();
+				this.titleBarToolBarOverflowScheduler.schedule();
+			}));
 		}
 
 		// Update Toolbar (before the right-aligned toolbar actions)
@@ -558,7 +593,10 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 				hoverDelegate: this.hoverDelegate
 			}));
 
-			this.updateToolBarDisposable.add(updateToolBar.onDidChangeMenuItems(() => this.titleBarToolBarOverflowScheduler.schedule()));
+			this.updateToolBarDisposable.add(updateToolBar.onDidChangeMenuItems(() => {
+				this.reportTitlebarContentChange.schedule();
+				this.titleBarToolBarOverflowScheduler.schedule();
+			}));
 		}
 
 		// Create Toolbar Actions
@@ -665,6 +703,11 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 			const commandCenter = this.instantiationService.createInstance(CommandCenterControl, this.windowTitle, this.hoverDelegate);
 			reset(this.title, commandCenter.element);
 			this.titleDisposables.add(commandCenter);
+			this.titleDisposables.add(commandCenter.onDidChangeMenuItems(() => {
+				if (this.isStudioTitlebarNarrow) {
+					this.refreshActionToolBar?.();
+				}
+			}));
 		}
 	}
 
@@ -743,7 +786,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 			update = { editorActions: true, layoutActions: true, globalActions: true, activityActions: true };
 		}
 
-		const updateToolBarActions = () => {
+		const updateToolBarActions = this.refreshActionToolBar = () => {
 			const actions: IToolbarActions = { primary: [], secondary: [] };
 
 			// --- Leading Global Actions (rendered before layout controls; opt-in via TitleBarLeadingActionsGroup).
@@ -804,22 +847,14 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 			}
 
 			if (this.isStudioTitlebarNarrow) {
-				if (this.isAuxiliary) {
-					const alwaysOnTop = new Set(['workbench.action.enableWindowAlwaysOnTop', 'workbench.action.disableWindowAlwaysOnTop']);
-					actions.primary.splice(0, actions.primary.length, ...actions.primary.filter(action => alwaysOnTop.has(action.id)));
-				} else {
-					// Keep the secondary side bar reachable, including when layout controls are menu-only.
-					const layoutControl = actions.primary.find(action => action.id === ToggleAuxiliaryBarAction.ID)
-						?? actions.secondary.find(action => action instanceof SubmenuItemAction && action.item.submenu === MenuId.LayoutControlMenuSubmenu);
-					actions.primary.splice(0, actions.primary.length, ...(layoutControl ? [layoutControl] : []));
-				}
-				actions.secondary.length = 0;
+				this.compactToolBarActions(actions);
 			}
 
 			const primary = prepareActions(actions.primary);
 			const secondary = prepareActions(actions.secondary);
 			this.actionToolBarElement.classList.toggle('has-no-actions', primary.length === 0 && secondary.length === 0);
 			this.actionToolBar.setActions(primary, secondary);
+			this.reportTitlebarContentChange.schedule();
 		};
 
 		// Create/Update the menus which should be in the title tool bar
@@ -874,6 +909,31 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 		}
 
 		updateToolBarActions();
+	}
+
+	private compactToolBarActions(actions: IToolbarActions): void {
+		// Accounts and Manage need their original view items to open their own menus.
+		const keep = this.isAuxiliary
+			? new Set(['workbench.action.enableWindowAlwaysOnTop', 'workbench.action.disableWindowAlwaysOnTop'])
+			: new Set([ToggleAuxiliaryBarAction.ID, ACCOUNTS_ACTIVITY_ID, GLOBAL_ACTIVITY_ID]);
+		const primary = actions.primary.filter(action => keep.has(action.id));
+		const layoutMenu = !this.isAuxiliary
+			? actions.secondary.find(action => action instanceof SubmenuItemAction && action.item.submenu === MenuId.LayoutControlMenuSubmenu)
+			: undefined;
+		if (layoutMenu) {
+			primary.push(layoutMenu);
+		}
+
+		const getMenuActions = (menu: MenuId) => this.menuService.getMenuActions(menu, this.contextKeyService).flatMap(([, entries]) => entries);
+		const adjacentOverflow = this.centerAdjacentToolBarElement?.classList.contains('overflowing');
+		const projectActions = getMenuActions(MenuId.TitleBarAdjacentCenter).filter(action => adjacentOverflow || action.id !== 'studio.openProject');
+		const commandCenterActions = this.isCommandCenterVisible
+			? getMenuActions(MenuId.CommandCenter).filter(action => !this.isAuxiliary || !(action instanceof SubmenuItemAction && action.item.submenu === MenuId.CommandCenterCenter))
+			: [];
+		const more = Separator.join(projectActions, commandCenterActions, prepareActions(actions.primary.filter(action => !keep.has(action.id))),
+			prepareActions(actions.secondary.filter(action => action !== layoutMenu)));
+		actions.primary.splice(0, actions.primary.length, ...primary);
+		actions.secondary.splice(0, actions.secondary.length, ...more);
 	}
 
 	override updateStyles(): void {
@@ -999,17 +1059,20 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
 	private updateTitleBarToolBarOverflow(): void {
 		const centerAdjacentToolBarElement = this.centerAdjacentToolBarElement?.classList.contains('has-no-actions') ? undefined : this.centerAdjacentToolBarElement;
 		const updateToolBarElement = this.updateToolBarElement?.classList.contains('has-no-actions') ? undefined : this.updateToolBarElement;
+		const adjacentWasOverflowing = this.centerAdjacentToolBarElement?.classList.contains('overflowing');
 
 		this.centerAdjacentToolBarElement?.classList.remove('overflowing');
 		this.updateToolBarElement?.classList.remove('overflowing');
 
-		if (this.rootContainer.scrollWidth <= this.rootContainer.clientWidth) {
-			return;
+		if (this.rootContainer.scrollWidth > this.rootContainer.clientWidth) {
+			centerAdjacentToolBarElement?.classList.add('overflowing');
+			if (this.rootContainer.scrollWidth > this.rootContainer.clientWidth) {
+				updateToolBarElement?.classList.add('overflowing');
+			}
 		}
 
-		centerAdjacentToolBarElement?.classList.add('overflowing');
-		if (this.rootContainer.scrollWidth > this.rootContainer.clientWidth) {
-			updateToolBarElement?.classList.add('overflowing');
+		if (this.isStudioTitlebarNarrow && adjacentWasOverflowing !== this.centerAdjacentToolBarElement?.classList.contains('overflowing')) {
+			this.refreshActionToolBar?.();
 		}
 	}
 

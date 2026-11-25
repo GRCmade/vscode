@@ -212,11 +212,9 @@ export class AuxiliaryEditorPart {
 		if (useCustomTitle) {
 			titlebarPart = disposables.add(this.titleService.createAuxiliaryTitlebarPart(auxiliaryWindow.container, editorPart, scopedEditorPartInstantiationService));
 			titlebarPart.updateOptions({ compact });
-			titlebarVisible = shouldShowCustomTitleBar(this.configurationService, auxiliaryWindow.window, undefined);
-
 			const handleTitleBarVisibilityEvent = () => {
 				const oldTitlebarPartVisible = titlebarVisible;
-				titlebarVisible = shouldShowCustomTitleBar(this.configurationService, auxiliaryWindow.window, undefined);
+				titlebarVisible = shouldShowCustomTitleBar(this.configurationService, auxiliaryWindow.window, undefined, titlebarPart?.hasTitlebarContent);
 				if (oldTitlebarPartVisible !== titlebarVisible) {
 					updateTitlebarVisibility(true);
 				}
@@ -224,6 +222,9 @@ export class AuxiliaryEditorPart {
 
 			disposables.add(titlebarPart.onDidChange(() => auxiliaryWindow.layout()));
 			disposables.add(this.layoutService.onDidChangePartVisibility(() => handleTitleBarVisibilityEvent()));
+			if (titlebarPart.onDidChangeTitlebarContent) {
+				disposables.add(titlebarPart.onDidChangeTitlebarContent(handleTitleBarVisibilityEvent));
+			}
 			disposables.add(onDidChangeFullscreen(windowId => {
 				if (windowId !== auxiliaryWindow.window.vscodeWindowId) {
 					return; // ignore all but our window
@@ -232,6 +233,7 @@ export class AuxiliaryEditorPart {
 				handleTitleBarVisibilityEvent();
 			}));
 
+			titlebarVisible = shouldShowCustomTitleBar(this.configurationService, auxiliaryWindow.window, undefined, titlebarPart.hasTitlebarContent);
 			updateTitlebarVisibility(false);
 		} else {
 			disposables.add(scopedEditorPartInstantiationService.createInstance(WindowTitle, auxiliaryWindow.window));

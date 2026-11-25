@@ -151,12 +151,15 @@ export class StudioModeSwitcher extends Disposable {
 			const active = studioModeState.steam;
 			dock.classList.toggle('studio-mode-in-ide', !active);
 			if (active) {
+				dock.hidden = false;
 				dock.style.left = dock.style.top = '0px';
 				dock.style.height = `${studioWindowChrome.height}px`;
 				dock.style.zoom = '';
 			} else {
 				const rect = slot.getBoundingClientRect();
-				if (!rect.width || !rect.height) { return; }
+				// An IDE without a title bar has no anchor for the floating switcher.
+				dock.hidden = !rect.width || !rect.height;
+				if (dock.hidden) { return; }
 				const parent = layout.mainContainer.getBoundingClientRect();
 				const scale = rect.width / slot.offsetWidth;
 				dock.style.zoom = String(scale);

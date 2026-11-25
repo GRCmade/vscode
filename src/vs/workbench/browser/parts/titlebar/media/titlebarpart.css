@@ -555,8 +555,7 @@
 }
 
 /* Keep the project run available when the native window leaves little title-bar space. */
-.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar > .titlebar-right > .center-adjacent-toolbar-container .action-item:not(.studio-titlebar-primary-run),
-.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar > .titlebar-right > .update-toolbar-container {
+.monaco-workbench .part.titlebar > .titlebar-container.studio-narrow-titlebar > .titlebar-right > .center-adjacent-toolbar-container .action-item:not(.studio-titlebar-primary-run) {
 	display: none;
 }
 

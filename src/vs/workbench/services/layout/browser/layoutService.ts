@@ -750,7 +750,7 @@ export interface IEmbeddedSideBar extends IDisposable {
 	layout(width: number, height: number): void;
 }
 
-export function shouldShowCustomTitleBar(configurationService: IConfigurationService, window: Window, menuBarToggled?: boolean): boolean {
+export function shouldShowCustomTitleBar(configurationService: IConfigurationService, window: Window, menuBarToggled?: boolean, hasTitlebarContent = false): boolean {
 	if (!hasCustomTitlebar(configurationService)) {
 		return false;
 	}
@@ -765,7 +765,7 @@ export function shouldShowCustomTitleBar(configurationService: IConfigurationSer
 		}
 	}
 
-	if (!isTitleBarEmpty(configurationService)) {
+	if (hasTitlebarContent || !isTitleBarEmpty(configurationService)) {
 		return true;
 	}
 

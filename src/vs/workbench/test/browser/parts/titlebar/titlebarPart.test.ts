@@ -216,6 +216,8 @@ suite('Workbench - Compact titlebar layout controls', () => {
 		part.create(titlebar);
 		return {
 			titlebar,
+			part,
+			contextKeys,
 			commands,
 			isSecondarySideBarVisible: () => visible.get(),
 			layout(width: number, fullscreen: boolean) {
@@ -239,7 +241,8 @@ suite('Workbench - Compact titlebar layout controls', () => {
 		fixture.layout(1200, false);
 		assertClickable(toggle());
 		fixture.layout(894, true);
-		assert.strictEqual(fixture.titlebar.querySelectorAll('.action-toolbar-container .action-item').length, 1);
+		assert.strictEqual(fixture.titlebar.querySelectorAll('.action-toolbar-container .action-item').length, 2);
+		assertClickable(fixture.titlebar.querySelector('.action-toolbar-container .codicon-toolbar-more'));
 		for (const visible of [true, false]) {
 			const button = toggle();
 			assertClickable(button);
@@ -259,7 +262,22 @@ suite('Workbench - Compact titlebar layout controls', () => {
 		assertClickable(menu.titlebar.querySelector('.action-toolbar-container .codicon-configure-layout-icon'));
 		const disabled = createTitlebar('both', false);
 		disabled.layout(894, true);
-		assert.strictEqual(mainWindow.getComputedStyle(disabled.titlebar.querySelector('.action-toolbar-container')!).display, 'none');
+		assert.strictEqual(disabled.titlebar.querySelector('.action-toolbar-container [class*="codicon-auxiliarybar-right-"]'), null);
+	});
+
+	test('reports project actions even while the title bar is hidden and updates when they disappear', async () => {
+		const fixture = createTitlebar('both', false);
+		fixture.titlebar.style.display = 'none';
+		assert.strictEqual(fixture.part.hasTitlebarContent, false);
+		const canRun = fixture.contextKeys.createKey<boolean>('studio.projectReleaseAvailable', false);
+		let changed = Event.toPromise(fixture.part.onDidChangeTitlebarContent);
+		canRun.set(true);
+		await changed;
+		assert.strictEqual(fixture.part.hasTitlebarContent, true);
+		changed = Event.toPromise(fixture.part.onDidChangeTitlebarContent);
+		canRun.set(false);
+		await changed;
+		assert.strictEqual(fixture.part.hasTitlebarContent, false);
 	});
 });
 

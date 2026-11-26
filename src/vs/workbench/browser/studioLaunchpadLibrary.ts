@@ -11,6 +11,7 @@ import { IContextMenuService } from '../../platform/contextview/browser/contextV
 import type { IHoverService } from '../../platform/hover/browser/hover.js';
 import { studioBotIcon } from '../common/studioProjectIcons.js';
 import { projectDetails } from './studioProjectDetails.js';
+import { projectBotAction, projectBotManagementLabel, projectDetailActionGroup } from './studioProjectDetailsView.js';
 import { projectUsageKey, StudioProjectUsage, type ProjectUsageBridge } from './studioProjectUsage.js';
 import { artwork, edition, LaunchpadProject, openProjectLabel, projectMark, typeLabel } from './studioLaunchpadCards.js';
 import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
@@ -286,10 +287,7 @@ export class LaunchpadLibrary extends Disposable {
 	}
 
 	private detailActionGroup(project: LaunchpadProject, label: string, defaultIcon: string, alwaysVisible = false) {
-		const group = element('section', 'lp-detail-action-group');
-		group.setAttribute('aria-label', label);
-		const controls = element('div', 'lp-detail-group-actions');
-		group.append(element('h2', '', label), controls);
+		const { group, controls } = projectDetailActionGroup(document, label);
 		let rendered: string | undefined;
 		return {
 			element: group,
@@ -437,12 +435,12 @@ export class LaunchpadLibrary extends Disposable {
 			const entryBots = (selected.entries ?? []).filter(entry => entry.type === 'bot');
 			const botEntries = entryBots.length ? entryBots : selected.projectType === 'bot' ? [undefined] : [];
 			const canManageBot = (this.actions.openBotArtifacts || this.actions.openBotMemory || this.actions.readBotCredentials) && !selected.missing && selected.uri.startsWith('file:') && botEntries.length > 0;
-			const label = t('Bot management', 'Bot 管理');
+			const label = projectBotManagementLabel(t);
 			const management = canManageBot && selected.managed ? this.detailActionGroup(selected, label, 'settings-gear', true) : undefined;
 			if (canManageBot) {
-				const group = management?.element ?? element('section', 'lp-detail-action-group');
-				group.setAttribute('aria-label', label);
-				const controls = element('div', 'lp-detail-group-actions');
+				const staticGroup = management ? undefined : projectDetailActionGroup(document, label);
+				const group = management?.element ?? staticGroup!.group;
+				const controls = staticGroup?.controls ?? element('div', 'lp-detail-group-actions');
 				for (const entry of botEntries) {
 					const add = (key: string, title: string, icon: string, action: () => void) => {
 						const open = button(botEntries.length > 1 ? `${title} · ${entry?.name ?? entry?.entryId}` : title, icon, action, 'studio-project-action lp-outline');
@@ -450,17 +448,16 @@ export class LaunchpadLibrary extends Disposable {
 						controls.append(open);
 						return open;
 					};
-					if (this.actions.openBotArtifacts) { add('bot-artifacts', t('Artifact library', '产物库'), 'archive', () => this.actions.openBotArtifacts?.(selected, entry?.entryId)); }
-					if (this.actions.openBotMemory) { add('bot-memory', t('Memory management', '记忆管理'), 'database', () => this.actions.openBotMemory?.(selected, entry?.entryId)); }
+					if (this.actions.openBotArtifacts) { add('bot-artifacts', ...projectBotAction('artifacts', t), () => this.actions.openBotArtifacts?.(selected, entry?.entryId)); }
+					if (this.actions.openBotMemory) { add('bot-memory', ...projectBotAction('memory', t), () => this.actions.openBotMemory?.(selected, entry?.entryId)); }
 					if (this.actions.readBotCredentials) {
-						const open = add('bot-credentials', t('Credential management', '凭据管理'), 'key', () => this.toggleBotCredentials(selected, entry?.entryId));
+						const open = add('bot-credentials', ...projectBotAction('credentials', t), () => this.toggleBotCredentials(selected, entry?.entryId));
 						const list = this.credentialList;
 						open.setAttribute('aria-expanded', String(!!list && list.entryId === entry?.entryId));
 						if (list && list.entryId === entry?.entryId) { open.setAttribute('aria-controls', list.panel.id); }
 					}
 				}
-				if (!management) { group.append(element('h2', '', label)); }
-				group.append(controls);
+				if (management) { group.append(controls); }
 				if (this.credentialList) { group.append(this.credentialList.panel); }
 				secondaryActions.append(group);
 			}

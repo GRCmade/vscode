@@ -82,7 +82,7 @@ export class MainThreadWebviewsViews extends Disposable implements extHostProtoc
 
 				webviewView.webview.extension = extension;
 
-				if (options) {
+				if (options && 'claim' in webviewView.webview) {
 					webviewView.webview.options = options;
 				}
 

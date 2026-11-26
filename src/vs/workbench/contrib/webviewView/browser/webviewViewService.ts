@@ -9,7 +9,7 @@ import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable, IDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { IViewBadge } from '../../../common/views.js';
-import { IOverlayWebview } from '../../webview/browser/webview.js';
+import { IOverlayWebview, IWebviewElement } from '../../webview/browser/webview.js';
 
 /**
  * A webview shown in a view pane.
@@ -33,7 +33,7 @@ export interface WebviewView {
 	/**
 	 * The webview associated with this webview view.
 	 */
-	readonly webview: IOverlayWebview;
+	readonly webview: IOverlayWebview | IWebviewElement;
 
 	/**
 	 * Fired when the visibility of the webview view changes.

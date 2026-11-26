@@ -118,6 +118,7 @@ export class StudioLaunchpadView extends Disposable {
 	}
 
 	select(id: Tab, projectUri?: string): void {
+		if (id !== 'library') { this.library.closeBotModal(); }
 		this.active = id;
 		for (const b of this.tabs.querySelectorAll('button')) { const selected = b.dataset.tab === id; b.setAttribute('aria-selected', String(selected)); b.tabIndex = selected ? 0 : -1; }
 		for (const page of Array.from(this.panels.children) as HTMLElement[]) { page.hidden = page.id !== `lp-page-${id}`; }
@@ -133,13 +134,14 @@ export class StudioLaunchpadView extends Disposable {
 		this.picker.search(commands, this.commandCenter, mode => mode ? [...this.fileOptions(), ...(this.state?.platform && this.profile ? [{ label: this.t('View recent chats', '查看最近会话'), glyph: 'comment', run: () => this.showSocial('activity') }] : [])] : (this.state?.recent ?? []).map(p => ({ label: p.name, glyph: glyph(p), detail: p.path, run: () => this.select('library', p.uri) })));
 	}
 	shortcut(event: KeyboardEvent): void {
-		if (this.element.hidden || event.defaultPrevented || event.isComposing || event.altKey || !(event.target instanceof Node) || (!this.element.contains(event.target) && event.target !== document.body) || (this.picker.dialog.open && !this.picker.dialog.classList.contains('lp-quick'))) { return; }
+		if (this.element.hidden || this.library.hasBotModal || event.defaultPrevented || event.isComposing || event.altKey || !(event.target instanceof Node) || (!this.element.contains(event.target) && event.target !== document.body) || (this.picker.dialog.open && !this.picker.dialog.classList.contains('lp-quick'))) { return; }
 		const key = event.key.toLowerCase(); if (key !== 'f1' && (!(event.ctrlKey || event.metaKey) || !['p', 'f', 'o'].includes(key) || (event.shiftKey && key !== 'p'))) { return; }
 		event.preventDefault(); event.stopImmediatePropagation(); if (key === 'o') { this.openOptions(this.commandCenter); } else { this.search(key === 'f1' || event.shiftKey); }
 	}
-	get canDropProject(): boolean { return !this.element.hidden && !this.state?.libraryLoading && !this.picker.dialog.open; }
+	get canDropProject(): boolean { return !this.element.hidden && !this.state?.libraryLoading && !this.picker.dialog.open && !this.library.hasBotModal; }
 	setProjectDropActive(active: boolean): void { this.drop.hidden = !active; }
 	setVisible(visible: boolean): void {
+		if (!visible) { this.library.closeBotModal(); }
 		this.element.hidden = !visible;
 		this.drop.hidden = true;
 		this.updateLibraryVisibility();

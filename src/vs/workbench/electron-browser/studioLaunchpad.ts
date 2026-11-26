@@ -8,8 +8,9 @@ import { addDisposableListener, DragAndDropObserver } from '../../base/browser/d
 import { mainWindow } from '../../base/browser/window.js';
 import { RunOnceScheduler, Throttler } from '../../base/common/async.js';
 import { encodeBase64 } from '../../base/common/buffer.js';
+import { CancellationTokenSource } from '../../base/common/cancellation.js';
 import { Event } from '../../base/common/event.js';
-import { Disposable, toDisposable } from '../../base/common/lifecycle.js';
+import { Disposable, DisposableStore, toDisposable } from '../../base/common/lifecycle.js';
 import { ResourceSet } from '../../base/common/map.js';
 import { Schemas } from '../../base/common/network.js';
 import { basenameOrAuthority, extUriBiasedIgnorePathCase } from '../../base/common/resources.js';
@@ -20,6 +21,7 @@ import { ipcRenderer, webUtils } from '../../base/parts/sandbox/electron-browser
 import { getNLSLanguage } from '../../nls.js';
 import { IClipboardService } from '../../platform/clipboard/common/clipboardService.js';
 import { CommandsRegistry, ICommandService } from '../../platform/commands/common/commands.js';
+import { IContextKeyService } from '../../platform/contextkey/common/contextkey.js';
 import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
 import { IFileDialogService } from '../../platform/dialogs/common/dialogs.js';
 import { containsDragType } from '../../platform/dnd/browser/dnd.js';
@@ -109,6 +111,7 @@ export class StudioLaunchpad extends Disposable {
 		@INotificationService notifications: INotificationService,
 		@IOpenerService opener: IOpenerService,
 		@IWebviewService webviews: IWebviewService,
+		@IContextKeyService contextKeys: IContextKeyService,
 		@IFileService private readonly files: IFileService,
 		@IExtensionStorageService extensionStorage: IExtensionStorageService,
 		@IWebviewViewService webviewViews: IWebviewViewService,
@@ -145,8 +148,33 @@ export class StudioLaunchpad extends Disposable {
 			create: () => run(commands.executeCommand('studio.createProject')),
 			importProjects: () => run(this.pickProjectsToImport()),
 			project: (project, entryId) => run(this.openProject(project, entryId)),
-			openBotArtifacts: (project, entryId) => run(this.openProject(project, entryId, undefined, true)),
-			openBotMemory: (project, entryId) => run(this.openProject(project, entryId, undefined, undefined, true)),
+			mountBotManagement: (kind, project, entryId, modal) => {
+				const { surface, title } = modal;
+				const lifetime = modal.lifetime.add(new DisposableStore());
+				const fail = (reason?: 'untrusted') => { modal.fail(reason); lifetime.dispose(); };
+				const viewType = 'studio.launchpadBotManagement';
+				const source = new CancellationTokenSource();
+				lifetime.add(toDisposable(() => source.dispose(true)));
+				const webview = lifetime.add(webviews.createWebviewElement({ providedViewType: viewType, title, options: {}, contentOptions: {}, extension: undefined }));
+				webview.setContextKeyService(lifetime.add(contextKeys.createScoped(surface)));
+				webview.state = JSON.stringify({ kind, uri: project.uri, projectId: project.projectId, entryId, owner: this.account?.workspaceOwner ?? null });
+				const deadline = lifetime.add(new RunOnceScheduler(() => fail(), 15_000));
+				lifetime.add(webview.onFatalError(() => fail()));
+				lifetime.add(webview.onMessage(({ message }) => {
+					if (lifetime.isDisposed) { return; }
+					if (message?.type === 'ready' && deadline.isScheduled()) {
+						deadline.cancel(); modal.ready(); webview.focus();
+					} else if (message?.type === 'unavailable' && deadline.isScheduled()) {
+						fail(message.status === 'untrusted' ? 'untrusted' : undefined);
+					} else if (message?.type === 'close') { modal.close(); }
+				}));
+				webview.mountTo(surface, mainWindow);
+				deadline.schedule();
+				void webviewViews.resolve(viewType, { title, webview, onDidChangeVisibility: Event.None, onDispose: webview.onDidDispose,
+					dispose: () => { if (!lifetime.isDisposed) { modal.close(); } },
+					show: preserveFocus => { if (!preserveFocus && !lifetime.isDisposed) { webview.focus(); } },
+				}, source.token).catch(() => { if (!lifetime.isDisposed) { fail(); } });
+			},
 			readBotCredentials: (project, entryId) => commands.executeCommand('studio.internalReadBotCredentialList', { uri: project.uri, projectId: project.projectId, entryId }),
 			remove: project => run(this.removeProject(project)),
 			reveal: project => run(native.showItemInFolder(project.managed ? project.path : URI.parse(project.uri).fsPath)),
@@ -525,15 +553,15 @@ export class StudioLaunchpad extends Disposable {
 		return true;
 	}
 
-	private async openProject(project: LaunchpadProject, entryId?: string, conversationId?: string, botArtifacts?: true, botMemory?: true): Promise<void> {
+	private async openProject(project: LaunchpadProject, entryId?: string, conversationId?: string): Promise<void> {
 		const owner = this.account?.workspaceOwner;
 		if (project.builtin) {
-			await this.openBuiltinProject(project, entryId, botArtifacts, botMemory);
+			await this.openBuiltinProject(project, entryId);
 			return;
 		}
 		if (project.managed) {
 			const result = await this.commands.executeCommand<{ workspace?: string } | undefined>('studio.runFolderBotAction', project.uri, 'open-folder-bot');
-			if (result?.workspace) { await this.openManagedWorkspace(result.workspace, undefined, botArtifacts, botMemory); }
+			if (result?.workspace) { await this.openManagedWorkspace(result.workspace); }
 			return;
 		}
 		const uri = URI.parse(project.uri);
@@ -551,18 +579,18 @@ export class StudioLaunchpad extends Disposable {
 			distribution = metadata?.distribution;
 		}
 		if (this._store.isDisposed || owner !== this.account?.workspaceOwner) { return; }
-		const runEntry = project.kind === 'folder' && (!!distribution || entryId !== undefined || !!conversationId || !!botArtifacts || !!botMemory);
+		const runEntry = project.kind === 'folder' && (!!distribution || entryId !== undefined || !!conversationId);
 		const live = owner ? undefined : this.windows.find(row => row.uri === project.uri && row.windowId === project.windowId) ?? this.windows.find(row => row.uri === project.uri);
 		if (!runEntry && live?.windowId !== undefined) {
 			await this.native.focusWindow({ targetWindowId: live.windowId, mode: FocusMode.Force }); return;
 		}
 		this.missing.delete(project.uri);
 		await this.native.openWindow([project.kind === 'workspace' ? { workspaceUri: uri } : { folderUri: uri }], {
-			forceNewWindow: true, noRecentEntry: !!owner, ...(runEntry ? { studioProjectEntry: { entryId, conversationId, botArtifacts, botMemory } } : {}),
+			forceNewWindow: true, noRecentEntry: !!owner, ...(runEntry ? { studioProjectEntry: { entryId, conversationId } } : {}),
 		});
 	}
 
-	private async openBuiltinProject(project: LaunchpadProject, entryId?: string, botArtifacts?: true, botMemory?: true): Promise<void> {
+	private async openBuiltinProject(project: LaunchpadProject, entryId?: string): Promise<void> {
 		if (this.openingBuiltins.has(project.uri)) { return; }
 		this.openingBuiltins.add(project.uri);
 		try {
@@ -572,21 +600,21 @@ export class StudioLaunchpad extends Disposable {
 				.then(([declaration, manifest]) => parseStudioReleaseProject(project.uri, declaration, manifest, this.language), () => undefined);
 			if (this._store.isDisposed) { return; }
 			if (!release) { throw new Error(this.language.startsWith('zh') ? '内置项目的发行文件不可用，请重新构建或修复 Studio。' : 'The built-in project release is unavailable. Rebuild or repair Studio.'); }
-			const windows = !this.account?.workspaceOwner && entryId === undefined && !botArtifacts && !botMemory ? await this.native.getWindows({ includeAuxiliaryWindows: false }) : [];
+			const windows = !this.account?.workspaceOwner && entryId === undefined ? await this.native.getWindows({ includeAuxiliaryWindows: false }) : [];
 			if (this._store.isDisposed) { return; }
 			const live = windows.find(window => isSingleFolderWorkspaceIdentifier(window.workspace) && extUriBiasedIgnorePathCase.isEqual(URI.revive(window.workspace.uri), uri));
 			if (live) { await this.native.focusWindow({ targetWindowId: live.id, mode: FocusMode.Force }); }
-			else { await this.native.openWindow([{ folderUri: uri }], { forceNewWindow: true, noRecentEntry: true, studioProjectEntry: { entryId, botArtifacts, botMemory } }); }
+			else { await this.native.openWindow([{ folderUri: uri }], { forceNewWindow: true, noRecentEntry: true, studioProjectEntry: { entryId } }); }
 		} finally { this.openingBuiltins.delete(project.uri); }
 	}
 
-	private async openManagedWorkspace(value: string, conversationId?: string, botArtifacts?: true, botMemory?: true): Promise<void> {
+	private async openManagedWorkspace(value: string, conversationId?: string): Promise<void> {
 		const uri = URI.parse(value);
 		if (uri.scheme !== 'file' || uri.query || uri.fragment || !uri.path.endsWith('.code-workspace') || this.openingManaged.has(value)) { return; }
 		this.openingManaged.add(value);
 		try {
-			if (conversationId || botArtifacts || botMemory) {
-				await this.native.openWindow([{ workspaceUri: uri }], { forceNewWindow: true, studioProjectEntry: { conversationId, botArtifacts, botMemory } });
+			if (conversationId) {
+				await this.native.openWindow([{ workspaceUri: uri }], { forceNewWindow: true, studioProjectEntry: { conversationId } });
 				return;
 			}
 			const windows = await this.native.getWindows({ includeAuxiliaryWindows: false });

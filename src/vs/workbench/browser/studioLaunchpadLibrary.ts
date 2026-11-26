@@ -3,15 +3,17 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
+import { addDisposableListener } from '../../base/browser/dom.js';
 import type { IDelayedHoverOptions } from '../../base/browser/ui/hover/hover.js';
 import { HoverPosition } from '../../base/browser/ui/hover/hoverWidget.js';
 import { IAction, Separator, toAction } from '../../base/common/actions.js';
-import { Disposable } from '../../base/common/lifecycle.js';
+import { Disposable, DisposableStore, MutableDisposable } from '../../base/common/lifecycle.js';
+import { generateUuid } from '../../base/common/uuid.js';
 import { IContextMenuService } from '../../platform/contextview/browser/contextView.js';
 import type { IHoverService } from '../../platform/hover/browser/hover.js';
 import { studioBotIcon } from '../common/studioProjectIcons.js';
 import { projectDetails } from './studioProjectDetails.js';
-import { projectBotAction, projectBotManagementLabel, projectDetailActionGroup } from './studioProjectDetailsView.js';
+import { projectBotAction, projectBotManagementLabel, projectDetailActionGroup, type ProjectBotAction } from './studioProjectDetailsView.js';
 import { projectUsageKey, StudioProjectUsage, type ProjectUsageBridge } from './studioProjectUsage.js';
 import { artwork, edition, LaunchpadProject, openProjectLabel, projectMark, typeLabel } from './studioLaunchpadCards.js';
 import { button, element, icon, LaunchpadLabel } from './studioLaunchpadPicker.js';
@@ -32,8 +34,7 @@ export interface LibraryActions {
 	importProjects(): void;
 	project(p: LaunchpadProject, entryId?: string): void;
 	runProject?(p: LaunchpadProject, entryId?: string): void;
-	openBotArtifacts?(p: LaunchpadProject, entryId?: string): void;
-	openBotMemory?(p: LaunchpadProject, entryId?: string): void;
+	mountBotManagement?(kind: 'artifacts' | 'memory', project: LaunchpadProject, entryId: string | undefined, modal: LibraryBotModal): void;
 	readBotCredentials?(p: LaunchpadProject, entryId?: string): Promise<LibraryBotCredentialList | undefined>;
 	remove(p: LaunchpadProject): void;
 	reveal?(p: LaunchpadProject): void;
@@ -47,6 +48,15 @@ export interface LibraryActions {
 	readActivity?(projects: ActivityProject[]): Promise<string[] | undefined>;
 	detailActions?(p: LaunchpadProject, source: DetailActionSource): Promise<LibraryDetailAction[] | undefined>;
 	runDetailAction?(p: LaunchpadProject, id: string): Promise<void>;
+}
+
+export interface LibraryBotModal {
+	readonly surface: HTMLElement;
+	readonly lifetime: DisposableStore;
+	readonly title: string;
+	ready(): void;
+	fail(reason?: 'untrusted'): void;
+	close(): void;
 }
 
 export class LaunchpadLibrary extends Disposable {
@@ -80,7 +90,10 @@ export class LaunchpadLibrary extends Disposable {
 	private readingActivity = false;
 	private visible = false;
 	private usage?: { key: string; view: StudioProjectUsage };
-	private credentialList?: { projectKey: string; entryId?: string; panel: HTMLElement };
+	private readonly botModal = this._register(new MutableDisposable<{ key: string; dispose(): void }>());
+
+	get hasBotModal(): boolean { return !!this.botModal.value; }
+	closeBotModal(): void { this.botModal.clear(); }
 
 	constructor(private readonly t: LaunchpadLabel, private readonly actions: LibraryActions) {
 		super();
@@ -393,6 +406,8 @@ export class LaunchpadLibrary extends Disposable {
 
 	private render(): void {
 		for (const b of this.filters.querySelectorAll('button')) { b.setAttribute('aria-pressed', String(b.dataset.id === this.filter)); }
+		const selected = this.selected && this.projects.get(this.selected);
+		if (this.botModal.value && (!selected || selected.missing || this.botModal.value.key !== this.botProjectKey(selected))) { this.closeBotModal(); }
 		if (!this.loading.hidden) { return; }
 		const t = this.t, query = this.search.value.trim().toLocaleLowerCase();
 		const category = this.filter === 'product' ? this.category : undefined;
@@ -418,8 +433,6 @@ export class LaunchpadLibrary extends Disposable {
 		const focus = document.activeElement instanceof HTMLElement && this.element.contains(document.activeElement) ? document.activeElement.dataset.key : undefined;
 		const heading = (title: string, count?: number) => { const h = element('header', 'lp-shelf-head'); h.append(element('h2', '', title)); if (count !== undefined) { h.append(element('small', '', String(count))); } return h; };
 		this.renderIndex(indexRows, builtins, query ? this.searchCollapsed : this.collapsed);
-		const selected = this.selected && this.projects.get(this.selected);
-		if (this.credentialList && (!selected || selected.missing || this.credentialList.projectKey !== this.credentialProjectKey(selected))) { this.credentialList = undefined; }
 		this.toolbar.hidden = !!selected;
 		const restoreFocus = () => { if (focus) { Array.from(this.element.querySelectorAll<HTMLElement>('[data-key]')).find(b => b.dataset.key === focus)?.focus({ preventScroll: true }); } };
 		this.updateIndexStatuses();
@@ -447,28 +460,23 @@ export class LaunchpadLibrary extends Disposable {
 			secondaryActions.append(bot.group, im.group);
 			const entryBots = (selected.entries ?? []).filter(entry => entry.type === 'bot');
 			const botEntries = entryBots.length ? entryBots : selected.projectType === 'bot' ? [undefined] : [];
-			const canManageBot = (this.actions.openBotArtifacts || this.actions.openBotMemory || this.actions.readBotCredentials) && !selected.missing && selected.uri.startsWith('file:') && botEntries.length > 0;
+			const canManageBot = (this.actions.mountBotManagement || this.actions.readBotCredentials) && !selected.missing && selected.uri.startsWith('file:') && botEntries.length > 0;
 			const label = projectBotManagementLabel(t);
 			const management = canManageBot && selected.managed ? this.detailActionGroup(selected, label, 'settings-gear', true) : undefined;
 			if (canManageBot) {
 				const { group, controls } = management ?? projectDetailActionGroup(document, label);
 				for (const entry of botEntries) {
-					const add = (key: string, title: string, icon: string, action: () => void) => {
-						const open = button(botEntries.length > 1 ? `${title} · ${entry?.name ?? entry?.entryId}` : title, icon, action, 'studio-project-action lp-outline');
-						open.dataset.key = `${key}:${selected.uri}:${entry?.entryId ?? ''}`;
+					const add = (kind: ProjectBotAction) => {
+						const [title, icon] = projectBotAction(kind, t);
+						const label = botEntries.length > 1 ? `${title} · ${entry?.name ?? entry?.entryId}` : title;
+						const open = button(label, icon, () => this.openBotModal(kind, selected, entry?.entryId, label, open), 'studio-project-action lp-outline');
+						open.dataset.key = `bot-${kind}:${selected.uri}:${entry?.entryId ?? ''}`;
+						open.setAttribute('aria-haspopup', 'dialog');
 						controls.append(open);
-						return open;
 					};
-					if (this.actions.openBotArtifacts) { add('bot-artifacts', ...projectBotAction('artifacts', t), () => this.actions.openBotArtifacts?.(selected, entry?.entryId)); }
-					if (this.actions.openBotMemory) { add('bot-memory', ...projectBotAction('memory', t), () => this.actions.openBotMemory?.(selected, entry?.entryId)); }
-					if (this.actions.readBotCredentials) {
-						const open = add('bot-credentials', ...projectBotAction('credentials', t), () => this.toggleBotCredentials(selected, entry?.entryId));
-						const list = this.credentialList;
-						open.setAttribute('aria-expanded', String(!!list && list.entryId === entry?.entryId));
-						if (list && list.entryId === entry?.entryId) { open.setAttribute('aria-controls', list.panel.id); }
-					}
+					if (this.actions.mountBotManagement) { add('artifacts'); add('memory'); }
+					if (this.actions.readBotCredentials) { add('credentials'); }
 				}
-				if (this.credentialList) { group.append(this.credentialList.panel); }
 				secondaryActions.append(group);
 			}
 			if (this.actions.openProjectSchedules && selected.distribution === 'source' && selected.kind === 'folder' && !selected.missing && !selected.builtin && !selected.managed && selected.uri.startsWith('file:')) {
@@ -551,32 +559,61 @@ export class LaunchpadLibrary extends Disposable {
 		return this.usage?.view;
 	}
 
-	private credentialProjectKey(project: LaunchpadProject): string {
-		return JSON.stringify([project.uri, project.projectId, project.distribution, project.managed, project.builtin, project.projectType,
+	private botProjectKey(project: LaunchpadProject): string {
+		return JSON.stringify([this.actionScope, project.uri, project.projectId, project.distribution, project.managed, project.builtin, project.projectType,
 			project.entries?.filter(entry => entry.type === 'bot').map(entry => entry.entryId)]);
 	}
 
-	private toggleBotCredentials(project: LaunchpadProject, entryId?: string): void {
-		const read = this.actions.readBotCredentials;
-		if (!read) { return; }
-		const projectKey = this.credentialProjectKey(project);
-		if (this.credentialList?.projectKey === projectKey && this.credentialList.entryId === entryId) {
-			this.credentialList = undefined;
-			this.render();
+	private openBotModal(kind: ProjectBotAction, project: LaunchpadProject, entryId: string | undefined, title: string, origin: HTMLButtonElement): void {
+		if (this.hasBotModal) { return; }
+		const t = this.t;
+		const lifetime = new DisposableStore();
+		const dialog = element('dialog', 'lp-dialog lp-bot-modal');
+		const header = element('header', 'lp-bot-modal-header');
+		const heading = element('h2', '', title);
+		heading.id = `studio-bot-modal-${generateUuid()}`;
+		dialog.setAttribute('aria-labelledby', heading.id);
+		const close = () => { if (!lifetime.isDisposed) { this.closeBotModal(); } };
+		const dismiss = button('', 'close', close, 'lp-tool');
+		dismiss.title = t('Close', '关闭'); dismiss.setAttribute('aria-label', dismiss.title);
+		header.append(heading, dismiss);
+		const message = element('p', 'lp-credential-status', kind === 'credentials' ? t('Loading credentials…', '正在加载凭据…') : t('Loading…', '正在加载…'));
+		message.setAttribute('role', 'status');
+		const surface = element('div', kind === 'credentials' ? 'lp-bot-credential-list lp-scroll' : 'lp-bot-modal-frame');
+		dialog.append(header, message, surface);
+		this.element.append(dialog);
+		lifetime.add(addDisposableListener(dialog, 'close', close));
+		this.botModal.value = { key: this.botProjectKey(project), dispose: () => {
+			lifetime.dispose();
+			dialog.close(); dialog.remove();
+			if (this.selected === project.uri) {
+				const button = origin.isConnected ? origin : Array.from(this.content.querySelectorAll<HTMLButtonElement>('button[data-key]')).find(candidate => candidate.dataset.key === origin.dataset.key);
+				button?.focus({ preventScroll: true });
+			}
+		} };
+		dialog.showModal(); dismiss.focus({ preventScroll: true });
+		if (kind !== 'credentials') {
+			const fail = (reason?: 'untrusted') => {
+				if (lifetime.isDisposed) { return; }
+				dialog.classList.remove('lp-bot-modal-ready'); dismiss.hidden = message.hidden = false;
+				surface.hidden = true;
+				message.textContent = reason === 'untrusted' ? t('The project folder is not trusted.', '项目文件夹尚未受信任。')
+					: t('Could not open Bot management.', '无法打开 Bot 管理。');
+				dismiss.focus({ preventScroll: true });
+			};
+			this.actions.mountBotManagement?.(kind, project, entryId, { surface, lifetime, title, close, fail, ready: () => {
+				if (lifetime.isDisposed || !dialog.open) { return; }
+				// The shared panel supplies its own header and close button.
+				dismiss.hidden = true;
+				message.hidden = true;
+				dialog.classList.add('lp-bot-modal-ready');
+			} });
 			return;
 		}
-		const t = this.t;
-		const panel = element('div', 'lp-bot-credential-list');
-		panel.id = 'studio-bot-credential-list';
-		panel.setAttribute('role', 'region');
-		panel.setAttribute('aria-label', t('Credential management', '凭据管理'));
-		const message = element('p', 'lp-credential-status', t('Loading credentials…', '正在加载凭据…'));
-		message.setAttribute('role', 'status');
-		panel.append(message);
-		const current = this.credentialList = { projectKey, entryId, panel };
-		this.render();
+		const read = this.actions.readBotCredentials;
+		if (!read) { return; }
 		void Promise.resolve().then(() => read(project, entryId)).catch(() => undefined).then(result => {
-			if (this.credentialList !== current || this._store.isDisposed) { return; }
+			if (lifetime.isDisposed || !dialog.open) { return; }
 			if (result?.status !== 'ok' || !result.rows.length) {
 				message.textContent = result?.status === 'ok' ? t('No saved credentials.', '暂无已保存的凭据。')
 					: result?.status === 'untrusted' ? t('The project folder is not trusted.', '项目文件夹尚未受信任。')
@@ -595,13 +632,13 @@ export class LaunchpadLibrary extends Disposable {
 				body.append(row);
 			}
 			table.append(head, body);
-			panel.replaceChildren(table);
+			message.hidden = true;
+			surface.replaceChildren(table);
 		});
 	}
 
 	override dispose(): void {
 		this.projectUsage();
-		this.credentialList = undefined;
 		super.dispose();
 	}
 }

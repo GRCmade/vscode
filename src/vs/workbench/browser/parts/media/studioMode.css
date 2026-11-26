@@ -412,3 +412,32 @@
 .monaco-workbench .studio-release-project-name { font-size: var(--vscode-fontSize-body1); line-height: var(--vscode-spacing-size200); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }
 
 .monaco-workbench .studio-mode-switcher.studio-release-caption .studio-mode-toggle { display: none; }
+
+/* Dependency work reports no reliable total. Use a moving segment only while the status item is active. */
+.monaco-workbench .statusbar-item[id="studio.studio-workstation.projectDependencyProgress"] .codicon-loading {
+	position: relative;
+	flex: none;
+	width: 32px;
+	height: 4px;
+	overflow: hidden;
+	border-radius: 2px;
+	background: color-mix(in srgb, currentColor 28%, transparent);
+	animation: none;
+}
+.monaco-workbench .statusbar-item[id="studio.studio-workstation.projectDependencyProgress"] .codicon-loading::before {
+	content: '';
+	position: absolute;
+	inset: 0 auto 0 30%;
+	width: 40%;
+	border-radius: inherit;
+	background: currentColor;
+}
+@media (prefers-reduced-motion: no-preference) {
+	.monaco-workbench.monaco-enable-motion .statusbar-item[id="studio.studio-workstation.projectDependencyProgress"] .codicon-loading::before {
+		inset-inline-start: 0;
+		animation: studioDependencyProgress 1.5s ease-in-out infinite alternate;
+	}
+}
+@keyframes studioDependencyProgress {
+	to { transform: translateX(150%); }
+}

@@ -57,6 +57,7 @@ export class LaunchpadLibrary extends Disposable {
 	private readonly content = element('div');
 	private readonly loading = element('div', 'lp-library-loading lp-collection');
 	private readonly createButton: HTMLButtonElement;
+	private readonly importButton: HTMLButtonElement;
 	private readonly search = element('input', 'lp-query');
 	private readonly filters = element('div', 'lp-filters');
 	private readonly categoryButton: HTMLButtonElement;
@@ -109,7 +110,8 @@ export class LaunchpadLibrary extends Disposable {
 		this.categoryButton = addFilter('product', ''); this.categoryButton.hidden = true;
 		const heading = element('div', 'lp-library-heading'), manage = element('div', 'lp-library-actions');
 		this.createButton = button(t('New project', '新建项目'), 'add', actions.create, 'lp-primary'); this.createButton.disabled = true;
-		manage.append(button(t('Import project', '导入项目'), 'folder-opened', actions.importProjects, 'lp-outline'), this.createButton);
+		this.importButton = button(t('Import project', '导入项目'), 'folder-opened', actions.importProjects, 'lp-outline');
+		manage.append(this.importButton, this.createButton);
 		heading.append(element('h1', '', t('Project library', '项目仓库')), manage);
 		const status = element('p', 'lp-library-loading-status', t('Loading projects…', '正在加载项目…'));
 		status.setAttribute('role', 'status');
@@ -123,7 +125,8 @@ export class LaunchpadLibrary extends Disposable {
 	}
 
 	update(recent: LaunchpadProject[], windows: LaunchpadProject[], canCreate: boolean, actionScope: string, category?: LibraryProjectCategory, builtinProjects: LaunchpadProject[] = [], loading = false): void {
-		this.createButton.disabled = !canCreate;
+		this.createButton.disabled = loading || !canCreate;
+		this.importButton.disabled = loading;
 		const wasLoading = !this.loading.hidden;
 		if (wasLoading !== loading) {
 			this.loading.hidden = !loading;

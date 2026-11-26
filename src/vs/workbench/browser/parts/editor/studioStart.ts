@@ -54,6 +54,11 @@ export interface StudioStartState {
 	canCreate: boolean;
 }
 
+/** A missing extension snapshot does not yet confirm that this is a local profile. */
+export function isStudioProjectScopeReady(state: StudioStartState | undefined, owner: string | undefined, activationSettled: boolean): boolean {
+	return state ? !state.workspaceRestoring && state.workspaceOwner === owner : activationSettled && owner === undefined;
+}
+
 export const IStudioStartService = createDecorator<IStudioStartService>('studioStartService');
 export interface IStudioStartService {
 	readonly _serviceBrand: undefined;

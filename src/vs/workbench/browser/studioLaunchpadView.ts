@@ -137,7 +137,7 @@ export class StudioLaunchpadView extends Disposable {
 		const key = event.key.toLowerCase(); if (key !== 'f1' && (!(event.ctrlKey || event.metaKey) || !['p', 'f', 'o'].includes(key) || (event.shiftKey && key !== 'p'))) { return; }
 		event.preventDefault(); event.stopImmediatePropagation(); if (key === 'o') { this.openOptions(this.commandCenter); } else { this.search(key === 'f1' || event.shiftKey); }
 	}
-	get canDropProject(): boolean { return !this.element.hidden && !this.picker.dialog.open; }
+	get canDropProject(): boolean { return !this.element.hidden && !this.state?.libraryLoading && !this.picker.dialog.open; }
 	setProjectDropActive(active: boolean): void { this.drop.hidden = !active; }
 	setVisible(visible: boolean): void {
 		this.element.hidden = !visible;
@@ -159,6 +159,7 @@ export class StudioLaunchpadView extends Disposable {
 	showImportedProjects(singleUri?: string): void { this.library.resetFilters(); this.select('library', singleUri); }
 	update(state: LaunchpadState): void {
 		const previous = this.state; this.state = state;
+		if (state.libraryLoading) { this.setProjectDropActive(false); }
 		this.consoleButton.hidden = !state.platform;
 		this.accountButton.hidden = !this.profile && !(this.actions.account && state.platform);
 		if (previous?.account?.scopeKey !== state.account?.scopeKey || previous?.account?.signedIn !== state.account?.signedIn) { this.picker.close(); }

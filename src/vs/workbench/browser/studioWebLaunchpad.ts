@@ -29,7 +29,7 @@ import { IWebviewViewService } from '../contrib/webviewView/browser/webviewViewS
 import { IHostService } from '../services/host/browser/host.js';
 import { IWorkbenchLayoutService } from '../services/layout/browser/layoutService.js';
 import { IStatusbarService, StatusbarAlignment } from '../services/statusbar/browser/statusbar.js';
-import { IStudioStartService, StudioStartState } from './parts/editor/studioStart.js';
+import { IStudioStartService, StudioStartState, isStudioProjectScopeReady } from './parts/editor/studioStart.js';
 import { LaunchpadProject, StudioLaunchpadView } from './studioLaunchpadView.js';
 import { InboxAction, LaunchpadAccount, LaunchpadDirectory, LaunchpadInbox, LaunchpadMenuAccount, SocialResult } from './studioLaunchpadProfile.js';
 import { StudioLaunchpadSettings } from './studioLaunchpadSettings.js';
@@ -340,10 +340,9 @@ export class StudioWebLaunchpad extends Disposable {
 	}
 
 	private async refreshProjects(): Promise<void> {
+		if (!this.projectScopeReady()) { return; }
 		const state = this.start.state;
 		const owner = this.account?.workspaceOwner;
-		if (state?.workspaceRestoring || state?.workspaceOwner !== owner) { return; }
-		if (!state && !this.startVisibilitySettled) { return; }
 		const revision = this.revision;
 		const history = owner ? undefined : await this.workspaces.getRecentlyOpened();
 		if (revision !== this.revision || this._store.isDisposed) { return; }
@@ -401,7 +400,7 @@ export class StudioWebLaunchpad extends Disposable {
 
 	private paint(): void {
 		const state = this.start.state;
-		const recent = !state?.workspaceRestoring && this.projectOwner === this.account?.workspaceOwner ? this.projects : undefined;
+		const recent = this.projectScopeReady() && this.projectOwner === this.account?.workspaceOwner ? this.projects : undefined;
 		const builtins = new Set(this.builtinProjects?.map(project => project.uri));
 		this.view.update({ windows: [], recent: recent?.filter(project => !builtins.has(project.uri)) ?? [], builtinProjects: this.builtinProjects,
 			libraryLoading: recent === undefined,
@@ -409,11 +408,16 @@ export class StudioWebLaunchpad extends Disposable {
 			notices: this.notices.list(), notificationUnread: this.socialUnread || this.notices.hasUnread(), dismissedSocialNoticeIds: this.notices.dismissedSocialNoticeIds });
 	}
 
+	private projectScopeReady(): boolean {
+		return isStudioProjectScopeReady(this.start.state, this.account?.workspaceOwner, this.startVisibilitySettled);
+	}
+
 	private async importFolders(): Promise<void> {
+		if (!this.projectScopeReady()) { return; }
 		const owner = this.account?.workspaceOwner;
 		const uris = await this.dialogs.showOpenDialog({ title: studioLabel('Import project', '导入项目'), openLabel: studioLabel('Import', '导入'),
 			canSelectFolders: true, canSelectFiles: false, canSelectMany: true, availableFileSystems: [Schemas.vscodeRemote] });
-		if (!uris?.length || this._store.isDisposed || owner !== this.account?.workspaceOwner) { return; }
+		if (!uris?.length || this._store.isDisposed || !this.projectScopeReady() || owner !== this.account?.workspaceOwner) { return; }
 		if (owner) {
 			const local = uris.filter(uri => uri.scheme === Schemas.vscodeRemote && uri.authority === this.authority)
 				.map(uri => uri.with({ scheme: Schemas.file, authority: '' }).toString());

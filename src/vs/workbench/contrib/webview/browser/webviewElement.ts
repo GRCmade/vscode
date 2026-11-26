@@ -689,6 +689,10 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 		};
 	}
 
+	public get state(): string | undefined {
+		return this._content.state;
+	}
+
 	public set state(state: string | undefined) {
 		this._content = { ...this._content, state };
 	}

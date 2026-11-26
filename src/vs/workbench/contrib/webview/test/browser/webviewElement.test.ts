@@ -30,10 +30,16 @@ import { TestInstantiationService } from '../../../../../platform/instantiation/
 import { ILogService, NullLogService } from '../../../../../platform/log/common/log.js';
 import { INotificationService } from '../../../../../platform/notification/common/notification.js';
 import { IRemoteAuthorityResolverService } from '../../../../../platform/remote/common/remoteAuthorityResolver.js';
+import { NullTelemetryService } from '../../../../../platform/telemetry/common/telemetryUtils.js';
 import { ITunnelService } from '../../../../../platform/tunnel/common/tunnel.js';
 import { IUriIdentityService } from '../../../../../platform/uriIdentity/common/uriIdentity.js';
 import { UriIdentityService } from '../../../../../platform/uriIdentity/common/uriIdentityService.js';
+import { MainThreadWebviews } from '../../../../api/browser/mainThreadWebviews.js';
+import { MainThreadWebviewsViews } from '../../../../api/browser/mainThreadWebviewViews.js';
+import { ExtHostWebviewViewsShape } from '../../../../api/common/extHost.protocol.js';
+import { SingleProxyRPCProtocol } from '../../../../api/test/common/testRPCProtocol.js';
 import { IWorkbenchEnvironmentService } from '../../../../services/environment/common/environmentService.js';
+import { WebviewViewService } from '../../../webviewView/browser/webviewViewService.js';
 import { WebviewThemeDataProvider } from '../../browser/themeing.js';
 import { WebviewElement } from '../../browser/webviewElement.js';
 import { ToWebviewMessage } from '../../browser/webviewMessages.js';
@@ -99,6 +105,27 @@ suite('WebviewElement', () => {
 		channel.port2.start();
 		return { webview, container, instantiationService, port: channel.port2, errorNotification };
 	}
+
+	test('passes the inline webview state to its view provider', async () => {
+		const views = store.add(new WebviewViewService());
+		const received: object[] = [];
+		const bridge = store.add(new MainThreadWebviewsViews(SingleProxyRPCProtocol(upcastPartial<ExtHostWebviewViewsShape>({
+			async $resolveWebviewView(_handle, _viewType, _title, state) { received.push(state); },
+			$disposeWebviewView() { },
+		})), upcastPartial<MainThreadWebviews>({ addWebview() { } }), NullTelemetryService, views));
+		const viewType = 'studio.launchpadBotManagement';
+		bridge.$registerWebviewViewProvider({ id: new ExtensionIdentifier('studio.studio-workstation'), location: URI.file('/extension') }, viewType, { serializeBuffersForPostMessage: true });
+		const targets = ['artifacts', 'memory'].map(kind => ({ kind, uri: 'file:///projects/Bot', entryId: 'main', owner: null }));
+		for (const target of targets) {
+			const { webview } = await createWebview();
+			webview.state = JSON.stringify(target);
+			await views.resolve(viewType, {
+				webview, onDidChangeVisibility: Event.None, onDispose: webview.onDidDispose,
+				dispose() { }, show() { },
+			}, CancellationToken.None);
+		}
+		assert.deepStrictEqual(received, targets);
+	});
 
 	test('ignores a frame focus message delivered after focus moved to another editor', async () => {
 		const { webview, container, port } = await createWebview();

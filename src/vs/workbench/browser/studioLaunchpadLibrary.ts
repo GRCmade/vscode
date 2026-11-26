@@ -128,13 +128,19 @@ export class LaunchpadLibrary extends Disposable {
 		if (wasLoading !== loading) {
 			this.loading.hidden = !loading;
 			if (loading) {
+				this.projectUsage();
+				this.activeProjects.clear();
+				this.projects = new Map();
+				this.index.replaceChildren();
+				this.content.replaceChildren();
 				this.content.setAttribute('aria-busy', 'true');
 				this.render();
 			} else { this.content.removeAttribute('aria-busy'); }
 		}
-		if (loading) { return; }
+		if (loading) { this.signature = ''; return; }
 		const signature = JSON.stringify([recent, windows, actionScope, category, builtinProjects]); if (signature === this.signature) { return; }
 		this.signature = signature; this.history = new Set(recent.map(p => p.uri));
+		if (actionScope !== this.actionScope) { this.activeProjects.clear(); }
 		this.actionScope = actionScope;
 		this.category = category;
 		this.linkedProjects = new Set(category?.projectUris);
@@ -221,12 +227,13 @@ export class LaunchpadLibrary extends Disposable {
 	async refreshActivity(): Promise<void> {
 		if (!this.actions.readActivity || this.readingActivity || !this.projects.size) { return; }
 		const projects = this.projects;
+		const scope = this.actionScope;
 		const candidates = [...projects.values()].filter(p => !p.missing && (p.projectId || p.managed))
 			.map(({ uri, projectId, distribution, managed }) => ({ uri, projectId, distribution, managed }));
 		this.readingActivity = true;
 		try {
 			const active = candidates.length ? await this.actions.readActivity(candidates) : [];
-			if (!Array.isArray(active) || this.projects !== projects || !this.element.isConnected) { return; }
+			if (!Array.isArray(active) || this.projects !== projects || scope !== this.actionScope || !this.loading.hidden || !this.element.isConnected) { return; }
 			const next = new Set(active.filter(uri => projects.has(uri)));
 			if (next.size === this.activeProjects.size && [...next].every(uri => this.activeProjects.has(uri))) { return; }
 			this.activeProjects = next;
@@ -537,7 +544,7 @@ export class LaunchpadLibrary extends Disposable {
 	}
 
 	private projectUsage(project?: LaunchpadProject): StudioProjectUsage | undefined {
-		const key = project && projectUsageKey(project);
+		const key = project && `${this.actionScope}:${projectUsageKey(project)}`;
 		if (key !== this.usage?.key) {
 			this.usage?.view.dispose();
 			const bridge = this.actions.usage;

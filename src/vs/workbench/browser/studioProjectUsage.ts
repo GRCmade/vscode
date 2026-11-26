@@ -15,9 +15,10 @@ const cachePrefix = 'studio.projectUsage.v1:';
 const cacheLimit = 32;
 const cacheSizeLimit = 1_000_000;
 
-export function projectUsageBridge(commands: ICommandService, clipboard: IClipboardService, storage: IStorageService): ProjectUsageBridge {
+export function projectUsageBridge(commands: ICommandService, clipboard: IClipboardService, storage: IStorageService,
+	owner: () => string | undefined = () => undefined, hostUri: (uri: string) => string = uri => uri): ProjectUsageBridge {
 	const command = 'studio.internalProjectUsage';
-	const cacheKey = (target: UsageTarget, part: Part) => `${cachePrefix}${projectUsageKey(target)}:${part}`;
+	const cacheKey = (target: UsageTarget, part: Part) => `${cachePrefix}${owner() ?? 'local'}:${projectUsageKey(target)}:${part}`;
 	const readCache = (key: string) => {
 		try { return storage.getObject<Snapshot>(key, StorageScope.PROFILE); }
 		catch { return undefined; }
@@ -53,7 +54,7 @@ export function projectUsageBridge(commands: ICommandService, clipboard: IClipbo
 			}
 		},
 		read: ({ uri, projectId, distribution, managed }, part, id) => commands.executeCommand<Snapshot | undefined>(command,
-			{ uri, managed, part, id, refresh: true, identity: [projectId, distribution].join(':') }),
+			{ uri: hostUri(uri), managed, part, id, refresh: true, identity: [projectId, distribution].join(':') }),
 		cancel: id => { void commands.executeCommand(command, { id, cancel: true }).catch(() => undefined); },
 		copy: path => { void clipboard.writeText(path).catch(() => undefined); },
 	};

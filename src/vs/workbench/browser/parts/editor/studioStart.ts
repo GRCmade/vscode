@@ -38,6 +38,8 @@ interface StudioOverviewProject {
 export interface StudioStartState {
 	version: 1;
 	platform?: boolean;
+	workspaceOwner?: string;
+	workspaceRestoring?: boolean;
 	labels: Record<string, string>;
 	hasWorkspace: boolean;
 	recommendations?: { title: string; openLabel: string; browseLabel: string; message?: string; items: { id: string; name: string; description?: string; projectType?: string; version?: string; avatarUrl?: string }[] };
@@ -108,6 +110,7 @@ export class StudioStartView extends Disposable {
 	private readonly zh = getNLSLanguage()?.toLowerCase().startsWith('zh');
 	private readonly usageBridge: ProjectUsageBridge;
 	private readonly usage = new Map<string, StudioProjectUsage>();
+	private usageOwner?: string;
 	private renderKey = '';
 	private intersecting = false;
 	private enabled = true;
@@ -120,7 +123,7 @@ export class StudioStartView extends Disposable {
 		@IStorageService storage: IStorageService,
 	) {
 		super();
-		this.usageBridge = projectUsageBridge(commands, clipboard, storage);
+		this.usageBridge = projectUsageBridge(commands, clipboard, storage, () => service.state?.workspaceOwner);
 		this.element = append(container, $('main.studio-start.loading'));
 		this.element.tabIndex = -1;
 		this.element.setAttribute('aria-label', 'SteamHarness');
@@ -191,10 +194,14 @@ export class StudioStartView extends Disposable {
 		this.element.classList.toggle('loading', !state);
 		this.element.setAttribute('aria-busy', String(!state));
 		if (!state) { this.pruneUsage(new Set()); return; }
+		if (state.workspaceOwner !== this.usageOwner) {
+			this.usageOwner = state.workspaceOwner;
+			this.pruneUsage(new Set());
+		}
 		const { hasWorkspace, projects, pending, platform, installing, busy, labels } = state;
 		const lastOpened = new Map(state.recent.map(row => [row.uri, row.lastOpened]));
 		const details = projects.map(project => ({ ...project, lastOpened: lastOpened.get(project.uri) }));
-		const key = JSON.stringify({ hasWorkspace, details, pending, platform, installing, busy: pending.length ? busy : undefined, labels });
+		const key = JSON.stringify({ hasWorkspace, details, pending, platform, installing, busy: pending.length ? busy : undefined, labels, workspaceOwner: this.usageOwner });
 		if (key === this.renderKey) { return; }
 		this.renderKey = key;
 		this.pruneUsage(new Set(details.map(projectUsageKey)));

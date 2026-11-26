@@ -21,6 +21,7 @@ import { ILabelService } from '../../platform/label/common/label.js';
 import { INotificationService } from '../../platform/notification/common/notification.js';
 import { IOpenerService } from '../../platform/opener/common/opener.js';
 import { IProductService } from '../../platform/product/common/productService.js';
+import { IStorageService } from '../../platform/storage/common/storage.js';
 import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
 import { studioWebImTarget } from '../common/studioWebImRoute.js';
 import { IWebviewService } from '../contrib/webview/browser/webview.js';
@@ -32,6 +33,7 @@ import { IStudioStartService, StudioStartState } from './parts/editor/studioStar
 import { LaunchpadProject, StudioLaunchpadView } from './studioLaunchpadView.js';
 import { InboxAction, LaunchpadAccount, LaunchpadDirectory, LaunchpadInbox, LaunchpadMenuAccount, SocialResult } from './studioLaunchpadProfile.js';
 import { StudioLaunchpadSettings } from './studioLaunchpadSettings.js';
+import { projectUsageBridge } from './studioProjectUsage.js';
 import { CatalogPage } from './studioLaunchpadStore.js';
 import { LaunchpadProjectMetadata, StoreListingDetails } from './studioLaunchpadCards.js';
 import { StudioNotificationInbox } from './studioNotificationInbox.js';
@@ -73,6 +75,7 @@ export class StudioWebLaunchpad extends Disposable {
 	private readonly settings: StudioLaunchpadSettings;
 	private readonly refreshInbox = this._register(new RunOnceScheduler(() => void this.readInbox(), 160));
 	private readonly refreshNotices = this._register(new RunOnceScheduler(() => void this.readNotices(), 160));
+	private readonly projectRefresh = this._register(new RunOnceScheduler(() => void this.refreshProjects().catch(error => this.notifications.error(error)), 100));
 	private account?: LaunchpadAccount;
 	private accountRevision = 0;
 	private inbox?: LaunchpadInbox;
@@ -80,6 +83,7 @@ export class StudioWebLaunchpad extends Disposable {
 	private socialUnread = false;
 	private noticeRevision = 0;
 	private projects?: LaunchpadProject[];
+	private projectOwner?: string;
 	private startVisibilitySettled = false;
 	private recent = new Map<string, RecentProject>();
 	private builtinProjects?: LaunchpadProject[];
@@ -105,6 +109,7 @@ export class StudioWebLaunchpad extends Disposable {
 		@IWebviewService webviews: IWebviewService,
 		@IWebviewViewService webviewViews: IWebviewViewService,
 		@IProductService product: IProductService,
+		@IStorageService storage: IStorageService,
 	) {
 		super();
 		const run = (operation: Promise<unknown>) => { void operation.catch(error => notifications.error(error)); };
@@ -117,6 +122,15 @@ export class StudioWebLaunchpad extends Disposable {
 			runProject: (project, entryId) => run(this.openProject(project, { entryId })),
 			remove: project => run(this.removeProject(project)),
 			copyPath: project => run(clipboard.writeText(project.path)),
+			usage: projectUsageBridge(commands, clipboard, storage, () => this.account?.workspaceOwner, value => this.localUri(URI.parse(value))?.toString() ?? value),
+			readActivity: async projects => {
+				const local = new Map(projects.flatMap(row => {
+					const uri = this.localUri(URI.parse(row.uri));
+					return uri ? [[uri.toString(), row] as const] : [];
+				}));
+				const active = await commands.executeCommand<string[]>('studio.internalReadLibraryActivity', [...local].map(([uri, row]) => ({ ...row, uri })));
+				return active?.flatMap(uri => local.get(uri)?.uri ?? []);
+			},
 			openLabel: project => project.builtin ? studioLabel('Open in new tab', '在新标签页打开') : studioLabel('Open in workbench', '在工作台打开'),
 			contextMenu, hoverService,
 			cover: async () => undefined,
@@ -138,10 +152,11 @@ export class StudioWebLaunchpad extends Disposable {
 					await commands.executeCommand('studio.changeLaunchpadConversation', action);
 					this.refreshInbox.schedule(); this.view.refreshDirectory();
 				},
-				readNotice: id => notices.read(id),
+				readNotice: id => run(notices.read(id)),
 				readAllNotices: async () => {
-					notices.readAll();
-					if (this.account?.signedIn) { await commands.executeCommand('studio.markAllNoticesRead', this.account.scopeKey); }
+					const account = this.account?.signedIn ? this.account.scopeKey : undefined;
+					await notices.readAll();
+					if (account && account === this.account?.scopeKey && this.account.signedIn) { await commands.executeCommand('studio.markAllNoticesRead', account); }
 					this.refreshNotices.schedule();
 				},
 			},
@@ -176,8 +191,7 @@ export class StudioWebLaunchpad extends Disposable {
 			this.view.element.remove();
 		}));
 
-		const refresh = this._register(new RunOnceScheduler(() => run(this.refreshProjects()), 100));
-		const changed = () => { ++this.revision; refresh.schedule(); };
+		const changed = () => { ++this.revision; this.projectRefresh.schedule(); };
 		const visible = () => {
 			const isVisible = !document.hidden && !this.view.element.hidden;
 			const activation = start.setVisible('launchpad', isVisible);
@@ -235,6 +249,10 @@ export class StudioWebLaunchpad extends Disposable {
 		this._register(addDisposableListener(document, 'visibilitychange', () => { visible(); this.refreshProfile(); }));
 		const poll = mainWindow.setInterval(() => this.refreshProfile(), 60_000);
 		this._register(toDisposable(() => mainWindow.clearInterval(poll)));
+		const inboxPoll = mainWindow.setInterval(() => { if (!document.hidden) { notices.refresh(); } }, 5_000);
+		this._register(toDisposable(() => mainWindow.clearInterval(inboxPoll)));
+		const activityPoll = mainWindow.setInterval(() => this.view.refreshLibraryActivity(), 2_000);
+		this._register(toDisposable(() => mainWindow.clearInterval(activityPoll)));
 
 		this._register(workspaces.onDidChangeRecentlyOpened(changed));
 		this._register(start.onDidChange(changed));
@@ -254,8 +272,11 @@ export class StudioWebLaunchpad extends Disposable {
 
 	private setAccount(state?: LaunchpadMenuAccount): void {
 		const account = state && { name: state.hasAccount ? state.name : '', email: state.email, avatarUrl: state.avatarUrl, hasAccount: state.hasAccount,
-			scopeKey: state.scopeKey, storeScopeKey: state.storeScopeKey, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
+			scopeKey: state.scopeKey, workspaceOwner: state.workspaceOwner, storeScopeKey: state.storeScopeKey, statusLabel: state.statusLabel, signedIn: state.status === 'authenticated' };
 		const changed = this.account?.signedIn !== account?.signedIn || this.account?.scopeKey !== account?.scopeKey;
+		if (this.account?.workspaceOwner !== account?.workspaceOwner) {
+			++this.revision; this.projects = undefined; this.recent.clear(); this.projectRefresh.schedule();
+		}
 		this.account = account;
 		if (changed) {
 			++this.inboxRevision; ++this.noticeRevision;
@@ -266,6 +287,7 @@ export class StudioWebLaunchpad extends Disposable {
 	}
 
 	private refreshProfile(): void {
+		this.notices.refresh();
 		if (!this.account?.signedIn || document.hidden || this.view.element.hidden || this._store.isDisposed) { return; }
 		this.refreshInbox.schedule(); this.refreshNotices.schedule(); this.view.refreshSocial();
 	}
@@ -313,12 +335,17 @@ export class StudioWebLaunchpad extends Disposable {
 		if (uri.scheme === Schemas.vscodeRemote && uri.authority === this.authority) { return uri; }
 		return undefined;
 	}
+	private localUri(uri: URI): URI | undefined {
+		return uri.scheme === Schemas.vscodeRemote && uri.authority === this.authority ? uri.with({ scheme: Schemas.file, authority: '' }) : undefined;
+	}
 
 	private async refreshProjects(): Promise<void> {
 		const state = this.start.state;
+		const owner = this.account?.workspaceOwner;
+		if (state?.workspaceRestoring || state?.workspaceOwner !== owner) { return; }
 		if (!state && !this.startVisibilitySettled) { return; }
 		const revision = this.revision;
-		const history = await this.workspaces.getRecentlyOpened();
+		const history = owner ? undefined : await this.workspaces.getRecentlyOpened();
 		if (revision !== this.revision || this._store.isDisposed) { return; }
 		const projects = new Map<string, LaunchpadProject>();
 		const recent = new Map<string, RecentProject>();
@@ -332,7 +359,7 @@ export class StudioWebLaunchpad extends Disposable {
 				projects.set(key, { ...row, uri: key, kind: row.kind, name: row.projectName ?? row.label, path: this.labels.getUriLabel(uri) });
 			}
 		}
-		for (const row of history.workspaces) {
+		for (const row of history?.workspaces ?? []) {
 			const folder = isRecentFolder(row), uri = folder ? row.folderUri : row.workspace.configPath;
 			if (uri.scheme === Schemas.vscodeRemote && uri.authority === this.authority && !projects.has(uri.toString())) {
 				projects.set(uri.toString(), { uri: uri.toString(), kind: folder ? 'folder' : 'workspace', name: row.label ?? basenameOrAuthority(uri), path: this.labels.getUriLabel(uri) });
@@ -341,7 +368,7 @@ export class StudioWebLaunchpad extends Disposable {
 		// Browser history keeps paths only. Use the host's file URIs so the desktop reader also matches installed-project records.
 		const uninspected = new Map<string, LaunchpadProject>();
 		for (const project of projects.values()) {
-			if (project.kind === 'folder' && (!this.projects || !project.artwork)) {
+			if (!owner && project.kind === 'folder' && (!this.projects || !project.artwork)) {
 				uninspected.set(URI.parse(project.uri).with({ scheme: Schemas.file, authority: '' }).toString(), project);
 			}
 		}
@@ -356,6 +383,7 @@ export class StudioWebLaunchpad extends Disposable {
 			}
 		}
 		this.recent = recent;
+		this.projectOwner = owner;
 		this.projects = [...projects.values()];
 		this.paint();
 	}
@@ -373,22 +401,29 @@ export class StudioWebLaunchpad extends Disposable {
 
 	private paint(): void {
 		const state = this.start.state;
+		const recent = !state?.workspaceRestoring && this.projectOwner === this.account?.workspaceOwner ? this.projects : undefined;
 		const builtins = new Set(this.builtinProjects?.map(project => project.uri));
-		this.view.update({ windows: [], recent: this.projects?.filter(project => !builtins.has(project.uri)) ?? [], builtinProjects: this.builtinProjects,
-			libraryLoading: this.projects === undefined,
+		this.view.update({ windows: [], recent: recent?.filter(project => !builtins.has(project.uri)) ?? [], builtinProjects: this.builtinProjects,
+			libraryLoading: recent === undefined,
 			platform: !!state?.platform, account: this.account, inbox: this.inbox, store: state?.recommendations, canCreate: !!state?.canCreate && !state.busy,
-			notices: this.notices.list(), notificationUnread: this.socialUnread || this.notices.hasUnread() });
+			notices: this.notices.list(), notificationUnread: this.socialUnread || this.notices.hasUnread(), dismissedSocialNoticeIds: this.notices.dismissedSocialNoticeIds });
 	}
 
 	private async importFolders(): Promise<void> {
+		const owner = this.account?.workspaceOwner;
 		const uris = await this.dialogs.showOpenDialog({ title: studioLabel('Import project', '导入项目'), openLabel: studioLabel('Import', '导入'),
 			canSelectFolders: true, canSelectFiles: false, canSelectMany: true, availableFileSystems: [Schemas.vscodeRemote] });
-		if (!uris?.length || this._store.isDisposed) { return; }
-		await this.workspaces.addRecentlyOpened(uris.map(folderUri => ({ folderUri })));
-		if (!this._store.isDisposed) { this.view.showImportedProjects(uris.length === 1 ? uris[0].toString() : undefined); }
+		if (!uris?.length || this._store.isDisposed || owner !== this.account?.workspaceOwner) { return; }
+		if (owner) {
+			const local = uris.filter(uri => uri.scheme === Schemas.vscodeRemote && uri.authority === this.authority)
+				.map(uri => uri.with({ scheme: Schemas.file, authority: '' }).toString());
+			if (!await this.commands.executeCommand<boolean>('studio.internalEditWorkspaceHistory', owner, 'import', local)) { return; }
+		} else { await this.workspaces.addRecentlyOpened(uris.map(folderUri => ({ folderUri }))); }
+		if (!this._store.isDisposed && owner === this.account?.workspaceOwner) { this.view.showImportedProjects(uris.length === 1 ? uris[0].toString() : undefined); }
 	}
 
 	private async pickAndOpen(kind: 'folder' | 'workspace'): Promise<void> {
+		const owner = this.account?.workspaceOwner;
 		const folder = kind === 'folder';
 		const selection = await this.dialogs.showOpenDialog({
 			title: folder ? studioLabel('Open folder', '打开文件夹') : studioLabel('Open workspace', '打开工作区'),
@@ -396,12 +431,13 @@ export class StudioWebLaunchpad extends Disposable {
 			filters: folder ? undefined : [{ name: studioLabel('Workspace', '工作区'), extensions: ['code-workspace'] }],
 		});
 		const uri = selection?.[0];
-		if (uri?.scheme === Schemas.vscodeRemote && uri.authority === this.authority && !this._store.isDisposed) {
+		if (uri?.scheme === Schemas.vscodeRemote && uri.authority === this.authority && !this._store.isDisposed && owner === this.account?.workspaceOwner) {
 			await this.host.openWindow([folder ? { folderUri: uri } : { workspaceUri: uri }], { forceNewWindow: true });
 		}
 	}
 
 	private async openProject(project: LaunchpadProject, entry?: { entryId?: string }): Promise<void> {
+		const owner = this.account?.workspaceOwner;
 		const uri = URI.parse(project.uri);
 		try {
 			const stat = await this.files.stat(uri);
@@ -411,14 +447,18 @@ export class StudioWebLaunchpad extends Disposable {
 			this.notifications.warn(studioLabel(`Project not found: ${project.path}`, `找不到项目：${project.path}`));
 			return;
 		}
-		if (!this._store.isDisposed) {
+		if (!this._store.isDisposed && owner === this.account?.workspaceOwner) {
 			await this.host.openWindow([project.kind === 'folder' ? { folderUri: uri } : { workspaceUri: uri }], { forceNewWindow: true, studioProjectEntry: entry });
 		}
 	}
 
 	private async removeProject(project: LaunchpadProject): Promise<void> {
-		const record = this.recent.get(project.uri) ?? { uri: project.uri, kind: project.kind, label: project.name, lastOpened: 0 };
-		if (await this.commands.executeCommand<boolean>('studio.removeRecentProject', record)) {
+		const uri = URI.parse(project.uri);
+		const owner = this.account?.workspaceOwner;
+		const record = { ...(this.recent.get(project.uri) ?? { kind: project.kind, label: project.name, lastOpened: 0 }),
+			uri: owner && uri.scheme === Schemas.vscodeRemote && uri.authority === this.authority
+				? uri.with({ scheme: Schemas.file, authority: '' }).toString() : project.uri };
+		if (await this.commands.executeCommand<boolean>('studio.removeRecentProject', record, owner ?? null) && !owner && !this.account?.workspaceOwner) {
 			await this.workspaces.removeRecentlyOpened([URI.parse(project.uri)]);
 		}
 	}

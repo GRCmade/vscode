@@ -19,6 +19,16 @@ const socialDismissalsPrefix = 'studio.dismissedSocialNotifications.';
 const scope = StorageScope.PROFILE, target = StorageTarget.MACHINE;
 const titleLimit = 500;
 interface Notice extends StudioNotice { owner: string; fingerprint?: string }
+interface SharedSnapshot { notices: Omit<Notice, 'owner'>[]; dismissed: string[] }
+type SharedAction = { kind: 'list' | 'read-all' } | { kind: 'add'; notice: Notice } | { kind: 'import'; notices: Notice[]; dismissed: string[] }
+	| { kind: 'read' | 'clear' | 'dismiss'; ids: string[] };
+interface SharedInbox {
+	owner: string;
+	pending: Promise<unknown>;
+	migrated: boolean;
+	snapshot?: SharedSnapshot;
+	refreshing?: Promise<void>;
+}
 
 function fingerprint(item: INotificationViewItem): string {
 	const hash = new StringSHA1();
@@ -31,17 +41,26 @@ export class StudioNotificationInbox extends Disposable {
 	private owner?: string;
 	private stored?: Notice[];
 	private dismissedSocial?: ReadonlySet<string>;
+	private shared?: SharedInbox;
 	private revision = 0;
 	private readonly change = this._register(new Emitter<void>());
 	private readonly acknowledgements = this._register(new DisposableMap<INotificationViewItem>());
 	readonly onDidChange = this.change.event;
 
-	constructor(@IStorageService private readonly storage: IStorageService, @INotificationService notifications: INotificationService, @ICommandService commands: ICommandService) {
+	constructor(@IStorageService private readonly storage: IStorageService, @INotificationService notifications: INotificationService, @ICommandService private readonly commands: ICommandService) {
 		super();
 		const update = (value: unknown) => {
 			const account = value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
-			const owner = account?.localProfile === true ? 'local' : account?.status === 'authenticated' && account.hasAccount === true && typeof account.scopeKey === 'string' && /^[a-f\d]{64}$/.test(account.scopeKey) ? account.scopeKey : undefined;
-			if (owner !== this.owner) { this.owner = owner; this.stored = this.dismissedSocial = undefined; this.change.fire(); }
+			const shared = typeof account?.workspaceOwner === 'string' && /^[a-f\d]{64}$/.test(account.workspaceOwner) ? account.workspaceOwner : undefined;
+			const owner = shared ?? (account?.localProfile === true ? 'local' : account?.status === 'authenticated' && account.hasAccount === true && typeof account.scopeKey === 'string' && /^[a-f\d]{64}$/.test(account.scopeKey) ? account.scopeKey : undefined);
+			if (owner !== this.owner || shared !== this.shared?.owner) {
+				this.owner = owner;
+				this.shared = shared ? { owner: shared, pending: Promise.resolve(), migrated: false } : undefined;
+				this.acknowledgements.clearAndDisposeAll();
+				this.stored = this.dismissedSocial = undefined;
+				this.change.fire();
+				this.refresh();
+			}
 		};
 		this._register(commands.onDidExecuteCommand(({ commandId, args }) => {
 			if (commandId === 'studio.internalUpdateAccountMenuState') { this.revision++; update(args[0]); }
@@ -57,6 +76,7 @@ export class StudioNotificationInbox extends Disposable {
 			}
 		}));
 		this._register(storage.onDidChangeValue(scope, undefined, this._store)(e => {
+			if (this.shared) { return; }
 			if (e.key.startsWith(prefix)) { this.stored = undefined; this.change.fire(); }
 			else if (this.owner && e.key === socialDismissalsPrefix + this.owner) { this.dismissedSocial = undefined; this.change.fire(); }
 		}));
@@ -65,26 +85,70 @@ export class StudioNotificationInbox extends Disposable {
 		void commands.executeCommand('studio.internalGetAccountMenuState').then(a => { if (rev === this.revision && !this._store.isDisposed) { update(a); } }, () => undefined);
 	}
 
+	refresh(): void {
+		const current = this.shared;
+		if (!current || current.refreshing) { return; }
+		current.refreshing = this.updateShared(current, { kind: 'list' }).catch(() => undefined).finally(() => { current.refreshing = undefined; });
+	}
+
+	private updateShared(current: SharedInbox, action: SharedAction): Promise<void> {
+		const run = async () => {
+			const isCurrent = () => this.shared === current && !this._store.isDisposed;
+			const send = (request: SharedAction) => this.commands.executeCommand<SharedSnapshot | undefined>('studio.internalWorkspaceInbox', current.owner, request);
+			if (!isCurrent()) { return; }
+			let snapshot: SharedSnapshot | undefined;
+			if (!current.migrated) {
+				// Only the legacy records that were already tagged with this account can be adopted.
+				const notices = this.legacyNotices(current.owner);
+				const dismissalKey = socialDismissalsPrefix + current.owner;
+				const dismissed = this.storage.getObject<string[]>(dismissalKey, scope, []);
+				if (notices.length || dismissed.length) {
+					snapshot = await send({ kind: 'import', notices, dismissed });
+					if (!isCurrent() || !snapshot) { return; }
+					for (const notice of notices) {
+						if (JSON.stringify(this.storage.getObject(prefix + notice.id, scope)) === JSON.stringify(notice)) { this.storage.remove(prefix + notice.id, scope); }
+					}
+					if (JSON.stringify(this.storage.getObject(dismissalKey, scope, [])) === JSON.stringify(dismissed)) { this.storage.remove(dismissalKey, scope); }
+				}
+				current.migrated = true;
+			}
+			if (!snapshot || action.kind !== 'list') { snapshot = await send(action); }
+			if (!isCurrent() || !snapshot || JSON.stringify(snapshot) === JSON.stringify(current.snapshot)) { return; }
+			current.snapshot = snapshot;
+			this.stored = snapshot.notices.map(notice => ({ ...notice, owner: current.owner }));
+			this.dismissedSocial = new Set(snapshot.dismissed);
+			this.change.fire();
+		};
+		const operation = current.pending.then(run);
+		current.pending = operation.catch(() => undefined);
+		return operation;
+	}
+
 	private add(item: INotificationViewItem, owner: string): void {
+		const shared = this.shared;
 		const key = fingerprint(item);
 		const existing = this.owned().find(notice => notice.fingerprint === key && !notice.read);
 		const id = existing?.id ?? `${Date.now()}-${generateUuid()}`;
 		this.acknowledgements.set(item, Event.once(item.onDidAcknowledge)(() => {
 			// An old toast must not acknowledge a later occurrence or another account's notice.
-			if (this.owner === owner && this.get(id)?.read === false) {
-				this.read(id);
+			if (this.owner === owner && this.shared === shared) {
+				if (shared && !this.get(id)) { void this.updateShared(shared, { kind: 'read', ids: [id] }).catch(() => undefined); }
+				else { void this.read(id).catch(() => undefined); }
 			}
 		}));
 		if (!existing) {
 			const notice: Notice = { owner, id, title: item.message.raw.slice(0, titleLimit), fingerprint: key, source: 'studio', read: false };
+			if (shared) { void this.updateShared(shared, { kind: 'add', notice }).catch(() => undefined); return; }
 			this.storage.store(prefix + id, notice, scope, target);
 			for (const stale of this.keys().slice(300)) { this.storage.remove(stale, scope); }
 		}
 	}
 
 	private keys(): string[] { return this.storage.keys(scope, target).filter(k => k.startsWith(prefix)).sort().reverse(); }
-	private owned(): Notice[] { return this.stored ??= this.owner ? this.keys().map(k => this.storage.getObject(k, scope) as Notice | undefined).filter((n): n is Notice => !!n && n.owner === this.owner) : []; }
+	private legacyNotices(owner: string): Notice[] { return this.keys().map(k => this.storage.getObject<Notice>(k, scope)).filter((n): n is Notice => !!n && n.owner === owner); }
+	private owned(): Notice[] { return this.stored ??= this.owner && !this.shared ? this.legacyNotices(this.owner) : []; }
 	private get(id: string): Notice | undefined {
+		if (this.shared) { return this.owned().find(notice => notice.id === id); }
 		const notice = this.storage.getObject(prefix + id, scope) as Notice | undefined;
 		return this.owner && notice?.owner === this.owner && notice.id === id ? notice : undefined;
 	}
@@ -115,38 +179,43 @@ export class StudioNotificationInbox extends Disposable {
 	list(): StudioNotice[] { return this.groups().slice(0, 100).map(group => ({ ...group[0], read: group.every(notice => notice.read) })); }
 	unread(): StudioNotice[] { return this.groups().flatMap(group => group.find(notice => !notice.read) ?? []); }
 	hasUnread(): boolean { return this.owned().some(notice => !notice.read); }
-	readAll(): void { this.markRead(this.owned()); }
-	clearRead(): void {
+	async readAll(): Promise<void> {
+		if (this.shared) { await this.updateShared(this.shared, { kind: 'read-all' }); }
+		else { await this.markRead(this.owned()); }
+	}
+	async clearRead(): Promise<void> {
 		// Clear every occurrence of a read group, not just the one shown in the list.
-		const entries = this.groups().filter(group => group.every(notice => notice.read === true))
-			.flatMap(group => group.map(notice => ({ key: prefix + notice.id, value: undefined, scope, target })));
-		this.storage.storeAll(entries, false);
+		const ids = this.groups().filter(group => group.every(notice => notice.read === true)).flatMap(group => group.map(notice => notice.id));
+		if (this.shared) { await this.updateShared(this.shared, { kind: 'clear', ids }); }
+		else { this.storage.storeAll(ids.map(id => ({ key: prefix + id, value: undefined, scope, target })), false); }
 	}
 
 	get dismissedSocialNoticeIds(): ReadonlySet<string> | undefined {
 		if (!this.owner || this.owner === 'local') { return undefined; }
+		if (this.shared) { return this.dismissedSocial; }
 		return this.dismissedSocial ??= new Set(this.storage.getObject<string[]>(socialDismissalsPrefix + this.owner, scope, []));
 	}
 
-	dismissReadSocialNotices(owner: string, notices: readonly StudioNotice[]): void {
+	async dismissReadSocialNotices(owner: string, notices: readonly StudioNotice[]): Promise<void> {
 		if (owner !== this.owner || owner === 'local') { throw new Error('The notification account changed'); }
-		// Only dismiss the desktop copies. Pending invitations must stay actionable.
+		// Pending invitations must stay actionable.
+		const read = notices.filter(notice => notice.read && !notice.inviteId && !notice.legacyInvite).map(notice => notice.id);
+		if (this.shared) { await this.updateShared(this.shared, { kind: 'dismiss', ids: read }); return; }
 		const ids = new Set(this.dismissedSocialNoticeIds);
 		const previousSize = ids.size;
-		for (const notice of notices) {
-			if (notice.read === true && !notice.inviteId && !notice.legacyInvite) { ids.add(notice.id); }
-		}
+		for (const id of read) { ids.add(id); }
 		if (ids.size > previousSize) { this.storage.store(socialDismissalsPrefix + owner, [...ids].slice(-1000), scope, target); }
 	}
 
-	read(id: string): void {
+	async read(id: string): Promise<void> {
 		const notice = this.get(id);
 		if (notice) {
-			this.markRead(this.groups().find(group => group.some(item => item.id === id)) ?? [notice]);
+			await this.markRead(this.groups().find(group => group.some(item => item.id === id)) ?? [notice]);
 		}
 	}
 
-	private markRead(notices: Notice[]): void {
+	private async markRead(notices: Notice[]): Promise<void> {
+		if (this.shared) { await this.updateShared(this.shared, { kind: 'read', ids: notices.filter(notice => !notice.read).map(notice => notice.id) }); return; }
 		const entries = notices.filter(notice => !notice.read).map(notice => ({ key: prefix + notice.id, value: { ...notice, read: true }, scope, target }));
 		this.storage.storeAll(entries, false);
 	}

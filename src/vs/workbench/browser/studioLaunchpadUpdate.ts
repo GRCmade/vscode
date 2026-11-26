@@ -11,7 +11,8 @@ type LaunchpadUpdater = Pick<IUpdateService, 'state' | 'onStateChange' | 'checkF
 type UpdateAction = 'check' | 'download' | 'apply' | 'restart';
 
 export interface LaunchpadVersion {
-	version: string;
+	version?: string;
+	openAbout(): void;
 	updater?: LaunchpadUpdater;
 }
 
@@ -24,11 +25,13 @@ export class StudioLaunchpadUpdate extends Disposable {
 	private running = false;
 	private failed = false;
 
-	constructor(private readonly t: StudioLabel, { version, updater }: LaunchpadVersion) {
+	constructor(private readonly t: StudioLabel, { version, openAbout, updater }: LaunchpadVersion) {
 		super();
 		this.element.classList.toggle('lp-managed-release', !!updater);
-		const label = element('span', 'lp-release-version', `v${version}`);
-		label.title = `${t('Studio version', 'Studio 版本')} ${version}`;
+		const about = t('About SteamHarness Studio', '关于 SteamHarness Studio');
+		const label = button(version ? `v${version}` : t('About', '关于'), '', openAbout, 'lp-release-version');
+		label.title = version ? `${about} (v${version})` : about;
+		label.setAttribute('aria-label', label.title);
 		this.status.setAttribute('role', 'status');
 		this.progress.max = 100;
 		this.progress.setAttribute('aria-label', t('Update download progress', '更新下载进度'));

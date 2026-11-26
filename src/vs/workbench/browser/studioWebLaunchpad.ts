@@ -159,7 +159,10 @@ export class StudioWebLaunchpad extends Disposable {
 			},
 			storeImage: async src => src.startsWith('http:') ? commands.executeCommand<string | undefined>('studio.readLocalStoreImage', src) : src,
 			getListing: (id, platform) => run(commands.executeCommand(platform ? 'studio.getStoreListing' : 'studio.createExample', id)),
-		}, { version: product.studioVersion ?? product.version }));
+		}, {
+			version: product.studioVersion,
+			openAbout: () => run(commands.executeCommand('studio.openSettings', { section: 'about', target: 'user' })),
+		}));
 
 		const root = layout.mainContainer;
 		root.append(this.view.element);

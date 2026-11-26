@@ -12,7 +12,9 @@ import { IClipboardService } from '../../../../platform/clipboard/common/clipboa
 import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
 import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
+import { IProductService } from '../../../../platform/product/common/productService.js';
 import { IStorageService } from '../../../../platform/storage/common/storage.js';
+import { STEAMHARNESS_ICON_DATA_URI } from '../../../common/studioBranding.js';
 import { projectDetails, type StudioProjectDetails } from '../../studioProjectDetails.js';
 import { projectUsageBridge, projectUsageKey, StudioProjectUsage, type ProjectUsageBridge } from '../../studioProjectUsage.js';
 import './media/studioStart.css';
@@ -91,6 +93,11 @@ class StudioStartService extends Disposable implements IStudioStartService {
 	}
 }
 registerSingleton(IStudioStartService, StudioStartService, InstantiationType.Delayed);
+
+CommandsRegistry.registerCommand('studio.internalGetProductInfo', accessor => ({
+	studioVersion: accessor.get(IProductService).studioVersion,
+	logo: STEAMHARNESS_ICON_DATA_URI,
+}));
 
 /** Project overview shared by empty editor groups and the Start editor. */
 export class StudioStartView extends Disposable {

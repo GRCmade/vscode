@@ -206,7 +206,11 @@ export class StudioLaunchpad extends Disposable {
 			},
 			resource: id => run(id === 'github' ? opener.open(URI.parse('https://github.com/steamharness/steamharness'), { openExternal: true }) : commands.executeCommand('studio.openLaunchpadResource', id)),
 			openStore: () => run(commands.executeCommand('studio.openStore')),
-		}, { version: product.studioVersion ?? product.version, updater: product.updateUrl ? updates : undefined }));
+		}, {
+			version: product.studioVersion,
+			openAbout: () => run(commands.executeCommand('studio.openSettings', { section: 'about', target: 'user' })),
+			updater: product.updateUrl ? updates : undefined,
+		}));
 		const zh = this.language.startsWith('zh');
 		this.settings = this._register(new StudioLaunchpadSettings(layout.mainContainer, (en, cn) => zh ? cn : en, () => this.showHome(), () => {
 			this.view.closePicker();

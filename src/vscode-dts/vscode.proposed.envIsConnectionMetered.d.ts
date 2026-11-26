@@ -8,12 +8,13 @@ declare module 'vscode' {
 	export namespace env {
 		/**
 		 * Whether the current network connection is metered (such as mobile data or tethering).
-		 * Always returns `false` if the `network.meteredConnection` setting is set to `off`.
+		 * Always `false` in SteamHarness Studio.
 		 */
 		export const isMeteredConnection: boolean;
 
 		/**
 		 * Event that fires when the metered connection status changes.
+		 * Never fires in SteamHarness Studio.
 		 */
 		export const onDidChangeMeteredConnection: Event<boolean>;
 	}

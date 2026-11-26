@@ -44,7 +44,7 @@ import './services/url/electron-browser/urlService.js';
 import './services/lifecycle/electron-browser/lifecycleService.js';
 import './services/title/electron-browser/titleService.js';
 import './services/host/electron-browser/nativeHostService.js';
-import '../platform/meteredConnection/electron-browser/meteredConnectionService.js';
+import '../platform/meteredConnection/browser/meteredConnectionService.js';
 import './services/request/electron-browser/requestService.js';
 import '../platform/github/electron-browser/githubService.js';
 import '../platform/copilotConnectors/electron-browser/copilotConnectorsRequestService.js';

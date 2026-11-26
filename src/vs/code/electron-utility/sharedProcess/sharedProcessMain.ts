@@ -151,8 +151,7 @@ import { McpManagementChannel } from '../../../platform/mcp/common/mcpManagement
 import { AllowedMcpServersService } from '../../../platform/mcp/common/allowedMcpServersService.js';
 import { IMcpGalleryManifestService } from '../../../platform/mcp/common/mcpGalleryManifest.js';
 import { McpGalleryManifestIPCService } from '../../../platform/mcp/common/mcpGalleryManifestServiceIpc.js';
-import { IMeteredConnectionService } from '../../../platform/meteredConnection/common/meteredConnection.js';
-import { MeteredConnectionChannelClient, METERED_CONNECTION_CHANNEL } from '../../../platform/meteredConnection/common/meteredConnectionIpc.js';
+import { IMeteredConnectionService, UnmeteredConnectionService } from '../../../platform/meteredConnection/common/meteredConnection.js';
 import { PlaywrightChannel } from '../../../platform/browserView/node/playwrightChannel.js';
 import { AgentNetworkFilterService } from '../../../platform/networkFilter/common/networkFilterService.js';
 import { ILocalGitService } from '../../../platform/git/common/localGitService.js';
@@ -324,7 +323,7 @@ class SharedProcessMain extends Disposable implements IClientConnectionFilter {
 		services.set(INativeHostService, nativeHostService);
 
 		// Metered Connection
-		const meteredConnectionService = this._register(new MeteredConnectionChannelClient(mainProcessService.getChannel(METERED_CONNECTION_CHANNEL)));
+		const meteredConnectionService = new UnmeteredConnectionService();
 		services.set(IMeteredConnectionService, meteredConnectionService);
 
 		// Download

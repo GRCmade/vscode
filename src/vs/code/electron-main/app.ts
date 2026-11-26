@@ -71,10 +71,7 @@ import { ONBOARDING_TRYOUT_CHANNEL } from '../../platform/onboarding/common/onbo
 import { OnboardingTryoutHandoff } from '../../platform/onboarding/electron-main/onboardingTryoutHandoff.js';
 import { GlobalKeybindingsMainService, IGlobalKeybindingsMainService } from '../../platform/globalKeybindings/electron-main/globalKeybindingsMainService.js';
 import { GPUProcessTelemetry } from '../../platform/gpu/electron-main/gpuProcessTelemetry.js';
-import { IMeteredConnectionService } from '../../platform/meteredConnection/common/meteredConnection.js';
-import { METERED_CONNECTION_CHANNEL } from '../../platform/meteredConnection/common/meteredConnectionIpc.js';
-import { MeteredConnectionChannel } from '../../platform/meteredConnection/electron-main/meteredConnectionChannel.js';
-import { MeteredConnectionMainService } from '../../platform/meteredConnection/electron-main/meteredConnectionMainService.js';
+import { IMeteredConnectionService, UnmeteredConnectionService } from '../../platform/meteredConnection/common/meteredConnection.js';
 import { IProductService } from '../../platform/product/common/productService.js';
 import { getRemoteAuthority } from '../../platform/remote/common/remoteHosts.js';
 import { SharedProcess } from '../../platform/sharedProcess/electron-main/sharedProcess.js';
@@ -800,11 +797,6 @@ export class CodeApplication extends Disposable {
 		// This manager self-disposes after its lifecycle join; CodeApplication disposes before later shutdown listeners run.
 		const agentHostProcessManager = appInstantiationService.createInstance(AgentHostProcessManager, agentHostStarter, process.platform);
 
-		// Metered connection telemetry
-		appInstantiationService.invokeFunction(accessor => {
-			(accessor.get(IMeteredConnectionService) as MeteredConnectionMainService).setTelemetryService(accessor.get(ITelemetryService));
-		});
-
 		// Auth Handler
 		appInstantiationService.invokeFunction(accessor => accessor.get(IProxyAuthService));
 
@@ -1306,8 +1298,7 @@ export class CodeApplication extends Disposable {
 		services.set(IGlobalKeybindingsMainService, new SyncDescriptor(GlobalKeybindingsMainService, [globalShortcut]));
 
 		// Metered Connection
-		const meteredConnectionService = new MeteredConnectionMainService(this.configurationService);
-		services.set(IMeteredConnectionService, meteredConnectionService);
+		services.set(IMeteredConnectionService, new UnmeteredConnectionService());
 
 		// Web Contents Extractor
 		services.set(ITerminalSandboxService, new SyncDescriptor(NullTerminalSandboxService));
@@ -1452,11 +1443,6 @@ export class CodeApplication extends Disposable {
 
 		// Show a native "no updates available" dialog from the main process only in windowless macOS case.
 		this._register(new NotAvailableUpdateDialog(updateService, accessor.get(IDialogMainService), accessor.get(IWindowsMainService)));
-
-		// Metered Connection
-		const meteredConnectionChannel = new MeteredConnectionChannel(accessor.get(IMeteredConnectionService) as MeteredConnectionMainService);
-		mainProcessElectronServer.registerChannel(METERED_CONNECTION_CHANNEL, meteredConnectionChannel);
-		sharedProcessClient.then(client => client.registerChannel(METERED_CONNECTION_CHANNEL, meteredConnectionChannel));
 
 		// Process
 		const processChannel = ProxyChannel.fromService(new ProcessMainService(this.logService, accessor.get(IDiagnosticsService), accessor.get(IDiagnosticsMainService)), disposables);

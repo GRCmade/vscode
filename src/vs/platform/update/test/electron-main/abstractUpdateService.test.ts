@@ -15,7 +15,7 @@ import { TestConfigurationService } from '../../../configuration/test/common/tes
 import { IEnvironmentMainService } from '../../../environment/electron-main/environmentMainService.js';
 import { ILifecycleMainService } from '../../../lifecycle/electron-main/lifecycleMainService.js';
 import { NullLogService } from '../../../log/common/log.js';
-import { IMeteredConnectionService } from '../../../meteredConnection/common/meteredConnection.js';
+import { IMeteredConnectionService, UnmeteredConnectionService } from '../../../meteredConnection/common/meteredConnection.js';
 import { IProductService } from '../../../product/common/productService.js';
 import { IRequestService } from '../../../request/common/request.js';
 import { IApplicationStorageMainService } from '../../../storage/electron-main/storageMainService.js';
@@ -29,10 +29,7 @@ class TestMeteredConnectionService extends Disposable implements IMeteredConnect
 	private readonly _onDidChangeIsConnectionMetered = this._register(new Emitter<boolean>());
 	readonly onDidChangeIsConnectionMetered = this._onDidChangeIsConnectionMetered.event;
 
-	constructor(
-		public isConnectionMetered: boolean,
-		readonly whenConnectionStateInitialized?: Promise<void>,
-	) {
+	constructor(public isConnectionMetered: boolean) {
 		super();
 	}
 
@@ -144,7 +141,7 @@ suite('AbstractUpdateService', () => {
 	let requestCount: number;
 	let meteredConnectionService: TestMeteredConnectionService;
 
-	function createService(mode: string, options?: { isBuilt?: boolean; disableUpdates?: boolean; updateUrl?: string; isConnectionMetered?: boolean; meteredConnectionInitialization?: Promise<void>; postInitializeGate?: Promise<void>; supportsUpdateOverwrite?: boolean }): TestUpdateService {
+	function createService(mode: string, options?: { isBuilt?: boolean; disableUpdates?: boolean; updateUrl?: string; isConnectionMetered?: boolean; connectionService?: IMeteredConnectionService; postInitializeGate?: Promise<void>; supportsUpdateOverwrite?: boolean }): TestUpdateService {
 		configurationService = new PolicyTestConfigurationService();
 		configurationService.setUserConfiguration('update.mode', mode);
 		requestCount = 0;
@@ -182,7 +179,7 @@ suite('AbstractUpdateService', () => {
 			store: () => { }
 		} as unknown as IApplicationStorageMainService;
 
-		meteredConnectionService = store.add(new TestMeteredConnectionService(options?.isConnectionMetered ?? false, options?.meteredConnectionInitialization));
+		meteredConnectionService = store.add(new TestMeteredConnectionService(options?.isConnectionMetered ?? false));
 
 		const service = new TestUpdateService(
 			lifecycleMainService,
@@ -193,7 +190,7 @@ suite('AbstractUpdateService', () => {
 			productService,
 			NullTelemetryService,
 			applicationStorageMainService,
-			meteredConnectionService,
+			options?.connectionService ?? meteredConnectionService,
 			options?.supportsUpdateOverwrite ?? false
 		);
 		if (options?.postInitializeGate) {
@@ -282,23 +279,12 @@ suite('AbstractUpdateService', () => {
 		}
 	});
 
-	test('automatic scheduling waits for the initial metered connection state', async () => {
+	test('Studio schedules the initial update check without waiting for the workbench', async () => {
 		const clock = sinon.useFakeTimers();
 		try {
-			const connectionInitialized = new DeferredPromise<void>();
-			const service = createService('default', { meteredConnectionInitialization: connectionInitialized.p });
+			const service = createService('default', { connectionService: new UnmeteredConnectionService() });
 
 			await clock.tickAsync(30 * 1000);
-			assert.strictEqual(service.checkCount, 0);
-
-			meteredConnectionService.setIsConnectionMetered(true);
-			connectionInitialized.complete();
-			await service.whenInitialized;
-			await clock.tickAsync(30 * 1000);
-			assert.strictEqual(service.checkCount, 0);
-
-			meteredConnectionService.setIsConnectionMetered(false);
-			await clock.tickAsync(0);
 			assert.strictEqual(service.checkCount, 1);
 		} finally {
 			clock.restore();

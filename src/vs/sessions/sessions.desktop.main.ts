@@ -50,7 +50,7 @@ import '../workbench/services/url/electron-browser/urlService.js';
 import '../workbench/services/lifecycle/electron-browser/lifecycleService.js';
 import '../workbench/services/host/electron-browser/nativeHostService.js';
 import './services/title/electron-browser/titleService.js';
-import '../platform/meteredConnection/electron-browser/meteredConnectionService.js';
+import '../platform/meteredConnection/browser/meteredConnectionService.js';
 import '../workbench/services/request/electron-browser/requestService.js';
 import '../platform/github/electron-browser/githubService.js';
 import '../platform/copilotConnectors/electron-browser/copilotConnectorsRequestService.js';

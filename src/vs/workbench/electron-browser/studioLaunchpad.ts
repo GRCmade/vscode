@@ -36,6 +36,7 @@ import { IStorageService } from '../../platform/storage/common/storage.js';
 import { IUpdateService } from '../../platform/update/common/update.js';
 import { IUserDataProfilesService } from '../../platform/userDataProfile/common/userDataProfile.js';
 import { isSingleFolderWorkspaceIdentifier, isWorkspaceIdentifier } from '../../platform/workspace/common/workspace.js';
+import { IWorkspaceTrustManagementService } from '../../platform/workspace/common/workspaceTrust.js';
 import { parseStudioReleaseProject } from '../../platform/window/common/studioReleaseProject.js';
 import { emptyStudioTrayNotifications, IStudioTrayNotifications, studioTrayPreviewLimit } from '../../platform/windows/common/studioTrayNotifications.js';
 import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
@@ -112,6 +113,7 @@ export class StudioLaunchpad extends Disposable {
 		@IOpenerService opener: IOpenerService,
 		@IWebviewService webviews: IWebviewService,
 		@IContextKeyService contextKeys: IContextKeyService,
+		@IWorkspaceTrustManagementService trust: IWorkspaceTrustManagementService,
 		@IFileService private readonly files: IFileService,
 		@IExtensionStorageService extensionStorage: IExtensionStorageService,
 		@IWebviewViewService webviewViews: IWebviewViewService,
@@ -241,6 +243,7 @@ export class StudioLaunchpad extends Disposable {
 			openAbout: () => run(commands.executeCommand('studio.openSettings', { section: 'about', target: 'user' })),
 			updater: product.updateUrl ? updates : undefined,
 		}));
+		this._register(Event.any(trust.onDidChangeTrustedFolders, trust.onDidChangeTrust)(() => this.view.closeBotModal()));
 		const zh = this.language.startsWith('zh');
 		this.settings = this._register(new StudioLaunchpadSettings(layout.mainContainer, (en, cn) => zh ? cn : en, () => this.showHome(), () => {
 			this.view.closePicker();

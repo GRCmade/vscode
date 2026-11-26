@@ -152,6 +152,7 @@ export class StudioLaunchpadView extends Disposable {
 	setInboxActionBusy(action: InboxAction, busy: boolean): void { this.profile?.setInboxActionBusy(action, busy); }
 	focusSettings(): void { this.settingsButton.focus({ preventScroll: true }); }
 	closePicker(): void { this.picker.close(); }
+	closeBotModal(): void { this.library.closeBotModal(); }
 	refreshLibraryActivity(): void {
 		if (this.active === 'library' && !this.element.hidden && !document.hidden) { void this.library.refreshActivity(); }
 	}

@@ -5,7 +5,7 @@
 
 .monaco-workbench .lp-project-details .lp-detail-title[tabindex="-1"]:focus { outline: none; }
 .lp-detail-actions { --detail-action-size: 32px; }
-.lp-bot-credential-list { flex: 1 0 100%; min-width: 0; margin-block: 4px; user-select: text; }
+.lp-bot-credential-list { min-width: 0; margin-block: 4px; user-select: text; }
 .lp-bot-credential-list table { width: 100%; table-layout: fixed; border-collapse: collapse; }
 .lp-bot-credential-list th, .lp-bot-credential-list td { padding: 5px 8px; border-bottom: 1px solid var(--detail-line); text-align: start; overflow-wrap: anywhere; }
 .lp-bot-credential-list th { color: var(--detail-muted); font-weight: 600; }

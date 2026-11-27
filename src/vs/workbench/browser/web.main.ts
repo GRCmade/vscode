@@ -102,6 +102,7 @@ import { DefaultAccountService } from '../services/accounts/browser/defaultAccou
 import { AccountPolicyService, IAccountPolicyGateService } from '../services/policies/common/accountPolicyService.js';
 import { StudioWebLaunchpad, StudioWebLaunchpadNavigation } from './studioWebLaunchpad.js';
 import { StudioWebLaunchpadApp } from './studioWebLaunchpadApp.js';
+import { StudioWebBotCredentials } from './studioWebBotCredentials.js';
 import { StudioNotificationInbox } from './studioNotificationInbox.js';
 
 export interface IBrowserMainWorkbench {
@@ -158,6 +159,9 @@ export class BrowserMain extends Disposable {
 			if (this.configuration.studioIm && this.configuration.remoteAuthority) {
 				this._register(instantiationService.createInstance(StudioWebLaunchpadApp, this.configuration.studioIm));
 			} else {
+				if (this.configuration.remoteAuthority) {
+					this._register(instantiationService.createInstance(StudioWebBotCredentials, this.configuration.remoteAuthority));
+				}
 				const inbox = this._register(instantiationService.createInstance(StudioNotificationInbox));
 				if (studioLaunchpad && this.configuration.remoteAuthority) {
 					this._register(instantiationService.createInstance(StudioWebLaunchpad, this.configuration.remoteAuthority, inbox));

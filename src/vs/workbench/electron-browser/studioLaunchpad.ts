@@ -177,7 +177,9 @@ export class StudioLaunchpad extends Disposable {
 					show: preserveFocus => { if (!preserveFocus && !lifetime.isDisposed) { webview.focus(); } },
 				}, source.token).catch(() => { if (!lifetime.isDisposed) { fail(); } });
 			},
-			readBotCredentials: (project, entryId) => commands.executeCommand('studio.internalReadBotCredentialList', { uri: project.uri, projectId: project.projectId, entryId }),
+			openBotCredentials: (project, entryId) => {
+				if (project.uri.startsWith('file:')) { run(commands.executeCommand('studio.internalOpenBotCredentials', { uri: project.uri, projectId: project.projectId, entryId }, this.account?.workspaceOwner ?? null)); }
+			},
 			remove: project => run(this.removeProject(project)),
 			reveal: project => run(native.showItemInFolder(project.managed ? project.path : URI.parse(project.uri).fsPath)),
 			copyPath: project => run(clipboard.writeText(project.path)), contextMenu, hoverService,

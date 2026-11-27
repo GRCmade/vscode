@@ -24,7 +24,6 @@ export interface LibraryProjectCategory {
 	projectUris: string[];
 }
 export interface LibraryDetailAction { id: string; label: string; icon?: string }
-export type LibraryBotCredentialList = { status: 'ok'; rows: { name: string; type: string }[] } | { status: 'untrusted' | 'unavailable' };
 type ActivityProject = Pick<LaunchpadProject, 'uri' | 'projectId' | 'distribution' | 'managed'>;
 type DetailActionSource = 'local' | 'account';
 interface DetailActionState { key: string; items: LibraryDetailAction[]; loading?: boolean }
@@ -35,7 +34,8 @@ export interface LibraryActions {
 	project(p: LaunchpadProject, entryId?: string): void;
 	runProject?(p: LaunchpadProject, entryId?: string): void;
 	mountBotManagement?(kind: 'artifacts' | 'memory', project: LaunchpadProject, entryId: string | undefined, modal: LibraryBotModal): void;
-	readBotCredentials?(p: LaunchpadProject, entryId?: string): Promise<LibraryBotCredentialList | undefined>;
+	openBotCredentials?(p: LaunchpadProject, entryId?: string): void;
+	canOpenBotCredentials?(p: LaunchpadProject): boolean;
 	remove(p: LaunchpadProject): void;
 	reveal?(p: LaunchpadProject): void;
 	copyPath(p: LaunchpadProject): void;
@@ -460,7 +460,9 @@ export class LaunchpadLibrary extends Disposable {
 			secondaryActions.append(bot.group, im.group);
 			const entryBots = (selected.entries ?? []).filter(entry => entry.type === 'bot');
 			const botEntries = entryBots.length ? entryBots : selected.projectType === 'bot' ? [undefined] : [];
-			const canManageBot = (this.actions.mountBotManagement || this.actions.readBotCredentials) && !selected.missing && selected.uri.startsWith('file:') && botEntries.length > 0;
+			const localManagement = !!this.actions.mountBotManagement && selected.uri.startsWith('file:');
+			const credentials = this.actions.openBotCredentials && (this.actions.canOpenBotCredentials?.(selected) ?? selected.uri.startsWith('file:'));
+			const canManageBot = (localManagement || credentials) && !selected.missing && botEntries.length > 0;
 			const label = projectBotManagementLabel(t);
 			const management = canManageBot && selected.managed ? this.detailActionGroup(selected, label, 'settings-gear', true) : undefined;
 			if (canManageBot) {
@@ -469,13 +471,16 @@ export class LaunchpadLibrary extends Disposable {
 					const add = (kind: ProjectBotAction) => {
 						const [title, icon] = projectBotAction(kind, t);
 						const label = botEntries.length > 1 ? `${title} · ${entry?.name ?? entry?.entryId}` : title;
-						const open = button(label, icon, () => this.openBotModal(kind, selected, entry?.entryId, label, open), 'studio-project-action lp-outline');
+						const open = button(label, icon, () => {
+							if (kind === 'credentials') { this.actions.openBotCredentials?.(selected, entry?.entryId); }
+							else { this.openBotModal(kind, selected, entry?.entryId, label, open); }
+						}, 'studio-project-action lp-outline');
 						open.dataset.key = `bot-${kind}:${selected.uri}:${entry?.entryId ?? ''}`;
 						open.setAttribute('aria-haspopup', 'dialog');
 						controls.append(open);
 					};
-					if (this.actions.mountBotManagement) { add('artifacts'); add('memory'); }
-					if (this.actions.readBotCredentials) { add('credentials'); }
+					if (localManagement) { add('artifacts'); add('memory'); }
+					if (credentials) { add('credentials'); }
 				}
 				secondaryActions.append(group);
 			}
@@ -564,7 +569,7 @@ export class LaunchpadLibrary extends Disposable {
 			project.entries?.filter(entry => entry.type === 'bot').map(entry => entry.entryId)]);
 	}
 
-	private openBotModal(kind: ProjectBotAction, project: LaunchpadProject, entryId: string | undefined, title: string, origin: HTMLButtonElement): void {
+	private openBotModal(kind: Exclude<ProjectBotAction, 'credentials'>, project: LaunchpadProject, entryId: string | undefined, title: string, origin: HTMLButtonElement): void {
 		if (this.hasBotModal) { return; }
 		const t = this.t;
 		const lifetime = new DisposableStore();
@@ -577,9 +582,9 @@ export class LaunchpadLibrary extends Disposable {
 		const dismiss = button('', 'close', close, 'lp-tool');
 		dismiss.title = t('Close', '关闭'); dismiss.setAttribute('aria-label', dismiss.title);
 		header.append(heading, dismiss);
-		const message = element('p', 'lp-credential-status', kind === 'credentials' ? t('Loading credentials…', '正在加载凭据…') : t('Loading…', '正在加载…'));
+		const message = element('p', 'lp-bot-modal-status', t('Loading…', '正在加载…'));
 		message.setAttribute('role', 'status');
-		const surface = element('div', kind === 'credentials' ? 'lp-bot-credential-list lp-scroll' : 'lp-bot-modal-frame');
+		const surface = element('div', 'lp-bot-modal-frame');
 		dialog.append(header, message, surface);
 		this.element.append(dialog);
 		lifetime.add(addDisposableListener(dialog, 'close', close));
@@ -592,49 +597,21 @@ export class LaunchpadLibrary extends Disposable {
 			}
 		} };
 		dialog.showModal(); dismiss.focus({ preventScroll: true });
-		if (kind !== 'credentials') {
-			const fail = (reason?: 'untrusted') => {
-				if (lifetime.isDisposed) { return; }
-				dialog.classList.remove('lp-bot-modal-ready'); dismiss.hidden = message.hidden = false;
-				surface.hidden = true;
-				message.textContent = reason === 'untrusted' ? t('The project folder is not trusted.', '项目文件夹尚未受信任。')
-					: t('Could not open Bot management.', '无法打开 Bot 管理。');
-				dismiss.focus({ preventScroll: true });
-			};
-			this.actions.mountBotManagement?.(kind, project, entryId, { surface, lifetime, title, close, fail, ready: () => {
-				if (lifetime.isDisposed || !dialog.open) { return; }
-				// The shared panel supplies its own header and close button.
-				dismiss.hidden = true;
-				message.hidden = true;
-				dialog.classList.add('lp-bot-modal-ready');
-			} });
-			return;
-		}
-		const read = this.actions.readBotCredentials;
-		if (!read) { return; }
-		void Promise.resolve().then(() => read(project, entryId)).catch(() => undefined).then(result => {
+		const fail = (reason?: 'untrusted') => {
+			if (lifetime.isDisposed) { return; }
+			dialog.classList.remove('lp-bot-modal-ready'); dismiss.hidden = message.hidden = false;
+			surface.hidden = true;
+			message.textContent = reason === 'untrusted' ? t('The project folder is not trusted.', '项目文件夹尚未受信任。')
+				: t('Could not open Bot management.', '无法打开 Bot 管理。');
+			dismiss.focus({ preventScroll: true });
+		};
+		this.actions.mountBotManagement?.(kind, project, entryId, { surface, lifetime, title, close, fail, ready: () => {
 			if (lifetime.isDisposed || !dialog.open) { return; }
-			if (result?.status !== 'ok' || !result.rows.length) {
-				message.textContent = result?.status === 'ok' ? t('No saved credentials.', '暂无已保存的凭据。')
-					: result?.status === 'untrusted' ? t('The project folder is not trusted.', '项目文件夹尚未受信任。')
-						: t('Credential list unavailable.', '无法读取凭据列表。');
-				return;
-			}
-			const table = element('table');
-			const head = element('thead'), titles = element('tr'), body = element('tbody');
-			for (const label of [t('Alias', '别名'), t('Type', '类型')]) {
-				const heading = element('th', '', label); heading.scope = 'col'; titles.append(heading);
-			}
-			head.append(titles);
-			for (const { name, type } of result.rows) {
-				const row = element('tr');
-				row.append(element('td', '', name), element('td', '', type));
-				body.append(row);
-			}
-			table.append(head, body);
+			// The shared panel supplies its own header and close button.
+			dismiss.hidden = true;
 			message.hidden = true;
-			surface.replaceChildren(table);
-		});
+			dialog.classList.add('lp-bot-modal-ready');
+		} });
 	}
 
 	override dispose(): void {

@@ -120,6 +120,11 @@ export class StudioWebLaunchpad extends Disposable {
 			importProjects: () => run(this.importFolders()),
 			project: project => run(this.openProject(project, project.builtin ? {} : undefined)),
 			runProject: (project, entryId) => run(this.openProject(project, { entryId })),
+			canOpenBotCredentials: project => !!this.localUri(URI.parse(project.uri)),
+			openBotCredentials: (project, entryId) => {
+				const uri = this.localUri(URI.parse(project.uri));
+				if (uri) { run(commands.executeCommand('studio.internalOpenBotCredentials', { uri: uri.toString(), projectId: project.projectId, entryId }, this.account?.workspaceOwner ?? null)); }
+			},
 			remove: project => run(this.removeProject(project)),
 			copyPath: project => run(clipboard.writeText(project.path)),
 			usage: projectUsageBridge(commands, clipboard, storage, () => this.account?.workspaceOwner, value => this.localUri(URI.parse(value))?.toString() ?? value),

@@ -12,12 +12,7 @@
 .lp-bot-modal-ready .lp-bot-modal-header { position: absolute; width: 1px; height: 1px; padding: 0; clip-path: inset(50%); overflow: hidden; }
 .lp-bot-modal-frame { height: 1px; visibility: hidden; overflow: hidden; }
 .lp-bot-modal-ready .lp-bot-modal-frame { height: 100%; visibility: visible; }
-.lp-bot-credential-list { min-width: 0; max-height: calc(100dvh - 96px); margin: 0 16px; user-select: text; }
-.lp-bot-credential-list table { width: 100%; table-layout: fixed; border-collapse: collapse; }
-.lp-bot-credential-list th, .lp-bot-credential-list td { padding: 8px; border-bottom: 1px solid var(--lp-line); text-align: start; overflow-wrap: anywhere; }
-.lp-bot-credential-list th { color: var(--lp-muted); font-weight: 600; }
-.lp-bot-credential-list th:first-child { width: 60%; }
-.lp-credential-status { margin: 12px 16px; color: var(--lp-muted); user-select: text; }
+.lp-bot-modal-status { margin: 12px 16px; color: var(--lp-muted); user-select: text; }
 .lp-project-details .lp-detail-actions > .studio-project-action {
 	box-sizing: border-box; min-block-size: var(--detail-action-size); padding: 4px 10px; text-align: center;
 }

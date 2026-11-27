@@ -109,7 +109,8 @@ export class StudioWebBotCredentials extends Disposable {
 				status.textContent = '';
 				list(action.action !== 'list');
 			} else {
-				status.textContent = result?.status === 'invalid' ? t('Check the credential format and try again.', '请检查凭据格式后重试。')
+				status.textContent = result?.status === 'invalid' ? t('Check the credential alias or type.', '请检查凭据别名或类型。')
+					: result?.status === 'too-large' ? t('The credential is too large to save (maximum 64 KiB).', '凭据过大，无法保存（最大 64 KiB）。')
 					: result?.status === 'existing' ? t('This credential alias and type already exist.', '此凭据别名和类型已存在。')
 						: result?.status === 'missing' ? t('This credential was removed. Reopen the list to refresh.', '该凭据已被删除，请重新打开列表刷新。')
 							: t('Credential storage is unavailable. Reopen this dialog to try again.', '凭据存储不可用，请重新打开弹窗后重试。');
@@ -165,9 +166,9 @@ export class StudioWebBotCredentials extends Disposable {
 				const keyFile = kind.value === 'ssh-private-key';
 				const structured = kind.value === 'structured';
 				valueInput = element('input'); valueInput.type = keyFile ? 'file' : 'password';
-				valueInput.required = true; valueInput.maxLength = 16_384; valueInput.autocomplete = 'new-password';
+				valueInput.required = keyFile; valueInput.autocomplete = 'new-password';
 				if (structured) { valueInput.placeholder = '{"field":""}'; }
-				valueLabel.replaceChildren(keyFile ? t('SSH private key file', 'SSH 私钥文件') : structured ? t('Credential JSON', '凭据 JSON') : t('Credential value', '凭据值'), valueInput);
+				valueLabel.replaceChildren(keyFile ? t('SSH private key file', 'SSH 私钥文件') : t('Credential value', '凭据值'), valueInput);
 			};
 			kind.addEventListener('change', renderValue); renderValue();
 			const aliasLabel = element('label', '', t('Alias', '别名')); aliasLabel.append(alias);

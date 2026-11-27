@@ -130,7 +130,8 @@ export class ElectronWebviewElement extends WebviewElement {
 		}
 		try {
 			// Loopback frames cannot use their parent webview's clipboard permission.
-			const fileUrls = this.extension?.id.value === 'studio.studio-workstation' && (this.providedViewType === 'studio.project' || this.providedViewType === 'studio.projectTool')
+			const fileUrls = this.extension?.id.value === 'studio.studio-workstation'
+				&& (this.providedViewType === 'studio.project' || this.providedViewType === 'studio.projectTool' || this.providedViewType === 'studio.developerAssistant')
 				? await this._nativeHostService.readClipboardFileUrls() : undefined;
 			const [text, image] = await Promise.all([
 				this._nativeHostService.readClipboardText(),

@@ -43,10 +43,12 @@ export function getUserDataPath(cliArgs: NativeParsedArgs, productName: string):
 }
 
 function doGetUserDataPath(cliArgs: NativeParsedArgs, productName: string): string {
-	if (/^SteamHarness(?: Dev)*$/.test(productName) && !cliArgs['user-data-dir']) {
+	if (/^SteamHarness(?: Dev)*$/.test(productName) && !cliArgs.extensionTestsPath) {
 		// Relaunches of one installation find its existing IPC socket. Distinct installations can run together.
 		const host = createHash('sha256').update(process.execPath).digest('hex').slice(0, 16);
-		return join(homedir(), '.steamharness', 'hosts', `desktop-${host}`);
+		const directory = join(homedir(), '.steamharness', 'hosts', `desktop-${host}`);
+		if (cliArgs['user-data-dir'] && resolve(cliArgs['user-data-dir']) !== directory) { throw new Error('SteamHarness stores desktop data under ~/.steamharness/hosts.'); }
+		return directory;
 	}
 
 	// 0. Running out of sources has a fixed productName

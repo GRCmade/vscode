@@ -21,6 +21,7 @@ suite('User data path', () => {
 		const path = getUserDataPath(args, 'SteamHarness');
 		assert.match(path, /[\\/]\.steamharness[\\/]hosts[\\/]desktop-[a-f0-9]{16}$/);
 		assert.strictEqual(getUserDataPath(args, 'SteamHarness Dev'), path);
+		assert.throws(() => getUserDataPath({ ...args, 'user-data-dir': '/other/profile' }, 'SteamHarness'), /stores desktop data/);
 	});
 
 	test('getUserDataPath - portable mode', () => {
@@ -45,7 +46,7 @@ suite('User data path', () => {
 		const args = parseArgs(process.argv, OPTIONS);
 		args['user-data-dir'] = cliUserDataDir;
 
-		const path = getUserDataPath(args, product.nameShort);
+		const path = getUserDataPath(args, 'code-oss');
 		assert.ok(path.includes(cliUserDataDir));
 	});
 

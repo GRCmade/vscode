@@ -41,6 +41,7 @@ import { parseStudioReleaseProject } from '../../platform/window/common/studioRe
 import { emptyStudioTrayNotifications, IStudioTrayNotifications, studioTrayPreviewLimit } from '../../platform/windows/common/studioTrayNotifications.js';
 import { IWorkspacesService, isRecentFolder } from '../../platform/workspaces/common/workspaces.js';
 import { IStudioStartService, isStudioProjectScopeReady } from '../browser/parts/editor/studioStart.js';
+import { INativeWorkbenchEnvironmentService } from '../services/environment/electron-browser/environmentService.js';
 import { projectUsageBridge } from '../browser/studioProjectUsage.js';
 import { IWebviewService } from '../contrib/webview/browser/webview.js';
 import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
@@ -105,6 +106,7 @@ export class StudioLaunchpad extends Disposable {
 		private readonly notices: StudioNotificationInbox,
 		@IStudioStartService private readonly start: IStudioStartService,
 		@INativeHostService private readonly native: INativeHostService,
+		@INativeWorkbenchEnvironmentService private readonly environment: INativeWorkbenchEnvironmentService,
 		@IWorkspacesService private readonly workspaces: IWorkspacesService,
 		@IWorkbenchLayoutService layout: IWorkbenchLayoutService,
 		@ICommandService private readonly commands: ICommandService,
@@ -665,6 +667,8 @@ export class StudioLaunchpad extends Disposable {
 
 	private async readManagedWorkspaceRoots(): Promise<URI[]> {
 		const roots = new ResourceSet(uri => extUriBiasedIgnorePathCase.getComparisonKey(uri));
+		const owner = this.account?.workspaceOwner ?? 'local';
+		if (owner === 'local' || /^[a-f0-9]{64}$/.test(owner)) { roots.add(URI.joinPath(this.environment.userHome, '.steamharness', 'accounts', owner, 'folder-bots')); }
 		for (const profile of this.profiles.profiles) {
 			roots.add(URI.joinPath(profile.globalStorageHome.with({ scheme: Schemas.file }), workstationExtensionId));
 		}
@@ -687,14 +691,14 @@ export class StudioLaunchpad extends Disposable {
 		if (this.windowRevision !== revision) { return; }
 		const managedUris = new Set<string>();
 		const builtinUris = new Set<string>();
-		const builtinRoots = managedRoots.map(root => URI.joinPath(root, 'workflow', 'builtin-apps'));
+		const accounts = URI.joinPath(this.environment.userHome, '.steamharness', 'accounts');
 		const project = (raw: URI, kind: LaunchpadProject['kind'], label?: string): LaunchpadProject => {
 			const uri = URI.revive(raw);
 			const key = uri.toString();
 			if (kind === 'workspace' && managedRoots.some(root => extUriBiasedIgnorePathCase.isEqualOrParent(uri, root))) {
 				managedUris.add(key);
 			}
-			if (kind === 'folder' && builtinRoots.some(root => /^[a-f0-9]{24}(?:\/project)?$/.test(extUriBiasedIgnorePathCase.relativePath(root, uri) ?? ''))) {
+			if (kind === 'folder' && /^(?:local|[a-f0-9]{64})\/projects\/[a-f0-9-]{36}\/builds\/[a-f0-9]{24}(?:\/project)?$/.test(extUriBiasedIgnorePathCase.relativePath(accounts, uri) ?? '')) {
 				builtinUris.add(key);
 			}
 			return { kind, uri: key, name: label || basenameOrAuthority(uri), path: uri.scheme === Schemas.file ? uri.fsPath : uri.toString(true) };

@@ -478,7 +478,7 @@ function getArgvConfigPath(): string {
 
 	let dataFolderName = product.dataFolderName;
 	if (process.env['VSCODE_DEV']) {
-		dataFolderName = `${dataFolderName}-dev`;
+		if (dataFolderName !== '.steamharness/studio') { dataFolderName = `${dataFolderName}-dev`; }
 	}
 
 	return path.join(os.homedir(), dataFolderName!, 'argv.json');

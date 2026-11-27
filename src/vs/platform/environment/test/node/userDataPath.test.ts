@@ -16,13 +16,20 @@ suite('User data path', () => {
 		assert.ok(path.length > 0);
 	});
 
+	test('SteamHarness resolves the host profile by installation, not channel label', () => {
+		const args = parseArgs([], OPTIONS);
+		const path = getUserDataPath(args, 'SteamHarness');
+		assert.match(path, /[\\/]\.steamharness[\\/]hosts[\\/]desktop-[a-f0-9]{16}$/);
+		assert.strictEqual(getUserDataPath(args, 'SteamHarness Dev'), path);
+	});
+
 	test('getUserDataPath - portable mode', () => {
 		const origPortable = process.env['VSCODE_PORTABLE'];
 		try {
 			const portableDir = 'portable-dir';
 			process.env['VSCODE_PORTABLE'] = portableDir;
 
-			const path = getUserDataPath(parseArgs(process.argv, OPTIONS), product.nameShort);
+			const path = getUserDataPath(parseArgs(process.argv, OPTIONS), 'code-oss');
 			assert.ok(path.includes(portableDir));
 		} finally {
 			if (typeof origPortable === 'string') {
@@ -48,7 +55,7 @@ suite('User data path', () => {
 			const appDataDir = 'appdata-dir';
 			process.env['VSCODE_APPDATA'] = appDataDir;
 
-			const path = getUserDataPath(parseArgs(process.argv, OPTIONS), product.nameShort);
+			const path = getUserDataPath(parseArgs(process.argv, OPTIONS), 'code-oss');
 			assert.ok(path.includes(appDataDir));
 		} finally {
 			if (typeof origAppData === 'string') {

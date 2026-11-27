@@ -45,8 +45,8 @@ else if (globalThis._VSCODE_PRODUCT_JSON && globalThis._VSCODE_PACKAGE_JSON) {
 		Object.assign(product, {
 			nameShort: `${product.nameShort} Dev`,
 			nameLong: `${product.nameLong} Dev`,
-			dataFolderName: `${product.dataFolderName}-dev`,
-			serverDataFolderName: product.serverDataFolderName ? `${product.serverDataFolderName}-dev` : undefined
+			dataFolderName: product.dataFolderName === '.steamharness/studio' ? product.dataFolderName : `${product.dataFolderName}-dev`,
+			serverDataFolderName: product.serverDataFolderName === '.steamharness/hosts/web' ? product.serverDataFolderName : product.serverDataFolderName ? `${product.serverDataFolderName}-dev` : undefined
 		});
 	}
 

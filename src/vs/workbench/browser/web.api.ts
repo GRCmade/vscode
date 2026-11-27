@@ -151,6 +151,7 @@ export interface IWorkbench {
 export interface IWorkbenchConstructionOptions {
 	/** Set by the managed SteamHarness Studio Web host. */
 	readonly studioWeb?: boolean;
+	readonly studioSettingsPath?: string;
 	readonly studioLaunchpad?: boolean;
 	readonly studioIm?: StudioWebImTarget | 'invalid';
 	readonly studioProjectEntry?: IStudioProjectEntry;

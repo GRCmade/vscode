@@ -5,7 +5,7 @@
 
 import { BroadcastDataChannel } from '../../../base/browser/broadcast.js';
 import { revive } from '../../../base/common/marshalling.js';
-import { UriDto } from '../../../base/common/uri.js';
+import { URI, UriDto } from '../../../base/common/uri.js';
 import { IEnvironmentService } from '../../environment/common/environment.js';
 import { IFileService } from '../../files/common/files.js';
 import { ILogService } from '../../log/common/log.js';
@@ -23,6 +23,7 @@ export class BrowserUserDataProfilesService extends UserDataProfilesService impl
 		@IFileService fileService: IFileService,
 		@IUriIdentityService uriIdentityService: IUriIdentityService,
 		@ILogService logService: ILogService,
+		private readonly studioSettings?: URI,
 	) {
 		super(environmentService, fileService, uriIdentityService, logService);
 		this.changesBroadcastChannel = this._register(new BroadcastDataChannel<BroadcastedProfileChanges>(`${UserDataProfilesService.PROFILES_KEY}.changes`));
@@ -47,6 +48,13 @@ export class BrowserUserDataProfilesService extends UserDataProfilesService impl
 				});
 			} catch (error) {/* ignore */ }
 		}));
+	}
+
+	protected override createDefaultProfile() {
+		const profile = super.createDefaultProfile();
+		const shared = this.studioSettings;
+		return shared ? { ...profile, settingsResource: URI.joinPath(shared, 'settings.json'), keybindingsResource: URI.joinPath(shared, 'keybindings.json'),
+			tasksResource: URI.joinPath(shared, 'tasks.json'), snippetsHome: URI.joinPath(shared, 'snippets'), promptsHome: URI.joinPath(shared, 'prompts') } : profile;
 	}
 
 	private updateTransientProfiles(added: IUserDataProfile[], removed: IUserDataProfile[], updated: IUserDataProfile[]): void {

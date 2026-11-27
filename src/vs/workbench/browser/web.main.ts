@@ -378,7 +378,9 @@ export class BrowserMain extends Disposable {
 		serviceCollection.set(IUriIdentityService, uriIdentityService);
 
 		// User Data Profiles
-		const userDataProfilesService = new BrowserUserDataProfilesService(environmentService, fileService, uriIdentityService, logService);
+		const studioSettings = this.configuration.studioWeb && this.configuration.studioSettingsPath && this.configuration.remoteAuthority
+			? URI.from({ scheme: Schemas.vscodeRemote, authority: this.configuration.remoteAuthority, path: this.configuration.studioSettingsPath }) : undefined;
+		const userDataProfilesService = new BrowserUserDataProfilesService(environmentService, fileService, uriIdentityService, logService, studioSettings);
 		serviceCollection.set(IUserDataProfilesService, userDataProfilesService);
 
 		const currentProfile = await this.getCurrentProfile(workspace, userDataProfilesService, environmentService);

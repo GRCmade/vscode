@@ -425,6 +425,7 @@ export class WebClientServer {
 		const workbenchWebConfiguration = {
 			remoteAuthority,
 			studioWeb: studioWeb || undefined,
+			studioSettingsPath: studioWeb ? URI.joinPath(this._environmentService.userHome, '.steamharness', 'studio', 'User').path : undefined,
 			webviewEndpoint: webviewPort ? `http://{{uuid}}.localhost:${webviewPort}/_studio/webview/` : undefined,
 			serverBasePath: basePath,
 			_wrapWebWorkerExtHostInIframe,

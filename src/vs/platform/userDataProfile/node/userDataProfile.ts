@@ -43,6 +43,16 @@ export class UserDataProfilesReadonlyService extends BaseUserDataProfilesService
 		return this.uriIdentityService.extUri.joinPath(URI.file(this.nativeEnvironmentService.extensionsPath).with({ scheme: this.profilesHome.scheme }), 'extensions.json');
 	}
 
+	protected override createDefaultProfile() {
+		const profile = super.createDefaultProfile();
+		const home = URI.joinPath(this.nativeEnvironmentService.userHome, '.steamharness');
+		if (!this.uriIdentityService.extUri.isEqualOrParent(URI.file(this.nativeEnvironmentService.userDataPath), URI.joinPath(home, 'hosts'))) { return profile; }
+		const shared = URI.joinPath(home, 'studio', 'User').with({ scheme: profile.location.scheme });
+		// Only share user-editable preferences. SecretStorage, authentication, and window state remain host-local.
+		return { ...profile, settingsResource: URI.joinPath(shared, 'settings.json'), keybindingsResource: URI.joinPath(shared, 'keybindings.json'),
+			tasksResource: URI.joinPath(shared, 'tasks.json'), snippetsHome: URI.joinPath(shared, 'snippets'), promptsHome: URI.joinPath(shared, 'prompts') };
+	}
+
 }
 
 export class UserDataProfilesService extends UserDataProfilesReadonlyService implements IUserDataProfilesService {

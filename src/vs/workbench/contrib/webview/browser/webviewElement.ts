@@ -222,6 +222,12 @@ export class WebviewElement extends Disposable implements IWebviewElement, Webvi
 				this._studioFileDrop.update(message.target);
 				return;
 			}
+			if (message?.type === 'workflow-resolve-local-files') {
+				if (this.platform === 'electron' && message.version === 1 && this.extension?.id.value === 'studio.studio-workstation') {
+					this._studioFileDrop.resolveLocalFiles(message);
+				}
+				return;
+			}
 			if (message?.type === 'studio-window-drag-regions' && this.providedViewType === 'studio.project'
 				&& this.extension?.id.value === 'studio.studio-workstation' && this.element?.parentElement) {
 				const drag = this._studioWindowDrag.value ?? (this._studioWindowDrag.value = new StudioWindowDragRegions(this.element));

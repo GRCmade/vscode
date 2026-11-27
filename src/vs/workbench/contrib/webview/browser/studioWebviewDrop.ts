@@ -5,8 +5,9 @@
 
 import { addDisposableListener, EventType } from '../../../../base/browser/dom.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
+import { isAbsolute } from '../../../../base/common/path.js';
 import { URI } from '../../../../base/common/uri.js';
-import { containsDragType, extractEditorsDropData } from '../../../../platform/dnd/browser/dnd.js';
+import { containsDragType, extractEditorsDropData, getPathForFile } from '../../../../platform/dnd/browser/dnd.js';
 
 /** Native paths are resolved before a drop crosses the sandboxed project frame. */
 export class StudioWebviewDrop extends Disposable {
@@ -16,6 +17,22 @@ export class StudioWebviewDrop extends Disposable {
 
 	update(target: unknown): void {
 		this.target = typeof target === 'string' && target.length > 0 && target.length <= 512 ? target : undefined;
+	}
+
+	resolveLocalFiles({ target, requestId, files }: { target?: unknown; requestId?: unknown; files?: unknown }): void {
+		if (!this.target || target !== this.target || typeof requestId !== 'string' || !requestId || requestId.length > 128
+			|| !Array.isArray(files) || !files.length || files.length > 32) {
+			return;
+		}
+		// A File cloned from the project frame still lets the native renderer resolve its backing file.
+		let paths: string[] = [];
+		try {
+			const nativePaths = files.map(file => getPathForFile(file));
+			if (nativePaths.every((file): file is string => !!file && isAbsolute(file))) {
+				paths = nativePaths.map(file => URI.file(file).toString());
+			}
+		} catch { /* Not a native File. Do not forward partial results or read bytes. */ }
+		this.send({ type: 'workflow-host', localFilePaths: { version: 1, target, requestId, paths } });
 	}
 
 	mount(container: HTMLElement, targetWindow: Window): void {

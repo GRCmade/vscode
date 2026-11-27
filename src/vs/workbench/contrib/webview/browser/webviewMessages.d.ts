@@ -63,7 +63,7 @@ interface UpdateContentEvent {
 export type ToWebviewMessage = {
 	'focus': void;
 	'message': { message: any; transfer?: ArrayBuffer[] };
-	'execCommand': string | { command: 'copy' } | { command: 'paste'; clipboard: { text: string; image: Uint8Array }; requestId?: string };
+	'execCommand': string | { command: 'copy' } | { command: 'paste'; clipboard: { text: string; image: Uint8Array; fileUrls?: string[] }; requestId?: string };
 	'did-load-resource':
 	| { id: number; status: 401 | 404; path: string }
 	| { id: number; status: 304; path: string; mime: string; mtime: number | undefined }

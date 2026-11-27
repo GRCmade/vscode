@@ -130,12 +130,14 @@ export class ElectronWebviewElement extends WebviewElement {
 		}
 		try {
 			// Loopback frames cannot use their parent webview's clipboard permission.
+			const fileUrls = this.extension?.id.value === 'studio.studio-workstation' && (this.providedViewType === 'studio.project' || this.providedViewType === 'studio.projectTool')
+				? await this._nativeHostService.readClipboardFileUrls() : undefined;
 			const [text, image] = await Promise.all([
 				this._nativeHostService.readClipboardText(),
-				this._nativeHostService.readImage()
+				fileUrls === undefined ? this._nativeHostService.readImage() : new Uint8Array()
 			]);
 			if (this.element === element && this.isFocused && (!requestId || element.ownerDocument.hasFocus())) {
-				this.execCommand({ command: 'paste', clipboard: { text, image }, requestId });
+				this.execCommand({ command: 'paste', clipboard: { text, image, fileUrls }, requestId });
 			}
 		} catch {
 			if (!requestId && this.element === element && this.isFocused) {

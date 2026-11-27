@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as fs from 'fs';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { app, BrowserWindow, clipboard, contentTracing, Display, Menu, MessageBoxOptions, MessageBoxReturnValue, Notification, OpenDevToolsOptions, OpenDialogOptions, OpenDialogReturnValue, powerMonitor, powerSaveBlocker, SaveDialogOptions, SaveDialogReturnValue, screen, shell, systemPreferences, webContents } from 'electron';
 import { createRequire } from 'node:module';
 import { arch, cpus, freemem, loadavg, platform, release, totalmem, type } from 'os';
@@ -1052,6 +1052,48 @@ export class NativeHostMainService extends Disposable implements INativeHostMain
 
 	async readImage(): Promise<Uint8Array> {
 		return clipboard.readImage().toPNG();
+	}
+
+	async readClipboardFileUrls(): Promise<string[] | undefined> {
+		if (!isMacintosh || !(clipboard.has('public.file-url') || clipboard.has('NSFilenamesPboardType'))) {
+			return undefined;
+		}
+		try {
+			// Electron's raw format read only returns the first pasteboard item.
+			const { stdout } = await promisify(execFile)('/usr/bin/osascript', ['-l', 'JavaScript', '-e', `
+				ObjC.import('AppKit');
+				const board = $.NSPasteboard.generalPasteboard;
+				const revision = board.changeCount;
+				const urls = [];
+				const items = board.pasteboardItems;
+				for (let i = 0; i < items.count && urls.length < 33; i++) {
+					const value = items.objectAtIndex(i).stringForType('public.file-url');
+					if (value.isNil()) continue;
+					const url = $.NSURL.URLWithString(value);
+					if (!url.isNil() && url.isFileURL) {
+						const path = url.filePathURL;
+						if (!path.isNil()) urls.push(ObjC.unwrap(path.absoluteString));
+					}
+				}
+				if (!urls.length) {
+					const paths = board.propertyListForType('NSFilenamesPboardType');
+					if (!paths.isNil()) {
+						for (const path of ObjC.deepUnwrap(paths).slice(0, 33)) {
+							if (typeof path === 'string' && path.startsWith('/')) urls.push(ObjC.unwrap($.NSURL.fileURLWithPath(path).absoluteString));
+						}
+					}
+				}
+				JSON.stringify(board.changeCount === revision ? urls : []);
+			`], { timeout: 2_000, maxBuffer: 256 * 1024 });
+			const urls: unknown = JSON.parse(stdout);
+			if (Array.isArray(urls) && urls.length <= 33 && urls.every(url => typeof url === 'string' && url.startsWith('file://') && url.length <= 4096)) {
+				return urls;
+			}
+		} catch {
+			this.logService.trace('Unable to read file URLs from the native pasteboard.');
+		}
+		// A Finder selection may also advertise a PNG icon; don't fall back to it.
+		return [];
 	}
 
 	async writeClipboardText(windowId: number | undefined, text: string, type?: 'selection' | 'clipboard'): Promise<void> {

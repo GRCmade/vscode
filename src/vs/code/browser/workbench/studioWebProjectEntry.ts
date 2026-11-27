@@ -7,21 +7,21 @@ import type { IStudioProjectEntry } from '../../../platform/window/common/studio
 
 const storageKey = 'studio.web.projectEntry';
 
-// The run request goes to the new tab, not into the project URL. Shared links and reloads must not run it.
+// This tab owns the run view. Reloads can reattach, but sharing the folder URL must not open it.
 export function writeStudioWebProjectEntry(storage: Storage, href: string, entryId: string | undefined): void {
 	storage.setItem(storageKey, JSON.stringify({ href, entryId }));
 }
 
-export function takeStudioWebProjectEntry(target: Pick<Window, 'sessionStorage'>, href: string, folderUri: string): IStudioProjectEntry | undefined {
+export function readStudioWebProjectEntry(target: Pick<Window, 'sessionStorage'>, href: string, folderUri: string): IStudioProjectEntry | undefined {
 	try {
 		const storage = target.sessionStorage;
 		const raw = storage.getItem(storageKey);
 		if (raw === null) { return undefined; }
-		storage.removeItem(storageKey);
 		const entry = JSON.parse(raw) as { href?: string; entryId?: string } | null;
-		if (entry?.href === href && (entry.entryId === undefined || typeof entry.entryId === 'string')) {
+		if (entry?.href === href && (entry.entryId === undefined || typeof entry.entryId === 'string' && /^[a-z][a-z0-9_-]{0,63}$/.test(entry.entryId))) {
 			return { uri: folderUri, entryId: entry.entryId };
 		}
+		storage.removeItem(storageKey);
 	} catch { /* The workspace still opens if browser storage is unavailable. */ }
 	return undefined;
 }

@@ -23,7 +23,7 @@ import { readStudioWebImRoute, type StudioWebImTarget } from '../../../workbench
 import { AuthenticationSessionInfo } from '../../../workbench/services/authentication/browser/authenticationService.js';
 import type { IURLCallbackProvider } from '../../../workbench/services/url/browser/urlService.js';
 import { create } from '../../../workbench/workbench.web.main.internal.js';
-import { takeStudioWebProjectEntry, writeStudioWebProjectEntry } from './studioWebProjectEntry.js';
+import { readStudioWebProjectEntry, writeStudioWebProjectEntry } from './studioWebProjectEntry.js';
 
 interface ISecretStorageCrypto {
 	seal(data: string): Promise<string>;
@@ -646,7 +646,7 @@ function readCookie(name: string): string | undefined {
 	const workspace = workspaceProvider.workspace;
 	const folder = config.studioWeb && workspace && isFolderToOpen(workspace) ? workspace.folderUri : undefined;
 	const studioProjectEntry = folder?.scheme === Schemas.vscodeRemote && folder.authority === config.remoteAuthority
-		? takeStudioWebProjectEntry(mainWindow, mainWindow.location.href, folder.with({ scheme: Schemas.file, authority: '' }).toString()) : undefined;
+		? readStudioWebProjectEntry(mainWindow, mainWindow.location.href, folder.with({ scheme: Schemas.file, authority: '' }).toString()) : undefined;
 	create(mainWindow.document.body, {
 		...config,
 		studioLaunchpad: workspaceProvider.studioLaunchpad,
